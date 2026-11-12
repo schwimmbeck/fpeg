@@ -31,7 +31,7 @@ COMPATIBLE_LICENCES = {
 COMMENT_BY_SUFFIX = {
     ".rs": "//",
     ".pest": "//",
-    ".fpeg": "#",
+    ".fpeg": "//",
     ".py": "#",
     ".pyi": "#",
     ".toml": "#",

@@ -7,8 +7,12 @@
 //! checks the names and translates it into the core language that engines run.
 
 pub mod builder;
+#[cfg(feature = "reference")]
+mod meta;
 mod print;
 pub(crate) mod resolve;
+#[cfg(feature = "reference")]
+mod text;
 
 pub use resolve::GrammarError;
 

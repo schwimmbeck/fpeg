@@ -1,0 +1,666 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+//! The text front end: parse grammar text with the grammar of grammars and turn the tree into
+//! the grammar model. Until the engine exists it runs on the reference interpreter.
+
+use std::sync::OnceLock;
+
+use super::{
+    Alternative, Builder, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel,
+    Expr, ExprKind, Grammar, GrammarError, Import, Level, Name, Property, Recover, Rule, RuleBody,
+    Span, Text, meta,
+};
+use crate::lines::LineIndex;
+use crate::reference::{ParseErrorKind, Reference};
+use crate::tree::NodeRef;
+
+impl Grammar {
+    /// Read a grammar from its text.
+    pub fn from_text(text: &str) -> Result<Grammar, Vec<GrammarError>> {
+        static META: OnceLock<Result<Reference, Vec<GrammarError>>> = OnceLock::new();
+        let meta = META
+            .get_or_init(|| Reference::new(&meta::grammar()))
+            .as_ref()
+            .map_err(Clone::clone)?;
+        let tree = meta.parse(text, "start").map_err(|error| {
+            let lines = LineIndex::new(text);
+            let line = lines.line(error.position) + 1;
+            let column = lines.column(text, error.position, 1) + 1;
+            let detail = match error.kind {
+                ParseErrorKind::NoMatch { expected } => format!("expected {}", expected.join(", ")),
+                other => format!("{other:?}"),
+            };
+            let at = error.position as u32;
+            vec![GrammarError {
+                message: format!("syntax error at line {line}, column {column}: {detail}"),
+                span: Span { start: at, end: at },
+            }]
+        })?;
+        let mut converter = Converter {
+            text,
+            errors: Vec::new(),
+        };
+        let mut grammar = Grammar::default();
+        for root in tree.roots() {
+            for item in visible(&root) {
+                converter.item(&mut grammar, &item);
+            }
+        }
+        if converter.errors.is_empty() {
+            Ok(grammar)
+        } else {
+            Err(converter.errors)
+        }
+    }
+}
+
+fn span(node: &NodeRef<'_>) -> Span {
+    let (start, end) = node.span();
+    Span { start, end }
+}
+
+fn visible<'t>(node: &NodeRef<'t>) -> Vec<NodeRef<'t>> {
+    node.children()
+        .into_iter()
+        .filter(|c| !c.is_hidden())
+        .collect()
+}
+
+fn field<'t>(node: &NodeRef<'t>, name: &str) -> Option<NodeRef<'t>> {
+    fields(node, name).into_iter().next()
+}
+
+fn fields<'t>(node: &NodeRef<'t>, name: &str) -> Vec<NodeRef<'t>> {
+    visible(node)
+        .into_iter()
+        .filter(|c| c.field_name() == Some(name))
+        .collect()
+}
+
+struct Converter<'t> {
+    text: &'t str,
+    errors: Vec<GrammarError>,
+}
+
+impl<'t> Converter<'t> {
+    fn error(&mut self, message: String, span: Span) {
+        self.errors.push(GrammarError { message, span });
+    }
+
+    fn item(&mut self, grammar: &mut Grammar, node: &NodeRef<'_>) {
+        match node.kind_name() {
+            "rule" => {
+                let rule = self.rule(node);
+                grammar.rules.push(rule);
+            }
+            "ignore" => {
+                let expr = self.field_choice(node, "expr");
+                grammar.ignore.push(expr);
+            }
+            "word" => grammar.word = Some(self.field_choice(node, "expr")),
+            "flags" => {
+                for name in fields(node, "names") {
+                    grammar.flags.push(self.name(&name));
+                }
+            }
+            "tabs" => grammar.tabs = field(node, "width").map(|w| self.count(&w)),
+            "keywords" => {
+                for word in fields(node, "words") {
+                    grammar.soft_keywords.push(self.string(&word));
+                }
+            }
+            "import" => {
+                let module = field(node, "module").map_or_else(
+                    || Text {
+                        value: String::new(),
+                        span: span(node),
+                    },
+                    |m| self.module(&m),
+                );
+                let names = field(node, "names")
+                    .map(|n| fields(&n, "items").iter().map(|i| self.name(i)).collect())
+                    .unwrap_or_default();
+                let prefix = field(node, "prefix")
+                    .and_then(|p| field(&p, "name"))
+                    .map(|n| self.name(&n));
+                grammar.imports.push(Import {
+                    module,
+                    names,
+                    prefix,
+                });
+            }
+            "extends" => grammar.extends = field(node, "module").map(|m| self.string(&m)),
+            "recover" => {
+                let label = field(node, "label").map(|l| self.name(&l));
+                let expr = self.field_choice(node, "expr");
+                if let Some(label) = label {
+                    grammar.recovers.push(Recover { label, expr });
+                }
+            }
+            other => self.error(format!("unexpected {other}"), span(node)),
+        }
+    }
+
+    fn text_of(&self, node: &NodeRef<'_>) -> &'t str {
+        node.text(self.text)
+    }
+
+    fn name(&self, node: &NodeRef<'_>) -> Name {
+        Name {
+            text: self.text_of(node).to_owned(),
+            span: span(node),
+        }
+    }
+
+    fn field_name(&mut self, node: &NodeRef<'_>, name: &str) -> Name {
+        match field(node, name) {
+            Some(n) => self.name(&n),
+            None => Name {
+                text: String::new(),
+                span: span(node),
+            },
+        }
+    }
+
+    fn count(&mut self, node: &NodeRef<'_>) -> Count {
+        let value = self.text_of(node).parse().unwrap_or_else(|_| {
+            self.error("the number is too large".into(), span(node));
+            0
+        });
+        Count {
+            value,
+            span: span(node),
+        }
+    }
+
+    fn module(&mut self, node: &NodeRef<'_>) -> Text {
+        if node.kind_name() == "STRING" {
+            self.string(node)
+        } else {
+            Text {
+                value: self.text_of(node).to_owned(),
+                span: span(node),
+            }
+        }
+    }
+
+    fn rule(&mut self, node: &NodeRef<'_>) -> Rule {
+        let attributes = fields(node, "attributes")
+            .iter()
+            .map(|a| self.field_name(a, "name"))
+            .collect();
+        let params = field(node, "params")
+            .map(|p| fields(&p, "names").iter().map(|n| self.name(n)).collect())
+            .unwrap_or_default();
+        let display = field(node, "display").map(|d| self.string(&d));
+        let body = match field(node, "body") {
+            Some(body) if body.kind_name() == "precedence" => RuleBody::Precedence(
+                fields(&body, "levels")
+                    .iter()
+                    .map(|level| Level {
+                        name: self.field_name(level, "name"),
+                        alternatives: field(level, "body")
+                            .map(|b| self.alternatives(&b))
+                            .unwrap_or_default(),
+                    })
+                    .collect(),
+            ),
+            Some(body) => RuleBody::Alternatives(self.alternatives(&body)),
+            None => RuleBody::Alternatives(Vec::new()),
+        };
+        Rule {
+            name: self.field_name(node, "name"),
+            transparent: field(node, "transparent").is_some(),
+            params,
+            display,
+            attributes,
+            body,
+            span: span(node),
+        }
+    }
+
+    fn alternatives(&mut self, node: &NodeRef<'_>) -> Vec<Alternative> {
+        fields(node, "items")
+            .iter()
+            .map(|alternative| Alternative {
+                expr: field(alternative, "expr")
+                    .map_or_else(|| Expr::new(ExprKind::Empty), |s| self.sequence(&s)),
+                alias: field(alternative, "alias").map(|a| self.field_name(&a, "name")),
+                builder: field(alternative, "builder")
+                    .and_then(|b| field(&b, "value"))
+                    .map(|v| self.builder(&v)),
+            })
+            .collect()
+    }
+
+    fn field_choice(&mut self, node: &NodeRef<'_>, name: &str) -> Expr {
+        match field(node, name) {
+            Some(choice) => self.choice(&choice),
+            None => Expr::new(ExprKind::Empty),
+        }
+    }
+
+    fn choice(&mut self, node: &NodeRef<'_>) -> Expr {
+        let mut items: Vec<Expr> = fields(node, "items")
+            .iter()
+            .map(|s| self.sequence(s))
+            .collect();
+        if items.len() == 1 {
+            return items.remove(0);
+        }
+        Expr {
+            kind: ExprKind::Choice(items),
+            span: span(node),
+        }
+    }
+
+    fn sequence(&mut self, node: &NodeRef<'_>) -> Expr {
+        let mut items: Vec<Expr> = fields(node, "items")
+            .iter()
+            .map(|e| self.element(e))
+            .collect();
+        if items.len() == 1 {
+            return items.remove(0);
+        }
+        Expr {
+            kind: ExprKind::Sequence(items),
+            span: span(node),
+        }
+    }
+
+    fn element(&mut self, node: &NodeRef<'_>) -> Expr {
+        let expr = match field(node, "expr") {
+            Some(prefix) => self.prefix(&prefix),
+            None => Expr::new(ExprKind::Empty),
+        };
+        let Some(value) = field(node, "label").and_then(|l| field(&l, "value")) else {
+            return expr;
+        };
+        let label = if value.kind_name() == "STRING" {
+            ErrorLabel::Message(self.string(&value))
+        } else {
+            ErrorLabel::Named(self.name(&value))
+        };
+        Expr {
+            kind: ExprKind::Label {
+                expr: Box::new(expr),
+                label,
+            },
+            span: span(node),
+        }
+    }
+
+    fn prefix(&mut self, node: &NodeRef<'_>) -> Expr {
+        let kind = match node.kind_name() {
+            "lookahead" => {
+                let inner = match field(node, "expr") {
+                    Some(e) => self.prefix(&e),
+                    None => Expr::new(ExprKind::Empty),
+                };
+                let negative = field(node, "op").is_some_and(|op| self.text_of(&op) == "!");
+                if negative {
+                    ExprKind::Not(Box::new(inner))
+                } else {
+                    ExprKind::And(Box::new(inner))
+                }
+            }
+            "field" => ExprKind::Field {
+                name: self.field_name(node, "name"),
+                expr: Box::new(match field(node, "expr") {
+                    Some(e) => self.suffix(&e),
+                    None => Expr::new(ExprKind::Empty),
+                }),
+            },
+            _ => return self.suffix(node),
+        };
+        Expr {
+            kind,
+            span: span(node),
+        }
+    }
+
+    fn suffix(&mut self, node: &NodeRef<'_>) -> Expr {
+        let mut expr = match field(node, "base") {
+            Some(base) => self.primary(&base),
+            None => Expr::new(ExprKind::Empty),
+        };
+        for op in fields(node, "ops") {
+            let kind = match op.kind_name() {
+                "optional" => repeat(expr, 0, Some(1)),
+                "many" => repeat(expr, 0, None),
+                "some" => repeat(expr, 1, None),
+                "bounds" => {
+                    let min = field(&op, "min").map_or(0, |m| self.count(&m).value);
+                    let max = field(&op, "max").map(|m| self.count(&m).value);
+                    match (field(&op, "comma").is_some(), max) {
+                        (false, _) => repeat(expr, min, Some(min)),
+                        (true, max) => repeat(expr, min, max),
+                    }
+                }
+                _ => ExprKind::Separated {
+                    item: Box::new(expr),
+                    separator: Box::new(match field(&op, "separator") {
+                        Some(s) => self.primary(&s),
+                        None => Expr::new(ExprKind::Empty),
+                    }),
+                    at_least_one: field(&op, "op").is_some_and(|o| self.text_of(&o) == "++"),
+                },
+            };
+            let (start, _) = node.span();
+            let (_, end) = op.span();
+            expr = Expr {
+                kind,
+                span: Span { start, end },
+            };
+        }
+        expr
+    }
+
+    fn primary(&mut self, node: &NodeRef<'_>) -> Expr {
+        let kind = match node.kind_name() {
+            "group" => match field(node, "expr") {
+                Some(choice) => return self.choice(&choice),
+                None => ExprKind::Empty,
+            },
+            "LITERAL" => self.literal(node),
+            "CLASS" => self.class(node),
+            "PROPERTY" => self.property(node),
+            "inherited" => ExprKind::Inherited,
+            "any" => ExprKind::Any,
+            "cut" => ExprKind::Cut,
+            "reference" => ExprKind::Reference {
+                name: self.field_name(node, "name"),
+                args: field(node, "args")
+                    .map(|a| fields(&a, "items").iter().map(|c| self.choice(c)).collect())
+                    .unwrap_or_default(),
+            },
+            "flag_on" => ExprKind::FlagOn {
+                flag: self.field_name(node, "flag"),
+                expr: Box::new(self.field_choice(node, "expr")),
+            },
+            "flag_off" => ExprKind::FlagOff {
+                flag: self.field_name(node, "flag"),
+                expr: Box::new(self.field_choice(node, "expr")),
+            },
+            "flag_test" => ExprKind::FlagTest {
+                flag: self.field_name(node, "flag"),
+                negated: field(node, "negated").is_some(),
+            },
+            "indent" => ExprKind::Indent(Box::new(self.field_choice(node, "expr"))),
+            "same" => ExprKind::Same,
+            "def" => ExprKind::Def {
+                name: self.field_name(node, "name"),
+                expr: Box::new(self.field_choice(node, "expr")),
+            },
+            "ref" => ExprKind::Ref {
+                name: self.field_name(node, "name"),
+            },
+            "error_alternative" => ExprKind::Error {
+                message: match field(node, "message") {
+                    Some(m) => self.string(&m),
+                    None => Text {
+                        value: String::new(),
+                        span: span(node),
+                    },
+                },
+            },
+            other => {
+                self.error(format!("unexpected {other}"), span(node));
+                ExprKind::Empty
+            }
+        };
+        Expr {
+            kind,
+            span: span(node),
+        }
+    }
+
+    fn string(&mut self, node: &NodeRef<'_>) -> Text {
+        let raw = self.text_of(node);
+        let inner = raw.get(1..raw.len().saturating_sub(1)).unwrap_or("");
+        Text {
+            value: self.unescape(inner, span(node), false),
+            span: span(node),
+        }
+    }
+
+    fn literal(&mut self, node: &NodeRef<'_>) -> ExprKind {
+        let raw = self.text_of(node);
+        let case_insensitive = raw.ends_with('i');
+        let quoted = raw.strip_suffix('i').unwrap_or(raw);
+        let inner = quoted.get(1..quoted.len().saturating_sub(1)).unwrap_or("");
+        ExprKind::Literal {
+            text: self.unescape(inner, span(node), false),
+            case_insensitive,
+        }
+    }
+
+    /// Decode the escapes of a literal, or of a class when `in_class`.
+    fn unescape(&mut self, raw: &str, at: Span, in_class: bool) -> String {
+        let mut out = String::new();
+        let mut chars = raw.chars();
+        while let Some(c) = chars.next() {
+            if c != '\\' {
+                out.push(c);
+                continue;
+            }
+            let decoded = match chars.next() {
+                Some('\\') => Some('\\'),
+                Some('"') => Some('"'),
+                Some('\'') => Some('\''),
+                Some('n') => Some('\n'),
+                Some('r') => Some('\r'),
+                Some('t') => Some('\t'),
+                Some('0') => Some('\0'),
+                Some(c @ ('[' | ']' | '-' | '^')) if in_class => Some(c),
+                Some('x') => {
+                    let hex: String = chars.by_ref().take(2).collect();
+                    u32::from_str_radix(&hex, 16)
+                        .ok()
+                        .filter(|_| hex.len() == 2)
+                        .and_then(char::from_u32)
+                }
+                Some('u') => {
+                    let rest = chars.as_str();
+                    let digits = rest
+                        .strip_prefix('{')
+                        .and_then(|r| r.split_once('}'))
+                        .map(|(hex, _)| hex)
+                        .filter(|hex| (1..=6).contains(&hex.len()));
+                    match digits {
+                        Some(hex) => {
+                            let value = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32);
+                            for _ in 0..hex.len() + 2 {
+                                chars.next();
+                            }
+                            value
+                        }
+                        None => None,
+                    }
+                }
+                _ => None,
+            };
+            match decoded {
+                Some(c) => out.push(c),
+                None => self.error("invalid escape".into(), at),
+            }
+        }
+        out
+    }
+
+    fn class(&mut self, node: &NodeRef<'_>) -> ExprKind {
+        let raw = self.text_of(node);
+        let at = span(node);
+        let inner = raw.get(1..raw.len().saturating_sub(1)).unwrap_or("");
+        let (negated, inner) = match inner.strip_prefix('^') {
+            Some(rest) => (true, rest),
+            None => (false, inner),
+        };
+        // Split into units: one character, an escape, or a property, each decoded.
+        let mut units: Vec<ClassUnit> = Vec::new();
+        let mut rest = inner;
+        while let Some(c) = rest.chars().next() {
+            if let Some(after) = rest
+                .strip_prefix("\\p{")
+                .or_else(|| rest.strip_prefix("\\P{"))
+                && let Some((name, tail)) = after.split_once('}')
+            {
+                let negated = rest.starts_with("\\P");
+                match Property::from_name(name) {
+                    Some(property) => units.push(ClassUnit::Property(property, negated)),
+                    None => self.error(format!("unknown Unicode property {name}"), at),
+                }
+                rest = tail;
+                continue;
+            }
+            if c == '\\' {
+                let escape_len = escape_length(rest);
+                let decoded = self.unescape(&rest[..escape_len], at, true);
+                units.extend(decoded.chars().map(ClassUnit::Escaped));
+                rest = &rest[escape_len..];
+            } else {
+                units.push(if c == '-' {
+                    ClassUnit::Dash
+                } else {
+                    ClassUnit::Char(c)
+                });
+                rest = &rest[c.len_utf8()..];
+            }
+        }
+        let mut items = Vec::new();
+        let mut i = 0;
+        while i < units.len() {
+            match (&units[i], units.get(i + 1), units.get(i + 2)) {
+                (first, Some(ClassUnit::Dash), Some(last))
+                    if first.char().is_some() && last.char().is_some() =>
+                {
+                    let (Some(a), Some(b)) = (first.char(), last.char()) else {
+                        break;
+                    };
+                    items.push(ClassItem::Range(a, b));
+                    i += 3;
+                }
+                (ClassUnit::Property(property, negated), _, _) => {
+                    items.push(ClassItem::Property {
+                        property: *property,
+                        negated: *negated,
+                    });
+                    i += 1;
+                }
+                (unit, _, _) => {
+                    let c = unit.char().unwrap_or('-');
+                    items.push(ClassItem::Range(c, c));
+                    i += 1;
+                }
+            }
+        }
+        ExprKind::Class(Class { negated, items })
+    }
+
+    fn property(&mut self, node: &NodeRef<'_>) -> ExprKind {
+        let raw = self.text_of(node);
+        let negated = raw.starts_with("\\P");
+        let name = raw.get(3..raw.len().saturating_sub(1)).unwrap_or("");
+        match Property::from_name(name) {
+            Some(property) => ExprKind::Class(Class {
+                negated: false,
+                items: vec![ClassItem::Property { property, negated }],
+            }),
+            None => {
+                self.error(format!("unknown Unicode property {name}"), span(node));
+                ExprKind::Empty
+            }
+        }
+    }
+
+    fn builder(&mut self, node: &NodeRef<'_>) -> Builder {
+        let Some(child) = visible(node).into_iter().next() else {
+            return Builder::Constant(Constant::None);
+        };
+        match child.kind_name() {
+            "call" => Builder::Call {
+                name: self.field_name(&child, "name"),
+                args: fields(&child, "args")
+                    .iter()
+                    .map(|arg| BuilderArg {
+                        key: field(arg, "key").map(|k| self.name(&k)),
+                        value: match field(arg, "value") {
+                            Some(v) if v.kind_name() == "STAR" => BuilderValue::All,
+                            Some(v) if v.kind_name() == "constant" => {
+                                BuilderValue::Constant(self.constant(&v))
+                            }
+                            Some(v) => match named_constant(self.text_of(&v)) {
+                                Some(constant) => BuilderValue::Constant(constant),
+                                None => BuilderValue::Field(self.name(&v)),
+                            },
+                            None => BuilderValue::All,
+                        },
+                    })
+                    .collect(),
+            },
+            "constant" => Builder::Constant(self.constant(&child)),
+            _ => match named_constant(self.text_of(&child)) {
+                Some(constant) => Builder::Constant(constant),
+                None => Builder::Name(self.name(&child)),
+            },
+        }
+    }
+
+    fn constant(&mut self, node: &NodeRef<'_>) -> Constant {
+        match field(node, "value") {
+            Some(v) if v.kind_name() == "STRING" => Constant::String(self.string(&v).value),
+            Some(v) => Constant::Number(self.text_of(&v).to_owned()),
+            None => Constant::None,
+        }
+    }
+}
+
+fn repeat(expr: Expr, min: u32, max: Option<u32>) -> ExprKind {
+    ExprKind::Repeat {
+        expr: Box::new(expr),
+        min,
+        max,
+    }
+}
+
+fn named_constant(text: &str) -> Option<Constant> {
+    match text {
+        "None" => Some(Constant::None),
+        "True" => Some(Constant::Bool(true)),
+        "False" => Some(Constant::Bool(false)),
+        _ => None,
+    }
+}
+
+/// The length in bytes of the escape at the start of `rest`, which starts with a backslash.
+fn escape_length(rest: &str) -> usize {
+    let mut chars = rest.char_indices().skip(1);
+    match chars.next() {
+        Some((i, 'x')) => (i + 3).min(rest.len()),
+        Some((i, 'u')) => rest[i..]
+            .find('}')
+            .map_or(rest.len(), |close| i + close + 1),
+        Some((i, c)) => i + c.len_utf8(),
+        None => rest.len(),
+    }
+}
+
+/// One element of a class body after escapes are decoded.
+enum ClassUnit {
+    Char(char),
+    Escaped(char),
+    Dash,
+    Property(Property, bool),
+}
+
+impl ClassUnit {
+    /// The code point the unit stands for. A bare dash stands for itself only outside ranges.
+    fn char(&self) -> Option<char> {
+        match self {
+            ClassUnit::Char(c) | ClassUnit::Escaped(c) => Some(*c),
+            ClassUnit::Dash => Some('-'),
+            ClassUnit::Property(..) => None,
+        }
+    }
+}
