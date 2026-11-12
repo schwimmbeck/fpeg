@@ -1,0 +1,39 @@
+# Local working files of the maintainer, never committed
+/PLAN.md
+/HANDOFF.md
+/research/
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Rust
+target/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+/dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+
+# Extension modules built next to the Python package
+*.pyd
+*.so
+*.dylib
+
+# Docs build
+/docs/_build/
+
+# Benchmarks: downloaded corpora and caches
+/benchmarks/corpora/
+/benchmarks/.cache/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
