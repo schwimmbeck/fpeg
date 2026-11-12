@@ -15,7 +15,7 @@ fastpeg is a general-purpose parsing library for Parsing Expression Grammars (PE
 - Python is the first binding. It exposes the tree lazily and runs a Lark-style `Transformer`, a class with one method per rule, after the parse.
 - Grammar analysis reports diagnostics with stable codes. A command-line checker and later a language server use the same diagnostics.
 
-Status: planning. The repository holds no code yet. Sections marked (target) describe what the first milestones create. Replace the mark with facts as the code lands. The rules in the other sections apply from the first line of code, and the files they name (`docs/`, `CHANGELOG.md`, the reference interpreter) appear with the milestone that needs them.
+Status: milestone M0 is done. The workspace builds with the three crates as shells, the checks below pass on Windows and Linux, the CI workflow waits for the repository's first remote, the benchmark harness records a baseline of other parsers, and the docs site has its first pages. There is no parser yet. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`, the reference interpreter) appear with the milestone that needs them.
 
 ## Principles
 
@@ -31,30 +31,49 @@ Each one settles an argument that would otherwise come up again and again.
 - **Untrusted input is the normal case.** Grammars and inputs can come from anywhere, so time and stack use are bounded and nothing panics across the language boundary.
 - **Think a design through before building it.** A change to a format, an instruction set, a tree shape or a public API starts with a short written proposal that lists everything reading it and how each reader will be checked.
 
-## Layout (target)
+## Layout
+
+A directory marked with a milestone appears with it.
 
 ```text
 crates/fastpeg/       core: grammar front end, analysis, compiler, parsing machine, tree. No Python types
 crates/fastpeg-cli/   the fastpeg command: check, parse, profile
 crates/fastpeg-py/    PyO3 binding, built with maturin
 python/fastpeg/       Python package: Transformer, tree and token views, type stubs
-grammars/             grammars shipped with the library and the acceptance grammars
-examples/             runnable examples, each one used by the docs
+grammars/             grammars shipped with the library and the acceptance grammars (M1)
+examples/             runnable examples, each one used by the docs (M3)
 benchmarks/           benchmark harness, corpus fetchers, recorded results
+benchmarks/rust/      Rust baselines, a package outside the workspace
 docs/                 user documentation, one Markdown file per page
-tests/                oracle and corpus tests that span crates
-fuzz/                 fuzz targets
+tests/                Python tests, and oracle and corpus tests that span crates
+fuzz/                 fuzz targets (M2)
 scripts/              development helpers, among them the licence header check
+.github/workflows/    CI
 ```
 
-## Commands (target)
+## Commands
 
-Nothing builds yet. The first milestone adds the workspace and replaces this section with the real commands. From then on these checks are the bar, and CI treats warnings as errors:
+Setup needs rustup and uv. `uv sync` builds the native module and installs the package and the development tools into `.venv`. `uv run` rebuilds the module when a Rust source has changed. Development uses the Python version in `.python-version`.
 
-- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`
-- `ruff format --check`, `ruff check`, `pyright` and `pytest` for the Python package
-- the docs build, which runs every code block in the docs
-- the licence header check
+These checks are the bar, and CI treats warnings as errors. CI runs the Rust and Python tests on Linux, Windows and macOS, the Python tests on the oldest and the newest supported Python, the other checks on Linux, and a benchmark smoke run on Linux and Windows.
+
+```sh
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+uv run ruff format --check
+uv run ruff check
+uv run pyright --warnings
+uv run pytest
+uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
+uv run python scripts/check_licence_headers.py
+cargo fmt --check --manifest-path benchmarks/rust/Cargo.toml
+cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warnings
+```
+
+- The docs build runs every Python code block in the docs.
+- pyright checks `python/`, `tests/` and `scripts/`. The benchmarks and the docs import their own dependency groups, and ruff lints them.
+- Benchmarks: `uv run --group bench python benchmarks/run.py`. `--mode smoke` checks that every suite runs, `--record` writes a run to commit. `docs/development.md` lists the options.
 
 Run the checks for everything you touched before calling work done. The Rust version is pinned in `rust-toolchain.toml`. Bump it on purpose and fix new lints in the same change.
 
@@ -90,7 +109,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
 
 - `README.md` is for users only and stays short: what fastpeg is, a first example, how to install, a link to the documentation. No build steps and no internals.
 - User documentation lives in `docs/`, one Markdown file per page. A page changes in the same commit as the behaviour it describes, never afterwards.
-- Every code block in the docs is executed in CI. An example that cannot run is a bug.
+- Every code example in the docs runs in CI. The docs build runs the Python blocks, and will compile the grammar blocks once the compiler exists. Shell commands and plain text are not examples. An example that cannot run is a bug.
 - Every diagnostic has a stable code, and its page shows an input that triggers it and the fix.
 - `CHANGELOG.md` records user-visible changes per release.
 - Design notes and decisions belong in `PLAN.md`, or in the explanation pages of `docs/` once they are worth publishing.
