@@ -71,7 +71,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
 - Model data explicitly. Typed records and enums instead of positional tuples, parallel arrays in the public API or stringly typed flags.
 - Errors are values. The core returns `Result` and never panics on any grammar or input. A panic is a bug and gets a test.
 - `unsafe` is allowed only where a benchmark shows the gain. Each block carries a `// SAFETY:` comment, sits behind a safe function and is covered by tests that run under Miri where Miri can run them.
-- Every source file starts with the two SPDX lines of its neighbours, `SPDX-FileCopyrightText` and `SPDX-License-Identifier: MIT`. Outside code needs a licence compatible with MIT and keeps its own header.
+- Every source file starts with two SPDX lines in the comment style of its language: `SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck` and `SPDX-License-Identifier: MIT`. Outside code needs a licence compatible with MIT and keeps its own header.
 - Keep dependencies few and current. A new dependency of the core needs its reason in the commit message, since it lands in every wheel.
 
 ## Tests
