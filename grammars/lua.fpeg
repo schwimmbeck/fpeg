@@ -1,0 +1,105 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// Lua 5.4. Long brackets match their closing level through a capture, keywords are reserved,
+// and the operators follow the twelve precedence levels of the language. Assignment targets
+// and call statements accept any prefix expression, a superset that a later check narrows.
+
+%word [A-Za-z0-9_]
+
+start: block
+block: statements=statement* ret=return_statement?
+
+?statement: ";" -> empty
+          | label
+          | "break" -> break
+          | goto
+          | do
+          | while
+          | repeat
+          | if
+          | numeric_for
+          | generic_for
+          | function_statement
+          | local_function
+          | local
+          | assign
+          | call_statement
+
+label: "::" name=NAME "::"
+goto: "goto" label=NAME
+do: "do" body=block "end"
+while: "while" test=exp "do" body=block "end"
+repeat: "repeat" body=block "until" test=exp
+if: "if" test=exp "then" then=block branches=elseif* ("else" otherwise=block)? "end"
+elseif: "elseif" test=exp "then" body=block
+numeric_for: "for" var=NAME "=" first=exp "," last=exp ("," step=exp)? "do" body=block "end"
+generic_for: "for" names=(NAME ++ ",") "in" values=(exp ++ ",") "do" body=block "end"
+function_statement: "function" name=function_name body=function_body
+function_name: parts=(NAME ++ ".") (":" method=NAME)?
+local_function: "local" "function" name=NAME body=function_body
+local: "local" names=(attribute_name ++ ",") ("=" values=(exp ++ ","))?
+attribute_name: name=NAME ("<" attribute=NAME ">")?
+assign: targets=(prefix ++ ",") "=" values=(exp ++ ",")
+call_statement: call=prefix
+return_statement: "return" values=(exp ** ",") ";"?
+
+function_body: "(" params=params? ")" body=block "end"
+params: names=(NAME ++ ",") ("," vararg="...")?
+      | vararg="..."
+
+exp: %precedence {
+    or: left=or op="or" right=and -> binary
+    and: left=and op="and" right=compare -> binary
+    compare: left=compare op=("<=" | ">=" | "~=" | "==" | "<" | ">") right=bor -> binary
+    bor: left=bor op="|" right=bxor -> binary
+    bxor: left=bxor op="~" !"=" right=band -> binary
+    band: left=band op="&" right=shift -> binary
+    shift: left=shift op=("<<" | ">>") right=concat -> binary
+    concat: left=sum op=".." !"." right=concat -> binary
+    sum: left=sum op=("+" | "-") right=product -> binary
+    product: left=product op=("*" | "//" | "/" | "%") right=unary -> binary
+    unary: op=("not" | "#" | "-" | "~") operand=unary -> unary
+    power: base=atom op="^" exponent=unary -> binary
+    atom: "nil" -> nil
+        | "false" -> false
+        | "true" -> true
+        | "..." -> vararg
+        | NUMBER
+        | STRING
+        | function_expression
+        | table
+        | prefix
+}
+
+?prefix: object=prefix "[" key=exp "]" -> index
+       | object=prefix "." name=NAME -> member
+       | object=prefix ":" method=NAME args=args -> method_call
+       | func=prefix args=args -> call
+       | NAME
+       | "(" exp ")" -> parens
+
+args: "(" items=(exp ** ",") ")"
+    | table
+    | STRING
+function_expression: "function" body=function_body
+table: "{" fields=(field ** _separator) _separator? "}"
+_separator: "," | ";"
+field: "[" key=exp "]" "=" value=exp -> keyed
+     | name=NAME "=" !"=" value=exp -> named
+     | value=exp -> positional
+
+@reserved
+NAME: [A-Za-z_] [A-Za-z0-9_]*
+NUMBER: "0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
+      | (DIGIT+ ("." !"." DIGIT*)? | "." DIGIT+) ([eE] [+\-]? DIGIT+)?
+DIGIT: [0-9]
+HEX: [0-9a-fA-F]
+STRING: "\"" ("\\" ESCAPE | [^"\\\r\n])* "\""
+      | "'" ("\\" ESCAPE | [^'\\\r\n])* "'"
+      | LONG_BRACKET
+ESCAPE: "z" [ \t\r\n]* | "\r\n" | .
+LONG_BRACKET: "[" %def(level, "="*) "[" (!("]" %ref(level) "]") .)* "]" %ref(level) "]"
+COMMENT: "--" (LONG_BRACKET | [^\r\n]*)
+
+%ignore [ \t\r\n]+ | COMMENT

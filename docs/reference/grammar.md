@@ -95,7 +95,7 @@ Only the name and the body are required.
 | `@lexical` before `name: e` | a lexical rule. It produces a node with children, like a syntactic rule, but nothing is skipped between its elements. Syntactic rules it calls skip as usual |
 | `_name: e` | an inlined rule: its children join the parent's children |
 | `_NAME: e` | a hidden terminal: it is matched and recorded, but views do not show it |
-| `?name: e` | a transparent rule: when it has exactly one visible child, it is inlined. A transparent rule must not contain fields |
+| `?name: e` | a transparent rule: when it has exactly one visible child, it is inlined. Fields are allowed only in its aliased alternatives, which always make a node |
 | `name "number": e` | a display name, used in error messages in place of the name |
 
 A terminal may use literals, classes, Unicode properties, `.` and other terminals, but no syntactic or lexical rules.

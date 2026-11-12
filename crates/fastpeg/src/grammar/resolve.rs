@@ -421,8 +421,15 @@ impl<'g> Resolver<'g> {
         };
         let mut body = match &rule.body {
             RuleBody::Alternatives(alternatives) => {
-                if rule.transparent && alternatives.iter().any(|a| a.expr.contains_field()) {
-                    let message = format!("the transparent rule {} has a field", rule.name.text);
+                // An alias gives an alternative a node of its own, which keeps its fields.
+                let unaliased_field = alternatives
+                    .iter()
+                    .any(|a| a.alias.is_none() && a.expr.contains_field());
+                if rule.transparent && unaliased_field {
+                    let message = format!(
+                        "the transparent rule {} has a field outside an aliased alternative",
+                        rule.name.text
+                    );
                     self.error(message, rule.name.span);
                 }
                 let mut lowered = Vec::new();
