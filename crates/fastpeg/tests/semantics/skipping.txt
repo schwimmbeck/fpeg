@@ -1,0 +1,50 @@
+=== the skip expression runs before every token and at the end
+start: "a" "b"
+%ignore " "+
+--- " a  b  "
+(start ~"a" ~"b")
+--- spans " a  b  "
+(start@1..5 ~"a"@1..2 ~"b"@4..5)
+
+=== several ignore directives form one choice
+start: "a" "b"
+%ignore " "+
+%ignore "#" [^\n]* "\n"
+--- "a # note\n b"
+(start ~"a" ~"b")
+
+=== a terminal skips nothing inside
+start: WORD WORD
+WORD: [a-z]+
+%ignore " "+
+--- "ab cd"
+(start WORD"ab" WORD"cd")
+--- "a b c"
+error at 4: expected end of input
+
+=== a lexical rule produces a node but skips nothing between its elements
+start: pair
+@lexical
+pair: KEY "=" KEY
+KEY: [a-z]+
+%ignore " "+
+--- "  a=b"
+(start (pair KEY"a" ~"=" KEY"b"))
+--- "a = b"
+error at 1: expected "="
+
+=== a lexical rule called from a syntactic rule skips before itself
+start: quoted+
+@lexical
+quoted: "\"" TEXT? (hole TEXT?)* "\""
+hole: "{" NAME "}"
+TEXT: [^"{]+
+NAME: [a-z]+
+%ignore " "+
+--- " \"a { x } b\" \"c\""
+(start (quoted ~"\"" TEXT"a " (hole ~"{" NAME"x" ~"}") TEXT" b" ~"\"") (quoted ~"\"" TEXT"c" ~"\""))
+
+=== a grammar without ignore skips nothing
+start: "a" "b"
+--- "a b"
+error at 1: expected "b"

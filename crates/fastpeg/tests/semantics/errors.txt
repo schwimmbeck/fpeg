@@ -1,0 +1,56 @@
+=== an error label stops the parse with its message
+start: "a" ("b" ^ "b is missing")
+--- "ac"
+error at 1: b is missing
+--- "ab"
+(start ~"a" ~"b")
+
+=== a named error label stops the parse with its name
+start: "a" ("b" ^ missing_b)
+--- "a"
+error at 1: missing_b
+
+=== a labeled error is not caught by a choice
+start: "a" ("b" ^ "need b") | "a" "c"
+--- "ac"
+error at 1: need b
+
+=== a labeled error inside a lookahead is a failure of the lookahead
+start: !("a" ^ "never") "b"
+--- "b"
+(start ~"b")
+
+=== an error alternative never matches during a parse
+start: "a" | %error("no a here")
+--- "b"
+error at 0: expected "a"
+
+=== the expected set lists everything that failed at the farthest position
+start: "a" ("b" | "c" | D)
+D "digit": [0-9]
+--- "ax"
+error at 1: expected "b", "c", digit
+
+=== a reserved terminal never matches a keyword
+start: NAME*
+@reserved
+NAME: [a-z]+
+other: "if"
+%ignore " "+
+--- "x if"
+error at 2: expected NAME, end of input
+
+=== a soft keyword stays a valid name
+start: NAME*
+@reserved
+NAME: [a-z]+
+other: "match"
+%keywords soft "match"
+%ignore " "+
+--- "match x"
+(start NAME"match" NAME"x")
+
+=== an unknown start rule is reported
+start: "a"
+--- "a"
+(start ~"a")

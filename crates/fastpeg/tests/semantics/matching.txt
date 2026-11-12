@@ -1,0 +1,127 @@
+=== a sequence of literals produces a node of hidden tokens
+start: "a" "b"
+--- "ab"
+(start ~"a" ~"b")
+--- "a"
+error at 1: expected "b"
+--- "abc"
+error at 2: expected end of input
+
+=== ordered choice takes the first alternative that matches
+start: "a" | "a" "b"
+--- "a"
+(start ~"a")
+--- "ab"
+error at 1: expected end of input
+
+=== repetition is greedy and never gives back
+start: "a"* "a"
+--- "aaa"
+error at 3: expected "a"
+
+=== bounded repetition takes between the bounds
+start: "a"{2,3}
+--- "a"
+error at 1: expected "a"
+--- "aa"
+(start ~"a" ~"a")
+--- "aaaa"
+error at 3: expected end of input
+
+=== an exact count takes exactly that many
+start: "a"{2} "b"
+--- "aab"
+(start ~"a" ~"a" ~"b")
+--- "aaab"
+error at 2: expected "b"
+
+=== separated repetition takes no trailing separator
+start: "[" ("x" ** ",") "]"
+--- "[]"
+(start ~"[" ~"]")
+--- "[x,x]"
+(start ~"[" ~"x" ~"," ~"x" ~"]")
+--- "[x,]"
+error at 3: expected "x"
+
+=== one or more separated items need at least one
+start: "x" ++ ","
+--- ""
+error at 0: expected "x"
+--- "x,x"
+(start ~"x" ~"," ~"x")
+
+=== lookahead consumes nothing and records nothing
+start: !"a" . | "a" "b"
+--- "b"
+(start ~"b")
+--- "ac"
+error at 1: expected "b"
+
+=== positive lookahead tests without consuming
+start: &"ab" "a" .
+--- "ab"
+(start ~"a" ~"b")
+--- "ac"
+error at 0: no match
+
+=== a cut commits the choice
+start: "a" ~ "b" | "a" "c"
+--- "ab"
+(start ~"a" ~"b")
+--- "ac"
+error at 1: expected "b"
+
+=== a cut inside an optional makes it fail instead of succeed empty
+start: ("a" ~ "b")? "a" "c"
+--- "ac"
+error at 1: expected "b"
+
+=== without a cut the optional succeeds empty
+start: ("a" "b")? "a" "c"
+--- "ac"
+(start ~"a" ~"c")
+
+=== a repetition step that matches empty is the last
+start: ("a"?)* "b"
+--- "b"
+(start ~"b")
+--- "aab"
+(start ~"a" ~"a" ~"b")
+
+=== a case-insensitive literal ignores ASCII case
+start: "select"i
+--- "SeLeCt"
+(start ~"SeLeCt")
+
+=== a class matches one code point and spans are bytes
+start: \p{XID_Start} [^a]
+--- spans "äö"
+(start@0..4 ~"ä"@0..2 ~"ö"@2..4)
+
+=== any matches one code point and fails at the end
+start: . .
+--- "€x"
+(start ~"€" ~"x")
+--- "€"
+error at 3: expected .
+
+=== a literal ending in a word character needs a boundary
+start: "if" NAME
+NAME: [a-z]+
+%word [A-Za-z0-9_]
+%ignore " "+
+--- "if x"
+(start ~"if" NAME"x")
+--- "iffy"
+error at 0: expected "if"
+
+=== the word characters can be changed
+start: "if" NAME
+NAME: [a-z]+
+%word [a-z]
+%ignore " "+
+--- "if_x"
+error at 2: expected NAME
+--- "if x"
+(start ~"if" NAME"x")

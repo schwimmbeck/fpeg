@@ -40,7 +40,7 @@ COMMENT_BY_SUFFIX = {
     ".sh": "#",
     ".ps1": "#",
 }
-EXEMPT_SUFFIXES = {".md", ".lock", ".json"}
+EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt"}
 EXEMPT_NAMES = {"LICENSE", ".gitignore", ".gitattributes", ".python-version", "py.typed"}
 
 

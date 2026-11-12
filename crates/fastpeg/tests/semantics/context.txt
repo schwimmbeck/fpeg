@@ -1,0 +1,73 @@
+=== a flag holds for its expression and the skip expression sees it
+%flag nested
+%ignore " "+ | %if(nested) "\n"
+start: "(" %on(nested, "a" ")") "b"
+--- "(\na\n)b"
+(start ~"(" ~"a" ~")" ~"b")
+--- "(a)\nb"
+error at 3: expected "b"
+
+=== off clears a flag inside an expression that set it
+%flag nested
+%ignore " "+ | %if(nested) "\n"
+start: %on(nested, "a" %off(nested, "b") "c")
+--- "a\nb c"
+error at 1: expected "b"
+--- "a b\nc"
+(start ~"a" ~"b" ~"c")
+
+=== indent and same check the columns of the next tokens
+%ignore " "+
+start: NAME block
+block: "\n" %indent((%same NAME "\n")+)
+NAME: [a-z]+
+--- "a\n  b\n  c\n"
+(start NAME"a" (block ~"\n" NAME"b" ~"\n" NAME"c" ~"\n"))
+--- "a\nb\n"
+error at 2: expected indentation
+--- "a\n  b\n c\n"
+error at 7: expected end of input, indentation
+
+=== nested blocks return to an outer column
+%ignore " "+
+start: stmt+
+stmt: NAME "\n" | NAME ":" "\n" %indent(stmt_list)
+stmt_list: (%same stmt)+
+NAME: [a-z]+
+--- "a:\n  b:\n    c\n  d\ne\n"
+(start (stmt NAME"a" ~":" ~"\n" (stmt_list (stmt NAME"b" ~":" ~"\n" (stmt_list (stmt NAME"c" ~"\n"))) (stmt NAME"d" ~"\n"))) (stmt NAME"e" ~"\n"))
+
+=== tabs advance to the next multiple of the tab width
+%ignore " "+ | "\t"+
+%tabs 4
+start: NAME "\n" %indent((%same NAME "\n")+)
+NAME: [a-z]+
+--- "a\n\tb\n    c\n"
+(start NAME"a" ~"\n" NAME"b" ~"\n" NAME"c" ~"\n")
+
+=== a capture matches the same text again
+start: RAW
+RAW: "r" %def(hashes, "#"*) "\"" (!("\"" %ref(hashes)) .)* "\"" %ref(hashes)
+--- "r#\"a\"b\"#"
+(start RAW"r#\"a\"b\"#")
+--- "r##\"a\"#"
+error at 0: expected RAW
+
+=== a rule called after a capture sees it, and the matched text is a token
+start: %def(tag, NAME) ">" body
+body: TEXT close
+close: "</" %ref(tag)
+NAME: [a-z]+
+TEXT: [^<]*
+--- "b>x</b"
+(start NAME"b" ~">" (body TEXT"x" (close ~"</" ~"b")))
+--- "b>x</c"
+error at 5: expected %ref(tag)
+
+=== a capture ends with the rule activation that made it
+start: open close
+open: %def(tag, NAME) ">"
+close: "</" %ref(tag)
+NAME: [a-z]+
+--- "b></b"
+error at 4: expected %ref(tag)

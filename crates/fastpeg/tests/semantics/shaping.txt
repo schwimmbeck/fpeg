@@ -1,0 +1,80 @@
+=== fields name parts of a node and capture a literal that is their whole match
+start: left=NUM op=("+" | "-") right=NUM
+NUM: [0-9]+
+--- "1+2"
+(start left=NUM"1" op="+" right=NUM"2")
+
+=== a separated field holds the items and keeps the separators hidden
+start: "(" args=(NUM ** ",") ")"
+NUM: [0-9]+
+--- "(1,2)"
+(start ~"(" args=NUM"1" args=~"," args=NUM"2" ~")")
+
+=== a literal next to others inside a field stays hidden
+start: x=("<" NUM ">")
+NUM: [0-9]+
+--- "<1>"
+(start x=~"<" x=NUM"1" x=~">")
+
+=== the innermost field wins
+start: outer=_pair
+_pair: key=NUM ":" value=NUM
+NUM: [0-9]+
+--- "1:2"
+(start key=NUM"1" outer=~":" value=NUM"2")
+
+=== an alias names the node of an alternative
+start: "a" -> first | "b"
+--- "a"
+(first ~"a")
+--- "b"
+(start ~"b")
+
+=== an inlined rule passes its children to the parent
+start: "[" _inner "]"
+_inner: "a" "b"
+--- "[ab]"
+(start ~"[" ~"a" ~"b" ~"]")
+
+=== a transparent rule with one visible child is inlined with its hidden tokens
+start: wrap
+?wrap: "(" NUM ")" | NUM NUM
+NUM: [0-9]
+--- "(1)"
+(start ~"(" NUM"1" ~")")
+--- "12"
+(start (wrap NUM"1" NUM"2"))
+
+=== a hidden terminal is kept in the tree but hidden
+start: "a" _WS "b"
+_WS: " "+
+--- "a  b"
+(start ~"a" ~_WS"  " ~"b")
+
+=== a node spans its tokens and an empty node sits where its rule started
+start: "a" empty "b"
+empty: ()
+%ignore " "+
+--- spans "a  b"
+(start@0..4 ~"a"@0..1 (empty@1..1) ~"b"@3..4)
+
+=== skipped text never widens a span
+start: inner
+inner: "a" "b"
+%ignore " "+
+--- spans "  a b  "
+(start@2..5 (inner@2..5 ~"a"@2..3 ~"b"@4..5))
+
+=== a template expands per use with its arguments
+start: list<N, ","> ";" list<W, "|">
+list<item, sep>: item (sep item)*
+N: [0-9]
+W: [a-z]
+--- "1,2;a|b"
+(start (list N"1" ~"," N"2") ~";" (list W"a" ~"|" W"b"))
+
+=== error messages use display names
+start: NUM
+NUM "number": [0-9]+
+--- "x"
+error at 0: expected number

@@ -1,0 +1,58 @@
+=== left recursion groups to the left
+start: expr
+?expr: expr "-" N -> sub | N
+N: [0-9]
+--- "1-2-3"
+(start (sub (sub N"1" ~"-" N"2") ~"-" N"3"))
+--- "1"
+(start N"1")
+
+=== indirect left recursion grows through both rules
+start: l
+?l: p "." X -> member | X
+?p: p "(" N ")" -> call | l
+X: "x"
+N: "n"
+--- "x(n)(n).x(n).x"
+(start (member (call (member (call (call X"x" ~"(" N"n" ~")") ~"(" N"n" ~")") ~"." X"x") ~"(" N"n" ~")") ~"." X"x"))
+
+=== a rule that is left and right recursive at once groups to the right
+start: e
+?e: e "-" e -> sub | N
+N: [0-9]
+--- "1-2-3"
+(start (sub N"1" ~"-" (sub N"2" ~"-" N"3")))
+
+=== a precedence block parses by level and adds nodes only for aliases
+start: expr
+expr: %precedence {
+    sum: left=sum op=("+" | "-") right=product -> binary
+    product: left=product op=("*" | "/") right=unary -> binary
+    unary: op="-" operand=unary -> neg
+    power: base=atom "**" exponent=unary -> power
+    atom: N | "(" expr ")"
+}
+N: [0-9]
+%ignore " "+
+--- "1 + 2 * 3"
+(start (binary left=N"1" op="+" right=(binary left=N"2" op="*" right=N"3")))
+--- "1 - 2 - 3"
+(start (binary left=(binary left=N"1" op="-" right=N"2") op="-" right=N"3"))
+--- "2 ** -1"
+(start (power base=N"2" ~"**" exponent=(neg op="-" operand=N"1")))
+--- "-2 ** 2"
+(start (neg op="-" operand=(power base=N"2" ~"**" exponent=N"2")))
+--- "2 ** 3 ** 2"
+(start (power base=N"2" ~"**" exponent=(power base=N"3" ~"**" exponent=N"2")))
+--- "(1 + 2) * 3"
+(start (binary left=~"(" left=(binary left=N"1" op="+" right=N"2") left=~")" op="*" right=N"3"))
+
+=== precedence levels are local names
+start: expr
+expr: %precedence {
+    sum: left=sum "+" right=atom -> add
+    atom: N
+}
+N: [0-9]
+--- "1+2"
+(start (add left=N"1" ~"+" right=N"2"))
