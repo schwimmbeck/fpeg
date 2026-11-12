@@ -43,7 +43,8 @@ PYPERF_MODE_ARGS = {
     "rigorous": ["--rigorous"],
     "smoke": ["--debug-single-value"],
 }
-# Criterion has no longer mode. Smoke uses a short real measurement, so CI reads its files too.
+# Criterion has no mode that measures longer than its default. Smoke takes a short real
+# measurement, so the CI smoke run reads criterion's files too.
 CRITERION_MODE_ARGS = {"default": [], "fast": ["--quick"], "rigorous": [], "smoke": ["--quick"]}
 
 PYTHON_PACKAGES = ("lark", "pe", "libcst", "tree-sitter", "tree-sitter-python", "pyperf")
