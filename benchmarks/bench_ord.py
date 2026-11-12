@@ -71,7 +71,6 @@ def main() -> None:
 
     harness.add(runner, "grammar load without cache", lambda: load)
     harness.add(runner, "grammar load with a warm cache", warm_cache)
-    harness.add(runner, "lexer and indenter", lambda: lambda: list(parser.lex(text)), PYTHON_FILE)
     harness.add(runner, "LALR parse, tree", lambda: partial(parser.parse, text), PYTHON_FILE)
     harness.add(runner, "Transformer with the real callbacks", real_transform)
     harness.add(runner, "Transformer, trivial method on every rule", trivial_transform)

@@ -47,12 +47,21 @@ def add_tree_sitter(runner: pyperf.Runner, source: bytes) -> None:
     """Register the tree-sitter benchmarks."""
     parser = Parser(Language(tree_sitter_python.language()))
 
-    def walker(touch: int):
-        return lambda: partial(walk, parser.parse(source), touch)
+    def checked_tree() -> Tree:
+        tree = parser.parse(source)
+        # tree-sitter returns a tree with error nodes instead of failing.
+        if tree.root_node.has_error:
+            raise RuntimeError("tree-sitter found errors in the input")
+        return tree
 
-    harness.add(
-        runner, "tree-sitter parse, native tree", lambda: partial(parser.parse, source), PYTHON_FILE
-    )
+    def parse():
+        checked_tree()
+        return partial(parser.parse, source)
+
+    def walker(touch: int):
+        return lambda: partial(walk, checked_tree(), touch)
+
+    harness.add(runner, "tree-sitter parse, native tree", parse, PYTHON_FILE)
     harness.add(runner, "tree-sitter cursor walk over every node", walker(0))
     harness.add(runner, "tree-sitter walk, a Python Node per node", walker(1))
     harness.add(runner, "tree-sitter walk, a Node per node and the text of every leaf", walker(2))

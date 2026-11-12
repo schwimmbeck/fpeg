@@ -128,6 +128,9 @@ def add_pe(runner: pyperf.Runner, text: str, engine: str) -> None:
 
     def match():
         parser = pe_parser(engine, actions=False)
+        # pe returns None when the input does not match, which would time nothing useful.
+        if parser.match(text) is None:
+            raise RuntimeError(f"pe {engine} does not match the input")
         return lambda: parser.match(text)
 
     def objects():
