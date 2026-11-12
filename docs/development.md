@@ -11,6 +11,8 @@ How to build fastpeg from a checkout and run the checks. The working rules for c
 ## Setup
 
 ```sh
+git clone https://github.com/schwimmbeck/fastpeg
+cd fastpeg
 uv sync
 ```
 

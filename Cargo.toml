@@ -12,6 +12,7 @@ edition = "2024"
 rust-version = "1.98"
 license = "MIT"
 authors = ["Dominik Schwimmbeck"]
+repository = "https://github.com/schwimmbeck/fastpeg"
 
 [workspace.dependencies]
 fastpeg = { path = "crates/fastpeg", version = "0.0.0" }
