@@ -1,0 +1,351 @@
+{
+ "date": "2026-11-12",
+ "mode": "default",
+ "commit": "8a174ef",
+ "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.36",
+ "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+ "logical_cpus": 16,
+ "python": "CPython 3.13.18",
+ "python_build": "3.13.18 (main, Nov 11 2026, 00:17:48) [Clang 23.1.3 ]",
+ "packages": {
+  "lark": "1.3.1",
+  "pe": "0.6.0",
+  "libcst": "1.9.0",
+  "tree-sitter": "0.26.1",
+  "tree-sitter-python": "0.25.0",
+  "pyperf": "2.11.0"
+ },
+ "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+ "crates": {
+  "criterion": "0.8.2",
+  "pest": "2.9.6",
+  "pest_derive": "2.9.6",
+  "pest_meta": "2.9.6",
+  "pest_vm": "2.9.6",
+  "serde_json": "1.0.154"
+ },
+ "inputs": {
+  "records.json": {
+   "bytes": 2506935,
+   "lines": 153001,
+   "sha256": "35148527f24c4ab316fed81f290d8c490b16896c0029a941fa71b1266e3c76e3"
+  },
+  "python_transformer.py": {
+   "bytes": 69525,
+   "lines": 1971,
+   "sha256": "9b35b499e1dfe631ebd1ab6b9fcc591541bebbaaa3e9bea63ca01888b557cf1a"
+  }
+ },
+ "rows": [
+  {
+   "suite": "json",
+   "name": "json.loads",
+   "input": "records.json",
+   "mean_s": 0.010811624121528338,
+   "stdev_s": 0.001526396987985025,
+   "median_s": 0.010609440718724272,
+   "min_s": 0.00957860475000416,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark grammar load",
+   "input": null,
+   "mean_s": 0.004944494769101008,
+   "stdev_s": 0.0004701397220103379,
+   "median_s": 0.004877369359377326,
+   "min_s": 0.004507998687500958,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark LALR, tree",
+   "input": "records.json",
+   "mean_s": 1.1776903811666872,
+   "stdev_s": 0.04543199570419217,
+   "median_s": 1.159074009500273,
+   "min_s": 1.1282330640005966,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark Transformer over the tree",
+   "input": "records.json",
+   "mean_s": 0.33732050005543596,
+   "stdev_s": 0.033569133008419016,
+   "median_s": 0.32813621100012824,
+   "min_s": 0.31141510699944774,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark LALR with inlined Transformer, Python objects",
+   "input": "records.json",
+   "mean_s": 0.9590158750554818,
+   "stdev_s": 0.046482723676471,
+   "median_s": 0.945750829499957,
+   "min_s": 0.911328723999759,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe machine grammar load",
+   "input": null,
+   "mean_s": 0.0021904668567703173,
+   "stdev_s": 0.0001281467024051556,
+   "median_s": 0.0021527109296854974,
+   "min_s": 0.002060474374999899,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe machine, match only",
+   "input": "records.json",
+   "mean_s": 0.11439686583328997,
+   "stdev_s": 0.011756545914221313,
+   "median_s": 0.11049632300000667,
+   "min_s": 0.10541915999965568,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe machine, Python objects",
+   "input": "records.json",
+   "mean_s": 0.17756595833341432,
+   "stdev_s": 0.03071867177127967,
+   "median_s": 0.16489003499964383,
+   "min_s": 0.15434603199992125,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe packrat grammar load",
+   "input": null,
+   "mean_s": 0.0028300693958350897,
+   "stdev_s": 0.0007681895270791994,
+   "median_s": 0.002552501343757285,
+   "min_s": 0.0023237664999982144,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe packrat, match only",
+   "input": "records.json",
+   "mean_s": 0.42935696838882603,
+   "stdev_s": 0.027510480996270823,
+   "median_s": 0.42321094449971497,
+   "min_s": 0.38916803099982644,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe packrat, Python objects",
+   "input": "records.json",
+   "mean_s": 0.4315345341111525,
+   "stdev_s": 0.02313460642251113,
+   "median_s": 0.4311841850003475,
+   "min_s": 0.4033913429993845,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "ast.parse",
+   "input": "python_transformer.py",
+   "mean_s": 0.007191333649312052,
+   "stdev_s": 0.00027598522033837897,
+   "median_s": 0.0071075730312486485,
+   "min_s": 0.006862623437541515,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "CPython parser and symbol table, no AST objects",
+   "input": "python_transformer.py",
+   "mean_s": 0.0049486910920124826,
+   "stdev_s": 0.0006910573603329172,
+   "median_s": 0.0047504831250080315,
+   "min_s": 0.004493190906231348,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "compile to bytecode",
+   "input": "python_transformer.py",
+   "mean_s": 0.006424564725698979,
+   "stdev_s": 0.000497532054682529,
+   "median_s": 0.006222755953118053,
+   "min_s": 0.00602102918750802,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter parse, native tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.005363605295136785,
+   "stdev_s": 0.0003884479915972494,
+   "median_s": 0.005162503484370973,
+   "min_s": 0.005027546437503361,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter cursor walk over every node",
+   "input": null,
+   "mean_s": 0.0010591529227434017,
+   "stdev_s": 0.00012750430339641202,
+   "median_s": 0.0010123208750023593,
+   "min_s": 0.0009649091640682173,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter walk, a Python Node per node",
+   "input": null,
+   "mean_s": 0.0016551937973087799,
+   "stdev_s": 8.011497388949827e-05,
+   "median_s": 0.001614607527343992,
+   "min_s": 0.0015827177968787964,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter walk, a Node per node and the text of every leaf",
+   "input": null,
+   "mean_s": 0.003601372479173569,
+   "stdev_s": 0.0005027675934708699,
+   "median_s": 0.0034957720156256755,
+   "min_s": 0.003253373562500883,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "LibCST parse_module",
+   "input": "python_transformer.py",
+   "mean_s": 0.06487196733329863,
+   "stdev_s": 0.007251042156839432,
+   "median_s": 0.06203109625016623,
+   "min_s": 0.05823583499977758,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "Lark Python grammar load",
+   "input": null,
+   "mean_s": 0.23773928422219293,
+   "stdev_s": 0.015089570478514126,
+   "median_s": 0.23276261399996656,
+   "min_s": 0.22296758399988903,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "Lark LALR, bundled Python grammar, tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.08222123586117253,
+   "stdev_s": 0.009340189481603908,
+   "median_s": 0.07798960125023768,
+   "min_s": 0.07516469550000693,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "grammar load without cache",
+   "input": null,
+   "mean_s": 0.5478138723332854,
+   "stdev_s": 0.032324741372619925,
+   "median_s": 0.5500819264998427,
+   "min_s": 0.49691477800024586,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "grammar load with a warm cache",
+   "input": null,
+   "mean_s": 0.028434115583296362,
+   "stdev_s": 0.0021416813707892703,
+   "median_s": 0.02744063174986877,
+   "min_s": 0.026368094749841475,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "LALR parse, tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.1469983108887997,
+   "stdev_s": 0.011366511516163592,
+   "median_s": 0.14428195100026642,
+   "min_s": 0.13460288499936723,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "Transformer with the real callbacks",
+   "input": null,
+   "mean_s": 0.017586177687506834,
+   "stdev_s": 0.0010271202377272206,
+   "median_s": 0.01728030675002401,
+   "min_s": 0.016472168874997806,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "Transformer, trivial method on every rule",
+   "input": null,
+   "mean_s": 0.008310050770830912,
+   "stdev_s": 0.001062937876260831,
+   "median_s": 0.007849639374995832,
+   "min_s": 0.0077066716249873934,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "end to end: parse, transform, fix locations",
+   "input": "python_transformer.py",
+   "mean_s": 0.17058926127780674,
+   "stdev_s": 0.01597070802009035,
+   "median_s": 0.16524428499997157,
+   "min_s": 0.15470530000038707,
+   "values": 18
+  },
+  {
+   "suite": "rust",
+   "name": "json/pest generated, token queue",
+   "input": "records.json",
+   "mean_s": 0.05413965598,
+   "stdev_s": 0.0032454406541403196,
+   "median_s": 0.054830106025,
+   "min_s": 0.0502642362,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "json/pest_vm interpreter, token queue",
+   "input": "records.json",
+   "mean_s": 0.250460326525,
+   "stdev_s": 0.011282860751131392,
+   "median_s": 0.246459696375,
+   "min_s": 0.23920224025,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "json/serde_json to Value",
+   "input": "records.json",
+   "mean_s": 0.013731732670666668,
+   "stdev_s": 0.0009928128670724904,
+   "median_s": 0.01326040194,
+   "min_s": 0.0128951258,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "pest_vm grammar load",
+   "input": null,
+   "mean_s": 0.0004002061794759708,
+   "stdev_s": 9.265923244050228e-05,
+   "median_s": 0.00037445475572916667,
+   "min_s": 0.00035910304022988506,
+   "values": 100
+  }
+ ]
+}
