@@ -34,6 +34,8 @@ Every change passes these checks before it is committed. Continuous integration 
 | Documentation | `uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html` |
 | Licence headers | `uv run python scripts/check_licence_headers.py` |
 
+`uv run python scripts/check.py` runs all of these in order, together with the checks of the benchmark crate below, and stops at the first failure.
+
 The Rust baselines of the benchmarks live in their own package outside the workspace, with their own checks:
 
 ```sh

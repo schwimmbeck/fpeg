@@ -71,6 +71,7 @@ cargo fmt --check --manifest-path benchmarks/rust/Cargo.toml
 cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warnings
 ```
 
+- `uv run python scripts/check.py` runs all of them in this order, stops at the first failure and prints the time each took. Run it before every commit.
 - The docs build runs every Python code block in the docs.
 - pyright checks `python/`, `tests/` and `scripts/`. The benchmarks and the docs import their own dependency groups, and ruff lints them.
 - Benchmarks: `uv run --group bench python benchmarks/run.py`. `--mode smoke` checks that every suite runs, `--record` writes a run to commit. `docs/development.md` lists the options.
