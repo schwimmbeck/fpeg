@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "fastpeg-py"
+description = "The native module of the fastpeg Python package"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "_fastpeg"
+crate-type = ["cdylib"]
+# An extension module cannot link a test binary without libpython. pytest covers this crate.
+test = false
+doctest = false
+
+[dependencies]
+fastpeg.workspace = true
+pyo3 = "0.30.1"
+
+[lints]
+workspace = true

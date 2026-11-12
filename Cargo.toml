@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT
+
+[workspace]
+members = ["crates/fastpeg", "crates/fastpeg-cli", "crates/fastpeg-py"]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+authors = ["Dominik Schwimmbeck"]
+
+[workspace.dependencies]
+fastpeg = { path = "crates/fastpeg", version = "0.0.0" }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+# An allow needs its reason beside it, and every unsafe block its SAFETY comment.
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
