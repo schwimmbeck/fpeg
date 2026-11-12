@@ -1,0 +1,70 @@
+# Roadmap
+
+fastpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
+
+Work is on M0.
+
+## M0 Foundations
+
+The Rust workspace with the core, the command line and the Python binding as empty shells, the checks that every change has to pass, the benchmark harness with a baseline of other parsers, and this site.
+
+## M1 Language specification and reference interpreter
+
+- The grammar language and its meaning written down as the normative reference.
+- A set of acceptance grammars written in that language: JSON, CSV, expressions, a configuration language, an indentation-based language, Lua, Python and the grammar language itself.
+- A slow reference interpreter that implements exactly the written semantics. It is test infrastructure: every later engine and optimization has to agree with it.
+
+## M2 Core engine
+
+- The core language compiled to bytecode for the parsing machine: the classic PEG operators, separators, rules and terminals with automatic skipping of ignored text, and the shaping of the tree.
+- The compact, lossless parse tree with exact spans.
+- Limits on time and depth, and error reports with position and expected input.
+- `fastpeg parse` and a first `fastpeg check`.
+
+## M3 Python binding
+
+- `Tree` and `Token` views, the `Transformer`, value builders written in the grammar, and `ParseError`.
+- JSON from grammar text to Python objects, checked against the `json` module.
+
+## M4 The language, complete for context-free use
+
+- Operator precedence blocks, parameterized rules, keyword handling, flags, cut, left recursion and memoization.
+- The grammar checks of `fastpeg check` and a profiler.
+- `Interpreter` and `Visitor` in Python.
+- The grammar language parsed by its own grammar.
+
+## M5 Optimizer
+
+- Optimization passes, each with a switch and a benchmark that shows its effect.
+- Guards that bound the time a parse can take on any input.
+
+## M6 Context-sensitive syntax
+
+- Indentation, captures and back references, lexical rules with structure.
+- A Python grammar checked against CPython's own parser over the standard library.
+
+## M7 Modules
+
+- `%import` and `%extends`, with the bundled grammars as a base for your own.
+- A large grammar extension as acceptance test, and a converter for Lark grammars.
+
+## M8 Errors, complete
+
+- Error messages and labels written in the grammar.
+- Recovery that still returns a tree, with error and missing nodes, for broken input.
+- Rendering of errors with source snippets.
+
+## M9 Tooling and the first release
+
+- A language server for grammar files, a formatter and editor highlighting.
+- Wheels for all platforms and version 0.1.0.
+
+## Later
+
+A compiled backend, incremental parsing, a WebAssembly binding and regular expression terminals.
+
+## Not planned
+
+- User code during parsing. Semantic actions and predicates stay out of grammars, and your code runs over the finished tree.
+- Generalized context-free parsing such as GLR or Earley.
+- An ahead-of-time parser generator. The workflow stays "load a grammar string".

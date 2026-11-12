@@ -69,7 +69,8 @@ convention = "pep257"
 "tests/**" = ["D"]
 
 [tool.pyright]
-include = ["python", "tests", "benchmarks", "docs", "scripts"]
+# Benchmarks and docs import their own dependency groups, ruff lints them.
+include = ["python", "tests", "scripts"]
 strict = ["python"]
 venvPath = "."
 venv = ".venv"
