@@ -10,6 +10,7 @@ with ``-W``.
 
 import contextlib
 import io
+import traceback
 from typing import Any
 
 from docutils import nodes
@@ -19,7 +20,16 @@ from sphinx.util import logging
 
 logger = logging.getLogger(__name__)
 
-RUN_LANGUAGES = {"python"}
+# The names Pygments accepts for Python 3 code.
+RUN_LANGUAGES = {"python", "py", "python3", "py3"}
+
+
+def failing_line(error: Exception, filename: str) -> int:
+    """Return the line of the block, counted from 1, at which the error was raised."""
+    if isinstance(error, SyntaxError) and error.filename == filename:
+        return error.lineno or 1
+    lines = [f.lineno for f in traceback.extract_tb(error.__traceback__) if f.filename == filename]
+    return (lines[-1] or 1) if lines else 1
 
 
 def run_blocks(app: Sphinx, doctree: nodes.document) -> None:
@@ -29,12 +39,21 @@ def run_blocks(app: Sphinx, doctree: nodes.document) -> None:
     for block in doctree.findall(nodes.literal_block):
         if block.get("language") not in RUN_LANGUAGES:
             continue
+        # The opening fence is at block.line, so code line n is at block.line + n.
+        start = block.line or 0
+        filename = f"<{docname} block at line {start}>"
         try:
-            code = compile(block.astext(), f"{docname}.md, line {block.line}", "exec")
+            code = compile(block.astext(), filename, "exec")
             with contextlib.redirect_stdout(io.StringIO()):
                 exec(code, namespace)
         except Exception as error:
-            logger.warning("code block failed: %s: %s", type(error).__name__, error, location=block)
+            line = start + failing_line(error, filename)
+            logger.warning(
+                "code block failed: %s: %s",
+                type(error).__name__,
+                error,
+                location=(docname, line),
+            )
 
 
 def read_all(
