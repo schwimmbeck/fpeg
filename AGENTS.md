@@ -2,7 +2,7 @@
 
 Working guide for people and AI agents in this repository. Update it when the structure or the rules change.
 
-This file is public. Keep it free of personal or private information. The maintainer's plan, the research behind it and the open decisions live in a local, gitignored `PLAN.md`, with the sources under `research/`. Read `PLAN.md` first when it exists, and never commit either.
+This file is public. Keep it free of personal or private information. The maintainer's plan, the research behind it and the open decisions live in a local, gitignored `PLAN.md`. The benchmark scripts and raw results behind its numbers are under `research/`, local as well. Read `PLAN.md` first when it exists, and never commit either.
 
 `CLAUDE.md` is a symbolic link to this file. Edit `AGENTS.md` only.
 
