@@ -1,0 +1,45 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// A subset of TOML: tables, arrays of tables, dotted keys, basic, literal and multi-line
+// strings, integers, floats, booleans, arrays that may span lines, and inline tables. Dates
+// and times are left out.
+
+%flag inside
+%ignore [ \t]+ | COMMENT | %if(inside) _NL
+
+start: _NL? (item (_NL item)*)? _NL?
+?item: table_array | table | pair
+
+table_array: "[[" key=key "]]"
+table: "[" key=key "]"
+pair: key=key "=" value=value
+key: parts=(simple_key ++ ".")
+?simple_key: BARE_KEY | BASIC_STRING | LITERAL_STRING
+
+?value: ML_BASIC_STRING
+      | BASIC_STRING
+      | LITERAL_STRING
+      | FLOAT
+      | INTEGER
+      | "true" -> true
+      | "false" -> false
+      | array
+      | inline_table
+
+array: "[" %on(inside, items=(value ** ",") ","? "]")
+inline_table: "{" %off(inside, pairs=(pair ** ",") "}")
+
+BARE_KEY: [A-Za-z0-9_\-]+
+BASIC_STRING: "\"" ([^"\\\r\n] | "\\" ESCAPE)* "\""
+LITERAL_STRING: "'" [^'\r\n]* "'"
+ML_BASIC_STRING: "\"\"\"" (!"\"\"\"" ("\\" ESCAPE | .))* "\"\"\""
+ESCAPE: ["\\bfnrt] | "u" HEX{4} | "U" HEX{8}
+HEX: [0-9A-Fa-f]
+INTEGER: "0x" HEX ("_"? HEX)* | "0o" [0-7] ("_"? [0-7])* | "0b" [01] ("_"? [01])* | [+\-]? DECIMAL
+FLOAT: [+\-]? (DECIMAL ("." DIGITS EXPONENT? | EXPONENT) | "inf" | "nan")
+DECIMAL: "0" | [1-9] ("_"? [0-9])*
+DIGITS: [0-9] ("_"? [0-9])*
+EXPONENT: [eE] [+\-]? DIGITS
+COMMENT: "#" [^\r\n]*
+_NL: (("\r\n" | "\n") [ \t]* COMMENT?)+

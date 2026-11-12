@@ -1,0 +1,20 @@
+// Fibonacci numbers, iteratively and recursively.
+fn fib(n) {
+    if n < 2 { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn fib_loop(n) {
+    let a = 0;
+    let b = 1;
+    while n > 0 {
+        let next = a + b;
+        a = b;
+        b = next;
+        n = n - 1;
+    }
+    return a;
+}
+
+let ifx = fib(10) == fib_loop(10) and not false;
+print("done", ifx);

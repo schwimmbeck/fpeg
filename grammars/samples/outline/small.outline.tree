@@ -1,0 +1,1 @@
+(start entries=(entry key=KEY"a" ~":" ~_NL"\n  " children=(children entries=(entry key=KEY"b" ~":" ~_NL"\n    " children=(children entries=(entry key=KEY"c" ~":" value=VALUE"x" ~_NL"\n  "))) entries=(entry key=KEY"d" ~":" value=VALUE"y" ~_NL"\n"))) entries=(entry key=KEY"e" ~":" value=VALUE"z"))

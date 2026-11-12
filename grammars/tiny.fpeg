@@ -1,0 +1,50 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// A tiny imperative language with functions, variables, conditionals, loops and expressions.
+// Keywords are reserved and need a word boundary.
+
+%word [A-Za-z0-9_]
+
+start: items=item*
+?item: function | statement
+
+function: "fn" name=NAME "(" params=(NAME ** ",") ")" body=block
+block: "{" statements=statement* "}"
+
+?statement: let
+          | if
+          | while
+          | return
+          | assign
+          | expression_statement
+let: "let" name=NAME "=" value=expr ";"
+if: "if" test=expr then=block ("else" otherwise=(if | block))?
+while: "while" test=expr body=block
+return: "return" value=expr? ";"
+assign: target=NAME "=" !"=" value=expr ";"
+expression_statement: expr=expr ";"
+
+expr: %precedence {
+    or: left=or op="or" right=and -> binary
+    and: left=and op="and" right=not -> binary
+    not: op="not" operand=not -> unary
+    compare: left=sum op=("==" | "!=" | "<=" | ">=" | "<" | ">") right=sum -> compare
+    sum: left=sum op=("+" | "-") right=product -> binary
+    product: left=product op=("*" | "/" | "%") right=negate -> binary
+    negate: op="-" operand=negate -> unary
+    call: func=call "(" args=(expr ** ",") ")" -> call
+    atom: NUMBER
+        | STRING
+        | "true" -> true
+        | "false" -> false
+        | NAME
+        | "(" expr ")"
+}
+
+@reserved
+NAME: [A-Za-z_] [A-Za-z0-9_]*
+NUMBER: [0-9]+
+STRING: "\"" ([^"\\\n] | "\\" .)* "\""
+
+%ignore [ \t\r\n]+ | "//" [^\n]*

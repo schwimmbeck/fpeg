@@ -1,0 +1,1 @@
+(start items=(if ~"if" test=NAME"x" then=(block ~"{" statements=(expression_statement expr=(call func=NAME"y" ~"(" ~")") ~";") ~"}") ~"else" otherwise=(if ~"if" test=NAME"z" then=(block ~"{" ~"}") ~"else" otherwise=(block ~"{" statements=(assign target=NAME"w" ~"=" value=(binary left=(unary op="-" operand=NUMBER"1") op="*" right=NUMBER"2") ~";") ~"}"))))

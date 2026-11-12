@@ -1,0 +1,27 @@
+# A configuration file.
+title = "fastpeg"
+version = 1
+ratio = 0.25
+huge = 1_000_000
+hex = 0xDEAD_beef
+enabled = true
+"quoted key" = 'literal \ string'
+nested.dotted.key = -3e-2
+
+[server]
+host = "localhost"
+ports = [
+  8000,
+  8001, # the second one
+  8002,
+]
+limits = { cpu = 2, memory = "1G" }
+
+[[plugins]]
+name = "a"
+
+[[plugins]]
+name = "b"
+notes = """
+two
+lines"""
