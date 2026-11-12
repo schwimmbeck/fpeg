@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT
+
+# Kept out of the workspace, so the library's checks and lock file carry no baseline parsers.
+[package]
+name = "fastpeg-benchmarks"
+description = "Rust baselines for the fastpeg benchmark suite"
+publish = false
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+authors = ["Dominik Schwimmbeck"]
+
+[lib]
+# Criterion's options would reach the library's test harness otherwise.
+bench = false
+
+[dependencies]
+pest = "2.9.6"
+pest_derive = "2.9.6"
+pest_meta = "2.9.6"
+pest_vm = "2.9.6"
+serde_json = "1.0.154"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "json"
+harness = false
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+
+[lints.clippy]
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+[profile.bench]
+lto = "fat"
+codegen-units = 1
