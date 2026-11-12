@@ -60,7 +60,7 @@ docs = { requires-python = ">=3.13" }
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["research"]
+extend-exclude = ["research", "grammars/samples"]
 
 [tool.ruff.lint]
 select = ["B", "D", "E", "F", "I", "RUF", "SIM", "UP", "W"]

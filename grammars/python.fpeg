@@ -1,0 +1,313 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
+// a line, and f-strings and t-strings nest replacement fields to any depth, with any quotes
+// inside them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
+// superset that a later check narrows: assignment and loop targets take primary expressions,
+// and the kinds of parameters may come in any order.
+
+%flag bracket
+%word [\p{XID_Continue}]
+%keywords soft "match" "case" "_" "type" "lazy"
+%ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK | %if(bracket) _LINE_BREAK
+
+start: _BLANK_LINES? statements=(%same statement)*
+
+// Statements
+
+?statement: compound | simple_statements
+simple_statements: items=(simple ++ ";") ";"? (_NEWLINE | !.)
+?simple: assignment
+       | type_alias
+       | return
+       | import_name
+       | import_from
+       | raise
+       | pass
+       | del
+       | yield_statement
+       | assert
+       | break
+       | continue
+       | global
+       | nonlocal
+       | expression_statement
+
+?assignment: target=single_target ":" annotation=expression ("=" value=annotated_value)? -> annotated_assign
+           | (targets=star_targets "=" !"=")+ value=annotated_value -> assign
+           | target=single_target op=AUGMENTED value=annotated_value -> augmented_assign
+?annotated_value: yield_expression | star_expressions
+type_alias: "type" name=NAME params=type_params? "=" value=expression
+return: "return" value=star_expressions?
+raise: "raise" (exception=expression ("from" cause=expression)?)?
+pass: "pass"
+break: "break"
+continue: "continue"
+del: "del" targets=star_targets
+yield_statement: value=yield_expression
+assert: "assert" test=expression ("," message=expression)?
+global: "global" names=(NAME ++ ",")
+nonlocal: "nonlocal" names=(NAME ++ ",")
+expression_statement: value=star_expressions
+
+import_name: lazy="lazy"? "import" names=(dotted_as_name ++ ",")
+dotted_as_name: name=dotted_name ("as" alias=NAME)?
+dotted_name: parts=(NAME ++ ".")
+import_from: lazy="lazy"? "from" (levels=("..." | ".")* module=dotted_name | levels=("..." | ".")+) "import" names=import_names
+?import_names: "*" -> import_all
+             | "(" %on(bracket, items=(import_as_name ++ ",") ","? ")") -> import_list
+             | items=(import_as_name ++ ",") -> import_list
+import_as_name: name=NAME ("as" alias=NAME)?
+
+?compound: function_def
+         | if
+         | class_def
+         | with
+         | for
+         | try
+         | while
+         | match
+         | decorated
+
+?block: indented_block | simple_statements
+indented_block: _NEWLINE %indent(statements=(%same statement)+)
+
+decorated: decorators=(decorator %same)+ definition=(function_def | class_def)
+decorator: "@" value=named_expression _NEWLINE
+function_def: async="async"? "def" name=NAME params=type_params? "(" %on(bracket, parameters=parameters? ")") ("->" returns=expression)? ":" body=block
+class_def: "class" name=NAME params=type_params? ("(" %on(bracket, bases=arguments? ")"))? ":" body=block
+if: "if" test=named_expression ":" body=block branches=(%same elif)* (%same "else" ":" orelse=block)?
+elif: "elif" test=named_expression ":" body=block
+while: "while" test=named_expression ":" body=block (%same "else" ":" orelse=block)?
+for: async="async"? "for" targets=star_targets "in" iter=star_expressions ":" body=block (%same "else" ":" orelse=block)?
+with: async="async"? "with" items=with_items ":" body=block
+?with_items: "(" %on(bracket, items=(with_item ++ ",") ","? ")") &":" -> with_list
+           | items=(with_item ++ ",") -> with_list
+with_item: context=expression ("as" target=star_target)?
+try: "try" ":" body=block (
+        (handlers=(%same except)+ | handlers=(%same except_star)+)
+            (%same "else" ":" orelse=block)? (%same "finally" ":" final=block)?
+        | %same "finally" ":" final=block)
+except: "except" !"*" (types=expression "as" name=NAME | types=expressions)? ":" body=block
+except_star: "except" "*" (types=expression "as" name=NAME | types=expressions) ":" body=block
+
+match: "match" subject=subject ":" _NEWLINE %indent(cases=(%same case)+)
+?subject: items=star_named_expression "," (items=star_named_expression ** ",") ","? -> tuple_expression
+        | named_expression
+case: "case" pattern=patterns ("if" guard=named_expression)? ":" body=block
+
+// Patterns
+
+?patterns: items=maybe_star_pattern "," (items=maybe_star_pattern ** ",") ","? -> sequence_pattern
+         | pattern
+?pattern: pattern=or_pattern "as" target=NAME -> as_pattern
+        | or_pattern
+?or_pattern: alternatives=closed_pattern ("|" alternatives=closed_pattern)+ -> or_pattern
+           | closed_pattern
+?closed_pattern: literal_pattern
+               | class_pattern
+               | value_pattern
+               | wildcard_pattern
+               | capture_pattern
+               | group_pattern
+               | sequence_pattern
+               | mapping_pattern
+literal_pattern: value=(complex_number | signed_number | strings | "None" | "True" | "False")
+complex_number: real=signed_number op=("+" | "-") imaginary=NUMBER
+signed_number: sign=("+" | "-")? number=NUMBER
+class_pattern: class=pattern_name "(" %on(bracket, arguments=(pattern_argument ** ",") ","? ")")
+?pattern_argument: name=NAME "=" pattern=pattern -> keyword_pattern
+                 | pattern
+value_pattern: parts=NAME ("." parts=NAME)+ !"("
+wildcard_pattern: "_"
+capture_pattern: name=NAME !("." | "(" | "=")
+group_pattern: "(" %on(bracket, pattern=pattern ")")
+sequence_pattern: "[" %on(bracket, items=(maybe_star_pattern ** ",") ","? "]")
+                | "(" %on(bracket, (items=maybe_star_pattern "," (items=maybe_star_pattern ** ",") ","?)? ")")
+?maybe_star_pattern: "*" target=NAME -> star_pattern
+                   | pattern
+mapping_pattern: "{" %on(bracket, items=(mapping_item ** ",") ","? "}")
+?mapping_item: "**" target=NAME -> double_star_pattern
+             | key=(literal_pattern | value_pattern) ":" pattern=pattern -> key_pattern
+pattern_name: parts=(NAME ++ ".")
+
+// Parameters and arguments
+
+parameters: items=(parameter ++ ",") ","?
+?parameter: "/" -> positional_only
+          | "**" name=NAME (":" annotation=expression)? -> var_keyword
+          | "*" name=NAME? (":" annotation=star_annotation)? -> var_positional
+          | name=NAME (":" annotation=expression)? ("=" default=expression)? -> parameter
+?star_annotation: "*" value=expression -> starred
+                | expression
+lambda_parameters: items=(lambda_parameter ++ ",") ","?
+?lambda_parameter: "/" -> positional_only
+                 | "**" name=NAME -> var_keyword
+                 | "*" name=NAME? -> var_positional
+                 | name=NAME ("=" default=expression)? -> parameter
+type_params: "[" %on(bracket, items=(type_param ++ ",") ","? "]")
+?type_param: "**" name=NAME ("=" default=expression)? -> param_spec
+           | "*" name=NAME ("=" default=expression)? -> type_var_tuple
+           | name=NAME (":" bound=expression)? ("=" default=expression)? -> type_var
+arguments: (items=(positional_argument ++ ",") ("," _keyword_arguments)? | _keyword_arguments) ","?
+_keyword_arguments: items=(keyword_or_starred ++ ",") ("," items=(keyword_or_double_starred ++ ","))?
+                  | items=(keyword_or_double_starred ++ ",")
+?positional_argument: "*" value=expression -> starred
+                    | named_expression !"="
+?keyword_or_starred: keyword
+                   | "*" value=expression -> starred
+?keyword_or_double_starred: keyword
+                          | "**" value=expression -> double_starred
+keyword: name=NAME "=" !"=" value=expression
+
+// Expressions
+
+?star_expressions: items=star_expression "," (items=star_expression ** ",") ","? -> tuple_expression
+                 | star_expression
+?star_expression: "*" value=expression -> starred
+                | expression
+?star_named_expression: "*" value=expression -> starred
+                      | named_expression
+?named_expression: target=NAME ":=" value=expression -> named_expression
+                 | expression !":="
+?expressions: items=expression "," (items=expression ** ",") ","? -> tuple_expression
+            | expression
+yield_expression: "yield" "from" value=expression -> yield_from
+                | "yield" value=star_expressions? -> yield
+
+expression: %precedence {
+    lambda: "lambda" parameters=lambda_parameters? ":" body=lambda -> lambda
+        | body=or "if" test=or "else" orelse=lambda -> if_expression
+    or: values=and ("or" values=and)+ -> bool_or
+    and: values=not ("and" values=not)+ -> bool_and
+    not: "not" operand=not -> not
+    compare: left=bitor (operators=compare_operator comparators=bitor)+ -> compare
+    bitor: left=bitor op="|" right=bitxor -> binary
+    bitxor: left=bitxor op="^" right=bitand -> binary
+    bitand: left=bitand op="&" right=shift -> binary
+    shift: left=shift op=("<<" | ">>") right=sum -> binary
+    sum: left=sum op=("+" | "-") right=product -> binary
+    product: left=product op=("*" | "//" | "/" | "%" | "@") right=unary -> binary
+    unary: op=("+" | "-" | "~") operand=unary -> unary
+    power: base=await_primary op="**" exponent=unary -> binary
+    operand: await_primary
+}
+?compare_operator: "not" "in" -> not_in
+                 | "is" "not" -> is_not
+                 | op=("==" | "!=" | "<=" | ">=" | "<" | ">" | "in" | "is") -> operator
+?await_primary: "await" value=primary -> await
+              | primary
+
+?primary: func=primary arguments=generator_expression -> call
+        | func=primary "(" %on(bracket, arguments=arguments? ")") -> call
+        | value=primary "[" %on(bracket, slices=slices "]") -> subscript
+        | value=primary "." attribute=NAME -> attribute
+        | atom
+
+?atom: strings
+     | "True" -> true
+     | "False" -> false
+     | "None" -> none
+     | NAME
+     | NUMBER
+     | tuple
+     | generator_expression
+     | group
+     | list
+     | list_comprehension
+     | dict
+     | set
+     | dict_comprehension
+     | set_comprehension
+     | "..." -> ellipsis
+
+tuple: "(" %on(bracket, (items=star_named_expression "," (items=star_named_expression ** ",") ","?)? ")")
+group: "(" %on(bracket, value=(yield_expression | named_expression) ")")
+generator_expression: "(" %on(bracket, element=named_expression clauses=comprehension ")")
+list: "[" %on(bracket, items=(star_named_expression ** ",") ","? "]")
+list_comprehension: "[" %on(bracket, element=named_expression clauses=comprehension "]")
+dict: "{" %on(bracket, items=(dict_item ** ",") ","? "}")
+?dict_item: "**" value=expression -> double_starred
+          | key=expression ":" value=expression -> pair
+set: "{" %on(bracket, items=(star_named_expression ++ ",") ","? "}")
+dict_comprehension: "{" %on(bracket, key=expression ":" value=expression clauses=comprehension "}")
+set_comprehension: "{" %on(bracket, element=named_expression clauses=comprehension "}")
+comprehension: clauses=for_if+
+for_if: async="async"? "for" targets=star_targets "in" iter=expression conditions=("if" expression)*
+
+slices: items=(slice ++ ",") ","?
+?slice: lower=expression? ":" !"=" upper=expression? (":" step=expression?)? -> slice
+      | "*" value=expression -> starred
+      | named_expression
+
+?star_targets: items=star_target "," (items=star_target ** ",") ","? -> tuple_expression
+             | star_target
+?star_target: "*" value=star_target -> starred
+            | primary
+?single_target: primary
+
+// Strings
+
+strings: parts=(fstring<F_RAW_PREFIX, F_PREFIX> | fstring<T_RAW_PREFIX, T_PREFIX> | STRING)+
+
+@lexical
+fstring<raw, plain>: prefix=raw (
+        _f_body<"\"\"\"", _LINE_BREAK, F_RAW_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_RAW_ESCAPE>
+        | _f_body<"\"", NEVER, F_RAW_ESCAPE> | _f_body<"'", NEVER, F_RAW_ESCAPE>)
+    | prefix=plain (
+        _f_body<"\"\"\"", _LINE_BREAK, F_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_ESCAPE>
+        | _f_body<"\"", NEVER, F_ESCAPE> | _f_body<"'", NEVER, F_ESCAPE>)
+
+@lexical
+_f_body<quote, line_break, escape>: quote %off(bracket, parts=(F_TEXT<quote, line_break, escape> | replacement_field)*) quote
+
+replacement_field: "{" %on(bracket, value=(yield_expression | star_expressions) debug="="? conversion=conversion? format=format_spec? "}")
+
+@lexical
+conversion: "!" name=NAME
+
+@lexical
+format_spec: ":" %off(bracket, parts=(F_SPEC_TEXT | replacement_field)*)
+
+F_TEXT<quote, line_break, escape>: (!quote ([^{}\\\r\n] | line_break | "{{" | "}}" | escape))+
+F_SPEC_TEXT: ([^{}\\\r\n] | "\\" ![{}] .)+
+// A backslash before a brace stays text, and the brace opens or closes a replacement field.
+F_ESCAPE: "\\" (&[{}] | ![{}] ESCAPED)
+F_RAW_ESCAPE: "\\" (&[{}] | ![{}] (_LINE_BREAK | .))
+NEVER: !()
+F_PREFIX: [fF]
+F_RAW_PREFIX: [fF] [rR] | [rR] [fF]
+T_PREFIX: [tT]
+T_RAW_PREFIX: [tT] [rR] | [rR] [tT]
+
+STRING: RAW_PREFIX STRING_BODY<RAW_ESCAPE> | [bB] STRING_BODY<BYTES_ESCAPE> | [uU]? STRING_BODY<ESCAPE>
+RAW_PREFIX: [rR] [bB]? | [bB] [rR]
+STRING_BODY<escape>: LONG_STRING<"\"\"\"", escape> | LONG_STRING<"'''", escape>
+                   | SHORT_STRING<"\"", escape> | SHORT_STRING<"'", escape>
+LONG_STRING<quote, escape>: quote (!quote (escape | [^\\]))* quote
+SHORT_STRING<quote, escape>: quote (!quote (escape | [^\\\r\n]))* quote
+RAW_ESCAPE: "\\" (_LINE_BREAK | .)
+BYTES_ESCAPE: "\\" ("x" HEX{2} | ![x] (_LINE_BREAK | .))
+ESCAPE: "\\" ESCAPED
+// Unknown escapes keep their backslash, but these four must be complete.
+ESCAPED: "x" HEX{2} | "u" HEX{4} | "U" HEX{8} | "N{" [^}\r\n]+ "}" | ![xuUN] (_LINE_BREAK | .)
+HEX: [0-9a-fA-F]
+
+// Tokens
+
+@reserved
+NAME: [\p{XID_Start}_] \p{XID_Continue}*
+NUMBER: (HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | FLOAT_NUMBER | INT_NUMBER) [jJ]?
+HEX_NUMBER: "0" [xX] ("_"? [0-9a-fA-F])+
+OCT_NUMBER: "0" [oO] ("_"? [0-7])+
+BIN_NUMBER: "0" [bB] ("_"? [01])+
+FLOAT_NUMBER: (DIGITS? "." DIGITS | DIGITS ".") EXPONENT? | DIGITS EXPONENT
+INT_NUMBER: [1-9] ("_"? [0-9])* | "0" ("_"? "0")*
+DIGITS: [0-9] ("_"? [0-9])*
+EXPONENT: [eE] [+\-]? DIGITS
+AUGMENTED: "**=" | "//=" | ">>=" | "<<=" | "+=" | "-=" | "*=" | "/=" | "%=" | "@=" | "&=" | "|=" | "^="
+COMMENT: "#" [^\r\n]*
+_LINE_BREAK: "\r\n" | "\n" | "\r"
+_NEWLINE: _LINE_BREAK _BLANK_LINES?
+_BLANK_LINES: ([ \t\x0C]* COMMENT? _LINE_BREAK)+
