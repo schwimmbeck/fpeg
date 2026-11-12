@@ -3,18 +3,32 @@
 
 //! Runs the built `fastpeg` binary.
 
+use std::ffi::{OsStr, OsString};
 use std::process::{Command, Output};
 
-fn run(args: &[&str]) -> Output {
+fn run<I: IntoIterator<Item = S>, S: AsRef<OsStr>>(args: I) -> Output {
     Command::new(env!("CARGO_BIN_EXE_fastpeg"))
         .args(args)
         .output()
         .expect("the fastpeg binary runs")
 }
 
+#[cfg(unix)]
+fn not_unicode() -> OsString {
+    use std::os::unix::ffi::OsStringExt;
+    OsString::from_vec(vec![0xff])
+}
+
+#[cfg(windows)]
+fn not_unicode() -> OsString {
+    use std::os::windows::ffi::OsStringExt;
+    // A lone surrogate is not valid UTF-16.
+    OsString::from_wide(&[0xd800])
+}
+
 #[test]
 fn version_flag_prints_the_core_version() {
-    let out = run(&["--version"]);
+    let out = run(["--version"]);
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout),
@@ -23,9 +37,16 @@ fn version_flag_prints_the_core_version() {
 }
 
 #[test]
-fn unknown_argument_is_a_usage_error() {
-    let out = run(&["--no-such-flag"]);
+fn unaccepted_argument_is_a_usage_error_that_names_it() {
+    let out = run(["--version", "--no-such-flag"]);
     assert_eq!(out.status.code(), Some(2));
     assert!(out.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("'--no-such-flag'"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("unexpected argument '--no-such-flag'"));
+}
+
+#[test]
+fn argument_that_is_not_unicode_is_a_usage_error() {
+    let out = run([not_unicode()]);
+    assert_eq!(out.status.code(), Some(2));
 }
