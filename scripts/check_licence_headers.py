@@ -42,6 +42,8 @@ COMMENT_BY_SUFFIX = {
 }
 EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt"}
 EXEMPT_NAMES = {"LICENSE", ".gitignore", ".gitattributes", ".python-version", "py.typed"}
+# Sample inputs of the acceptance grammars are data in many formats, not source files.
+EXEMPT_DIRECTORIES = ("grammars/samples/",)
 
 
 def header_problem(path: Path, comment: str) -> str | None:
@@ -84,6 +86,8 @@ def main() -> int:
         if not name or not path.is_file():
             continue
         if path.suffix in EXEMPT_SUFFIXES or path.name in EXEMPT_NAMES:
+            continue
+        if name.startswith(EXEMPT_DIRECTORIES):
             continue
         comment = COMMENT_BY_SUFFIX.get(path.suffix)
         if comment is None:

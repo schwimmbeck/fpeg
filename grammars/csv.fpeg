@@ -1,0 +1,14 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// Comma-separated values: records of fields, quoted fields may hold commas, quotes written
+// twice and line breaks. An empty line is a record without fields.
+
+start: (line _EOL)* record?
+?line: record | ()
+record: &[^\r\n] fields=(field ++ ",") => list
+field: value=(QUOTED | BARE)?
+
+QUOTED: "\"" ([^"] | "\"\"")* "\""
+BARE: [^,"\r\n]+
+_EOL: "\r\n" | "\n" | "\r"

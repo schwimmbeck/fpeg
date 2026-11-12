@@ -1,0 +1,1 @@
+(binary left=(binary left=(unary op="-" operand=NAME"a") op="-" right=NAME"b") op="-" right=(binary left=(binary left=NAME"c" op="*" right=NAME"d") op="%" right=NAME"e"))

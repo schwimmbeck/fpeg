@@ -1,0 +1,34 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// Expressions of a C-like language: twelve operator levels, prefix and postfix operators, a
+// right-associative assignment and conditional.
+
+?start: expr
+
+expr: %precedence {
+    assign: target=conditional op=("=" | "+=" | "-=" | "*=" | "/=") value=assign -> assign
+    conditional: test=or "?" then=expr ":" otherwise=conditional -> conditional
+    or: left=or op="||" right=and -> binary
+    and: left=and op="&&" right=bitor -> binary
+    bitor: left=bitor op="|" !"|" right=bitxor -> binary
+    bitxor: left=bitxor op="^" right=bitand -> binary
+    bitand: left=bitand op="&" !"&" right=equality -> binary
+    equality: left=equality op=("==" | "!=") right=relation -> binary
+    relation: left=relation op=("<=" | ">=" | "<" | ">") right=shift -> binary
+    shift: left=shift op=("<<" | ">>") right=additive -> binary
+    additive: left=additive op=("+" | "-") right=multiplicative -> binary
+    multiplicative: left=multiplicative op=("*" | "/" | "%") right=prefix -> binary
+    prefix: op=("++" | "--" | "!" | "~" | "-" | "+") operand=prefix -> unary
+    postfix: func=postfix "(" args=(expr ** ",") ")" -> call
+        | object=postfix "[" index=expr "]" -> index
+        | object=postfix "." member=NAME -> member
+        | operand=postfix op=("++" | "--") -> postfix
+    primary: NUMBER | NAME | STRING | "(" expr ")"
+}
+
+NUMBER: [0-9]+ ("." [0-9]+)?
+NAME: [A-Za-z_] [A-Za-z0-9_]*
+STRING: "\"" ([^"\\\n] | "\\" .)* "\""
+
+%ignore [ \t\r\n]+ | "//" [^\n]*

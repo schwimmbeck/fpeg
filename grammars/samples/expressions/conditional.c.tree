@@ -1,0 +1,1 @@
+(assign target=NAME"a" op="=" value=(conditional test=NAME"b" ~"?" then=NAME"c" ~":" otherwise=(conditional test=NAME"d" ~"?" then=NAME"e" ~":" otherwise=NAME"f")))
