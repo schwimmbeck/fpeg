@@ -18,7 +18,7 @@ This creates `.venv`, builds the native module with maturin, installs the packag
 
 ## Checks
 
-Every change passes these checks before it is committed. Continuous integration runs the same commands on Linux, Windows and macOS and treats warnings as errors.
+Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux, Windows and macOS, the Python tests on the oldest and the newest supported Python, and the other checks on Linux.
 
 | Check | Command |
 |---|---|
@@ -27,7 +27,7 @@ Every change passes these checks before it is committed. Continuous integration 
 | Rust tests | `cargo test` |
 | Python formatting | `uv run ruff format --check` |
 | Python lints | `uv run ruff check` |
-| Python types | `uv run pyright` |
+| Python types | `uv run pyright --warnings` |
 | Python tests | `uv run pytest` |
 | Documentation | `uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html` |
 | Licence headers | `uv run python scripts/check_licence_headers.py` |

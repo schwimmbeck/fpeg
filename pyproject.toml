@@ -72,9 +72,11 @@ convention = "pep257"
 # Benchmarks and docs import their own dependency groups, ruff lints them.
 include = ["python", "tests", "scripts"]
 strict = ["python"]
+pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest]
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
+filterwarnings = ["error"]
