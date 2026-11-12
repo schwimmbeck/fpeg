@@ -18,7 +18,7 @@ from pathlib import Path
 
 CORPORA = Path(__file__).resolve().parent / "corpora"
 
-# The first real application, pinned to the commit the plan's measurements used.
+# The first real application, pinned to the commit of the first baseline measurements.
 ORDEC_COMMIT = "1ce99ab763455eac674f8cc4e55ff1e6ca9fd31b"
 ORDEC_ARCHIVE_URL = f"https://codeload.github.com/tub-msc/ordec/tar.gz/{ORDEC_COMMIT}"
 ORDEC_PACKAGE_PATH = "src/ordec/ord"
@@ -30,7 +30,10 @@ ORDEC_PACKAGE_SHA256 = {
     "python_transformer.py": "9b35b499e1dfe631ebd1ab6b9fcc591541bebbaaa3e9bea63ca01888b557cf1a",
 }
 
+# Seconds to wait for the download of the first real application's sources.
 DOWNLOAD_TIMEOUT_S = 60
+# Records in the generated JSON file, and the seed of their content. Changing either changes the
+# bytes of records.json, and its pinned hash with them.
 JSON_RECORDS = 9000
 JSON_SEED = 20261112
 
@@ -100,7 +103,10 @@ def write_records_json(path: Path) -> None:
         }
 
     text = json.dumps([record(i) for i in range(JSON_RECORDS)], indent=1)
-    path.write_text(text, encoding="utf-8", newline="\n")
+    # Written beside the target and renamed, so an interrupted run leaves no partial file.
+    partial = path.with_suffix(".partial")
+    partial.write_text(text, encoding="utf-8", newline="\n")
+    partial.replace(path)
 
 
 def fetch_ord_package(target: Path) -> None:
@@ -121,23 +127,29 @@ def fetch_ord_package(target: Path) -> None:
         shutil.move(unpacked, target)
 
 
+def matches(path: Path, expected: str) -> bool:
+    """Return whether a file exists and has the pinned hash."""
+    return path.is_file() and sha256(path) == expected
+
+
 def check(path: Path, expected: str) -> None:
-    """Stop when a file does not have the pinned hash."""
-    actual = sha256(path)
-    if actual != expected:
-        raise SystemExit(f"{path} has SHA-256 {actual}, expected {expected}")
+    """Stop when a file that was just made does not have the pinned hash."""
+    if not matches(path, expected):
+        raise SystemExit(f"{path} does not have the pinned SHA-256 {expected}")
 
 
 def prepare() -> None:
-    """Create every missing input and check the hashes of all of them."""
+    """Make every input that is missing or damaged, then check all of them."""
     CORPORA.mkdir(exist_ok=True)
-    if not RECORDS_JSON.path.is_file():
+    if not matches(RECORDS_JSON.path, RECORDS_JSON.sha256):
+        # Python's random module could change its output, which this check would catch.
         write_records_json(RECORDS_JSON.path)
-    check(RECORDS_JSON.path, RECORDS_JSON.sha256)
-    if not ORD_PACKAGE.is_dir():
+        check(RECORDS_JSON.path, RECORDS_JSON.sha256)
+    if not all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items()):
+        shutil.rmtree(ORD_PACKAGE, ignore_errors=True)
         fetch_ord_package(ORD_PACKAGE)
-    for name, expected in ORDEC_PACKAGE_SHA256.items():
-        check(ORD_PACKAGE / name, expected)
+        for name, expected in ORDEC_PACKAGE_SHA256.items():
+            check(ORD_PACKAGE / name, expected)
 
 
 if __name__ == "__main__":

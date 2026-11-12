@@ -4,8 +4,8 @@
 """Run the benchmark suites and write their results.
 
 Prepares the inputs, runs the pyperf suites and the criterion suite, and writes ``results.json``,
-a ``summary.md`` and the raw pyperf files. Without ``--record`` the output goes to
-``benchmarks/.cache/last-run``, with it to ``benchmarks/results/<date>-<platform>``.
+a ``summary.md`` and the raw pyperf files to ``benchmarks/.cache/last-run``. With ``--record``
+a complete run is then moved to ``benchmarks/results/<date>-<platform>``.
 """
 
 import argparse
@@ -14,6 +14,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -29,18 +30,21 @@ BENCHMARKS = Path(__file__).resolve().parent
 RESULTS = BENCHMARKS / "results"
 LAST_RUN = BENCHMARKS / ".cache" / "last-run"
 RUST = BENCHMARKS / "rust"
-CRITERION = RUST / "target" / "criterion"
+RUST_TARGET = RUST / "target"
+CRITERION = RUST_TARGET / "criterion"
 
 PYPERF_SUITES = ("json", "python", "ord")
 SUITES = (*PYPERF_SUITES, "rust")
 MODES = ("default", "fast", "rigorous", "smoke")
+RECORD_MODES = ("default", "rigorous")
 PYPERF_MODE_ARGS = {
     "default": [],
     "fast": ["--fast"],
     "rigorous": ["--rigorous"],
     "smoke": ["--debug-single-value"],
 }
-CRITERION_MODE_ARGS = {"default": [], "fast": ["--quick"], "rigorous": [], "smoke": ["--test"]}
+# Criterion has no longer mode. Smoke uses a short real measurement, so CI reads its files too.
+CRITERION_MODE_ARGS = {"default": [], "fast": ["--quick"], "rigorous": [], "smoke": ["--quick"]}
 
 PYTHON_PACKAGES = ("lark", "pe", "libcst", "tree-sitter", "tree-sitter-python", "pyperf")
 RUST_CRATES = ("pest", "pest_derive", "pest_meta", "pest_vm", "serde_json", "criterion")
@@ -116,7 +120,9 @@ def run_pyperf_suite(suite: str, mode: str, out: Path) -> list[Row]:
 
 def scrub_pyperf_file(path: Path) -> None:
     """Drop the host name and the home folder from pyperf's metadata, since results are public."""
-    home = str(Path.home())
+    # Windows paths compare without case, so a path may spell the home folder differently.
+    flags = re.IGNORECASE if sys.platform == "win32" else 0
+    home = re.compile(re.escape(str(Path.home())), flags)
 
     def scrub(value: object) -> object:
         if isinstance(value, dict):
@@ -124,7 +130,7 @@ def scrub_pyperf_file(path: Path) -> None:
         if isinstance(value, list):
             return [scrub(v) for v in value]
         if isinstance(value, str):
-            return value.replace(home, "~")
+            return home.sub("~", value)
         return value
 
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -134,9 +140,11 @@ def scrub_pyperf_file(path: Path) -> None:
 def run_rust_suite(mode: str) -> list[Row]:
     """Run the criterion benchmarks and read their estimates."""
     shutil.rmtree(CRITERION, ignore_errors=True)
-    manifest = RUST / "Cargo.toml"
-    command = ["cargo", "bench", "--manifest-path", str(manifest), "--bench", "json", "--"]
-    subprocess.run([*command, *CRITERION_MODE_ARGS[mode]], check=True)
+    # Pin where criterion writes, and run in the package so rustup picks its pinned toolchain.
+    env = {k: v for k, v in os.environ.items() if k != "CRITERION_HOME"}
+    env["CARGO_TARGET_DIR"] = str(RUST_TARGET)
+    command = ["cargo", "bench", "--bench", "json", "--", *CRITERION_MODE_ARGS[mode]]
+    subprocess.run(command, cwd=RUST, env=env, check=True)
     rows = []
     for meta_path in sorted(CRITERION.rglob("new/benchmark.json")):
         folder = meta_path.parent
@@ -156,6 +164,8 @@ def run_rust_suite(mode: str) -> list[Row]:
                 values=len(per_iteration),
             )
         )
+    if not rows:
+        raise SystemExit(f"criterion wrote no estimates under {CRITERION}")
     return rows
 
 
@@ -280,16 +290,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the benchmark suites and write the results.")
     parser.add_argument("--suite", choices=SUITES, action="append", help="run only these suites")
     parser.add_argument("--mode", choices=MODES, default="default", help="how long to measure")
-    parser.add_argument("--record", action="store_true", help="write to benchmarks/results")
+    parser.add_argument(
+        "--record", action="store_true", help="move a complete run to benchmarks/results"
+    )
     args = parser.parse_args()
 
     today = datetime.date.today().isoformat()
     title = f"{today}-{PLATFORM_NAMES.get(sys.platform, sys.platform)}"
-    out = RESULTS / title if args.record else LAST_RUN
-    if args.record and out.exists():
-        raise SystemExit(f"{out} exists already, delete it to record again")
-    shutil.rmtree(out, ignore_errors=True)
-    out.mkdir(parents=True)
+    record = RESULTS / title
+    if args.record:
+        if args.suite or args.mode not in RECORD_MODES:
+            modes = " or ".join(RECORD_MODES)
+            raise SystemExit(f"--record needs every suite and the mode {modes}")
+        if record.exists():
+            raise SystemExit(f"{record} exists already, delete it to record again")
+    shutil.rmtree(LAST_RUN, ignore_errors=True)
+    LAST_RUN.mkdir(parents=True)
 
     corpus.prepare()
     env = environment()
@@ -298,15 +314,19 @@ def main() -> None:
         if suite == "rust":
             rows += run_rust_suite(args.mode)
         else:
-            rows += run_pyperf_suite(suite, args.mode, out)
+            rows += run_pyperf_suite(suite, args.mode, LAST_RUN)
 
     results = {"date": today, "mode": args.mode, **asdict(env), "rows": [asdict(r) for r in rows]}
-    (out / "results.json").write_text(
+    (LAST_RUN / "results.json").write_text(
         json.dumps(results, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
     )
-    (out / "summary.md").write_text(
+    (LAST_RUN / "summary.md").write_text(
         summary(title, args.mode, env, rows), encoding="utf-8", newline="\n"
     )
+    out = LAST_RUN
+    if args.record:
+        RESULTS.mkdir(exist_ok=True)
+        out = LAST_RUN.rename(record)
     print(f"results written to {out}")
 
 
