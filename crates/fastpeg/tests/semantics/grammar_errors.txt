@@ -35,6 +35,22 @@ cannot use the rule inner
 --- grammar
 has a field
 
+=== a field that can capture several items in one match is an error
+start: x=(A | B C)*
+A: "a"
+B: "b"
+C: "c"
+--- grammar
+the field x can capture several items in one match
+
+=== a field over an inlined rule counts the items the rule adds
+start: x=_pair
+_pair: A B
+A: "a"
+B: "b"
+--- grammar
+the field x can capture several items in one match
+
 === an alternative with fields in a precedence block needs an alias
 start: expr
 expr: %precedence {

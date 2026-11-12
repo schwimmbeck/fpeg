@@ -75,6 +75,14 @@ struct Pending<'g> {
     args: Vec<Expr>,
 }
 
+/// A field and the parts of its expression that one match captures from, checked once every
+/// rule is lowered, since the parts may call rules not lowered yet.
+struct FieldCheck {
+    name: String,
+    span: Span,
+    parts: Vec<ir::Expr>,
+}
+
 #[derive(Default)]
 struct Interner {
     names: Vec<String>,
@@ -117,6 +125,7 @@ struct Resolver<'g> {
     word: CharSet,
     soft: HashSet<&'g str>,
     reserved: ir::Reserved,
+    field_checks: Vec<FieldCheck>,
     errors: Vec<GrammarError>,
 }
 
@@ -150,6 +159,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
             .map(|t| t.value.as_str())
             .collect(),
         reserved: ir::Reserved::default(),
+        field_checks: Vec::new(),
         errors: Vec::new(),
     };
     r.directives();
@@ -195,6 +205,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
     while let Some(pending) = r.queue.pop_front() {
         r.lower_rule(pending);
     }
+    r.check_fields();
     if !r.errors.is_empty() {
         return Err(r.errors);
     }
@@ -223,6 +234,37 @@ fn choice(mut items: Vec<ir::Expr>) -> ir::Expr {
     }
 }
 
+/// How many visible items without a field `expr` adds in one match, at most, where 2 stands
+/// for several. `rules` holds the same count for each rule.
+fn unfielded_items(expr: &ir::Expr, rules: &[u8]) -> u8 {
+    use ir::Expr as E;
+    match expr {
+        E::Token { hidden, .. } => u8::from(!hidden),
+        E::Node { .. } | E::Transparent { .. } => 1,
+        E::Call(id) => rules[id.0 as usize],
+        E::Seq(items) => items
+            .iter()
+            .fold(0, |sum, e| (sum + unfielded_items(e, rules)).min(2)),
+        E::Choice(items) => items
+            .iter()
+            .map(|e| unfielded_items(e, rules))
+            .max()
+            .unwrap_or(0),
+        E::Repeat { expr, max, .. } => match (unfielded_items(expr, rules), max) {
+            (_, Some(0)) | (0, _) => 0,
+            (n, Some(1)) => n,
+            _ => 2,
+        },
+        E::Unreserved(expr)
+        | E::FlagOn { expr, .. }
+        | E::FlagOff { expr, .. }
+        | E::Indent { expr, .. }
+        | E::Def { expr, .. } => unfielded_items(expr, rules),
+        // An inner field keeps its items, and lookahead adds none.
+        _ => 0,
+    }
+}
+
 /// Replace references to parameters by their arguments.
 fn substitute(expr: &Expr, params: &HashMap<String, Expr>) -> Expr {
     if params.is_empty() {
@@ -239,7 +281,37 @@ fn substitute(expr: &Expr, params: &HashMap<String, Expr>) -> Expr {
 
 impl<'g> Resolver<'g> {
     fn error(&mut self, message: String, span: Span) {
-        self.errors.push(GrammarError { message, span });
+        // Each instance of a template reports the errors of its body again.
+        let error = GrammarError { message, span };
+        if !self.errors.contains(&error) {
+            self.errors.push(error);
+        }
+    }
+
+    /// Report fields that can capture several items in one match.
+    fn check_fields(&mut self) {
+        let mut counts = vec![0; self.rules.len()];
+        // The counts only grow and stop at 2, so this ends.
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (id, rule) in self.rules.iter().enumerate() {
+                if let Some(rule) = rule {
+                    let count = unfielded_items(&rule.body, &counts);
+                    changed |= count != counts[id];
+                    counts[id] = count;
+                }
+            }
+        }
+        for check in std::mem::take(&mut self.field_checks) {
+            if check.parts.iter().any(|p| unfielded_items(p, &counts) > 1) {
+                let message = format!(
+                    "the field {} can capture several items in one match",
+                    check.name
+                );
+                self.error(message, check.span);
+            }
+        }
     }
 
     fn check_name(&mut self, name: &Name) {
@@ -561,8 +633,20 @@ impl<'g> Resolver<'g> {
     }
 
     fn lower(&mut self, expr: &Expr, scope: Scope<'_>) -> ir::Expr {
+        self.lower_parts(expr, scope, None)
+    }
+
+    /// Lower an expression. With `parts`, also collect what one match of the enclosing field
+    /// captures from: the expression itself, or the parts inside it when it is a choice, a
+    /// repetition, a separated repetition, an error label or a parameter.
+    fn lower_parts(
+        &mut self,
+        expr: &Expr,
+        scope: Scope<'_>,
+        mut parts: Option<&mut Vec<ir::Expr>>,
+    ) -> ir::Expr {
         use ir::Expr as E;
-        match &expr.kind {
+        let lowered = match &expr.kind {
             ExprKind::Empty => E::Empty,
             ExprKind::Literal {
                 text,
@@ -589,7 +673,22 @@ impl<'g> Resolver<'g> {
                 self.atom(expr, E::Class(Box::new(set)), scope)
             }
             ExprKind::Any => self.atom(expr, E::Any, scope),
-            ExprKind::Reference { name, args } => self.reference(name, args, scope, expr.span),
+            ExprKind::Reference { name, args } => {
+                if let Some(arg) = scope.params.get(&name.text) {
+                    if !args.is_empty() {
+                        let message = format!("the parameter {} takes no arguments", name.text);
+                        self.error(message, expr.span);
+                    }
+                    let no_params = HashMap::new();
+                    let closed = Scope {
+                        params: &no_params,
+                        levels: None,
+                        ..scope
+                    };
+                    return self.lower_parts(arg, closed, parts);
+                }
+                self.reference(name, args, scope, expr.span)
+            }
             ExprKind::Sequence(items) => {
                 // A field captures a token only as its whole match, not next to others.
                 let scope = Scope {
@@ -598,7 +697,12 @@ impl<'g> Resolver<'g> {
                 };
                 E::Seq(items.iter().map(|e| self.lower(e, scope)).collect())
             }
-            ExprKind::Choice(items) => choice(items.iter().map(|e| self.lower(e, scope)).collect()),
+            ExprKind::Choice(items) => {
+                let items = items
+                    .iter()
+                    .map(|e| self.lower_parts(e, scope, parts.as_deref_mut()));
+                return choice(items.collect());
+            }
             ExprKind::Repeat {
                 expr: inner,
                 min,
@@ -610,23 +714,26 @@ impl<'g> Resolver<'g> {
                         expr.span,
                     );
                 }
-                E::Repeat {
-                    expr: Box::new(self.lower(inner, scope)),
+                return E::Repeat {
+                    expr: Box::new(self.lower_parts(inner, scope, parts)),
                     min: *min,
                     max: *max,
-                }
+                };
             }
             ExprKind::Separated {
                 item,
                 separator,
                 at_least_one,
             } => {
-                let item = self.lower(item, scope);
+                let item = self.lower_parts(item, scope, parts.as_deref_mut());
                 let unfielded = Scope {
                     in_field: false,
                     ..scope
                 };
                 let separator = self.lower(separator, unfielded);
+                if let Some(parts) = parts {
+                    parts.push(separator.clone());
+                }
                 let tail = E::Repeat {
                     expr: Box::new(E::Seq(vec![separator, item.clone()])),
                     min: 0,
@@ -634,14 +741,13 @@ impl<'g> Resolver<'g> {
                 };
                 let some = E::Seq(vec![item, tail]);
                 if *at_least_one {
-                    some
-                } else {
-                    E::Repeat {
-                        expr: Box::new(some),
-                        min: 0,
-                        max: Some(1),
-                    }
+                    return some;
                 }
+                return E::Repeat {
+                    expr: Box::new(some),
+                    min: 0,
+                    max: Some(1),
+                };
             }
             ExprKind::And(inner) | ExprKind::Not(inner) => {
                 let unfielded = Scope {
@@ -654,16 +760,23 @@ impl<'g> Resolver<'g> {
                     _ => E::Not(inner),
                 }
             }
-            ExprKind::Field { name, expr: inner } => E::Field {
-                field: self.field(name),
-                expr: Box::new(self.lower(
-                    inner,
-                    Scope {
-                        in_field: true,
-                        ..scope
-                    },
-                )),
-            },
+            ExprKind::Field { name, expr: inner } => {
+                let fielded = Scope {
+                    in_field: true,
+                    ..scope
+                };
+                let mut field_parts = Vec::new();
+                let inner = self.lower_parts(inner, fielded, Some(&mut field_parts));
+                self.field_checks.push(FieldCheck {
+                    name: name.text.clone(),
+                    span: expr.span,
+                    parts: field_parts,
+                });
+                E::Field {
+                    field: self.field(name),
+                    expr: Box::new(inner),
+                }
+            }
             ExprKind::Cut => E::Cut,
             ExprKind::Label { expr: inner, label } => {
                 let label = match label {
@@ -671,7 +784,7 @@ impl<'g> Resolver<'g> {
                     ErrorLabel::Named(name) => ir::Label::Named(name.text.clone()),
                 };
                 let label = self.label(label);
-                E::Choice(vec![self.lower(inner, scope), E::Throw(label)])
+                return E::Choice(vec![self.lower_parts(inner, scope, parts), E::Throw(label)]);
             }
             ExprKind::FlagOn { flag, expr: inner } => E::FlagOn {
                 flag: self.flag(flag),
@@ -711,7 +824,11 @@ impl<'g> Resolver<'g> {
                 );
                 E::Empty
             }
+        };
+        if let Some(parts) = parts {
+            parts.push(lowered.clone());
         }
+        lowered
     }
 
     /// A literal, class or `.` in the current mode: an anonymous token outside terminals.
@@ -752,22 +869,8 @@ impl<'g> Resolver<'g> {
         }
     }
 
+    /// A reference to a level or a rule. References to parameters are lowered by `lower_parts`.
     fn reference(&mut self, name: &Name, args: &[Expr], scope: Scope<'_>, span: Span) -> ir::Expr {
-        if let Some(arg) = scope.params.get(&name.text) {
-            if !args.is_empty() {
-                self.error(
-                    format!("the parameter {} takes no arguments", name.text),
-                    span,
-                );
-            }
-            let no_params = HashMap::new();
-            let closed = Scope {
-                params: &no_params,
-                levels: None,
-                ..scope
-            };
-            return self.lower(arg, closed);
-        }
         if let Some(&id) = scope.levels.and_then(|levels| levels.get(&name.text)) {
             if !args.is_empty() {
                 self.error(format!("the level {} takes no arguments", name.text), span);
