@@ -20,7 +20,7 @@ This creates `.venv`, builds the native module with maturin, installs the packag
 
 ## Checks
 
-Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux, Windows and macOS, the Python tests on the oldest and the newest supported Python, and the other checks on Linux.
+Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, and all other checks, with the Python tests on the development version, on Linux.
 
 | Check | Command |
 |---|---|

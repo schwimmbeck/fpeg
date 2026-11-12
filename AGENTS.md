@@ -55,7 +55,7 @@ scripts/              development helpers, among them the licence header check
 
 Setup needs rustup and uv. `uv sync` builds the native module and installs the package and the development tools into `.venv`. `uv run` rebuilds the module when a Rust source has changed. Development uses the Python version in `.python-version`.
 
-These checks are the bar, and CI treats warnings as errors. CI runs the Rust and Python tests on Linux, Windows and macOS, the Python tests on the oldest and the newest supported Python, the other checks on Linux, and a benchmark smoke run on Linux and Windows.
+These checks are the bar, and CI treats warnings as errors. CI runs the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, all other checks and the Python tests with the development version on Linux, and a benchmark smoke run on Linux, weekly on Windows too.
 
 ```sh
 cargo fmt --check
