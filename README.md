@@ -19,13 +19,10 @@ import fastpeg
 grammar = fastpeg.Grammar(r"""
     ?start: expr
 
-    expr: precedence {
-        | left=(@) op=("+" | "-") right=@   -> binary
-        ---
-        | left=(@) op=("*" | "/") right=@   -> binary
-        ---
-        | NUMBER
-        | "(" expr ")"
+    expr: %precedence {
+        sum: left=sum op=("+" | "-") right=product   -> binary
+        product: left=product op=("*" | "/") right=atom   -> binary
+        atom: NUMBER | "(" expr ")"
     }
 
     NUMBER: [0-9]+ ("." [0-9]+)?
