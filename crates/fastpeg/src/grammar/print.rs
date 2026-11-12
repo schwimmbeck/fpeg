@@ -147,16 +147,21 @@ pub(crate) fn expr_text(expr: &Expr) -> String {
 /// An expression printed at a position that allows the given strength.
 struct ExprText<'a>(&'a Expr, Strength);
 
+/// A sequence or choice of one item means the item, and prints as the item does.
+fn unwrapped(mut expr: &Expr) -> &Expr {
+    while let ExprKind::Sequence(items) | ExprKind::Choice(items) = &expr.kind {
+        match items.as_slice() {
+            [only] => expr = only,
+            _ => break,
+        }
+    }
+    expr
+}
+
 impl Display for ExprText<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let ExprText(mut expr, allowed) = *self;
-        // A sequence or choice of one item means the item, and prints as the item does.
-        while let ExprKind::Sequence(items) | ExprKind::Choice(items) = &expr.kind {
-            match items.as_slice() {
-                [only] => expr = only,
-                _ => break,
-            }
-        }
+        let ExprText(expr, allowed) = *self;
+        let expr = unwrapped(expr);
         if strength(expr) < allowed {
             write!(f, "({})", ExprText(expr, Strength::Choice))
         } else {
@@ -198,7 +203,16 @@ fn write_expr(f: &mut Formatter<'_>, expr: &Expr) -> fmt::Result {
         ExprKind::Sequence(items) => join(f, items, " ", Strength::Label),
         ExprKind::Choice(items) => join(f, items, " | ", Strength::Sequence),
         ExprKind::Repeat { expr, min, max } => {
-            write!(f, "{}", ExprText(expr, Strength::Suffix))?;
+            // `*` after `*` or `+` after `+` would read as the separated forms `**` and `++`.
+            let doubled = max.is_none()
+                && *min <= 1
+                && matches!(unwrapped(expr).kind, ExprKind::Repeat { min: inner, max: None, .. } if inner == *min);
+            let allowed = if doubled {
+                Strength::Primary
+            } else {
+                Strength::Suffix
+            };
+            write!(f, "{}", ExprText(expr, allowed))?;
             match (min, max) {
                 (0, Some(1)) => f.write_char('?'),
                 (0, None) => f.write_char('*'),

@@ -89,6 +89,11 @@ start: ("a"?)* "b"
 --- "aab"
 (start ~"a" ~"a" ~"b")
 
+=== a repetition of a repetition is not a separated repetition
+start: ("a"+)+ ("b"*)* "c"
+--- "aac"
+(start ~"a" ~"a" ~"c")
+
 === a case-insensitive literal ignores ASCII case
 start: "select"i
 --- "SeLeCt"
