@@ -1,4 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-FileCopyrightText: 2017 Erez Shinan
+# SPDX-FileCopyrightText: 2020 Michael Wayne Goodman
 # SPDX-License-Identifier: MIT
 
 """JSON baseline: the standard library, Lark and pe on one 2.5 MB file.
@@ -17,6 +19,7 @@ from lark import Lark, Transformer, v_args
 from pe.actions import Capture, Fail, Pack, Pair
 from pe.operators import Class, Star
 
+# Grammar and transformer after Lark's examples/json_parser.py.
 LARK_GRAMMAR = r"""
 ?start: value
 ?value: object | array | string

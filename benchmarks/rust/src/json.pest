@@ -1,7 +1,8 @@
+// SPDX-FileCopyrightText: pest contributors
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
-// The JSON grammar of the pest book, as the plan's first measurements used it.
+// The JSON grammar of the pest book, https://github.com/pest-parser/book, unchanged.
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 object = { "{" ~ "}" | "{" ~ pair ~ ("," ~ pair)* ~ "}" }
