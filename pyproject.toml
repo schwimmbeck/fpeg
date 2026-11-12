@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["maturin>=1.16,<2"]
+build-backend = "maturin"
+
+[project]
+name = "fastpeg"
+description = "A PEG parsing library with a native engine and a Lark-style Transformer"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Dominik Schwimmbeck" }]
+requires-python = ">=3.11"
+keywords = ["parser", "peg", "grammar", "parsing", "transformer"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Text Processing",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+
+[dependency-groups]
+dev = ["maturin>=1.16", "pyright>=1.1.414", "pytest>=9.2", "ruff>=0.17.5"]
+docs = ["furo>=2025.12.19", "myst-parser>=5.2", "sphinx>=9.2"]
+bench = [
+    "libcst>=1.9",
+    "lark>=1.3.1",
+    "pe>=0.6",
+    "pyperf>=2.11",
+    "tree-sitter>=0.26.1",
+    "tree-sitter-python>=0.25",
+]
+
+[tool.maturin]
+manifest-path = "crates/fastpeg-py/Cargo.toml"
+python-source = "python"
+module-name = "fastpeg._fastpeg"
+
+[tool.uv]
+# Rebuild the native module when the Rust sources change.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "crates/**/*.rs" },
+    { file = "crates/**/Cargo.toml" },
+]
+
+[tool.uv.dependency-groups]
+docs = { requires-python = ">=3.13" }
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["research"]
+
+[tool.ruff.lint]
+select = ["B", "D", "E", "F", "I", "RUF", "SIM", "UP", "W"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.pyright]
+include = ["python", "tests", "benchmarks", "docs", "scripts"]
+strict = ["python"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]

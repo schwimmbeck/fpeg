@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT
+
+from importlib.metadata import version
+
+import fastpeg
+
+
+def test_native_module_reports_the_installed_package_version() -> None:
+    assert fastpeg.__version__ == version("fastpeg")
