@@ -1,0 +1,73 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+//! Lines and columns of a text.
+
+/// The start offsets of the lines of a text. Line breaks are `\r\n`, `\n` and `\r`.
+#[derive(Clone, Debug)]
+pub struct LineIndex {
+    starts: Vec<usize>,
+}
+
+impl LineIndex {
+    /// Index the lines of `text`.
+    pub fn new(text: &str) -> LineIndex {
+        let bytes = text.as_bytes();
+        let mut starts = vec![0];
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\n' => starts.push(i + 1),
+                b'\r' if bytes.get(i + 1) == Some(&b'\n') => {
+                    starts.push(i + 2);
+                    i += 1;
+                }
+                b'\r' => starts.push(i + 1),
+                _ => {}
+            }
+            i += 1;
+        }
+        LineIndex { starts }
+    }
+
+    /// The line of a byte offset, counting from 0.
+    pub fn line(&self, offset: usize) -> usize {
+        self.starts.partition_point(|&start| start <= offset) - 1
+    }
+
+    /// The start offset of the line that holds `offset`.
+    pub fn line_start(&self, offset: usize) -> usize {
+        self.starts[self.line(offset)]
+    }
+
+    /// The column of a byte offset, counting from 0: one per code point from the start of the
+    /// line, with a tab advancing to the next multiple of `tab_width`.
+    pub fn column(&self, text: &str, offset: usize, tab_width: u32) -> u32 {
+        let start = self.line_start(offset);
+        let mut column = 0u32;
+        for c in text.get(start..offset).unwrap_or("").chars() {
+            column = match c {
+                '\t' if tab_width > 0 => (column / tab_width + 1) * tab_width,
+                _ => column + 1,
+            };
+        }
+        column
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LineIndex;
+
+    #[test]
+    fn columns_count_code_points_and_expand_tabs_after_any_line_break() {
+        let text = "ab\r\n\täx\rcd\ny";
+        let lines = LineIndex::new(text);
+        let x = text.find('x').unwrap_or_default();
+        assert_eq!(lines.line(x), 1);
+        assert_eq!(lines.column(text, x, 8), 9);
+        assert_eq!(lines.column(text, x, 4), 5);
+        assert_eq!(lines.line(text.find('d').unwrap_or_default()), 2);
+        assert_eq!(lines.column(text, text.len(), 8), 1);
+    }
+}

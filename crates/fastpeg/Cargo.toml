@@ -14,5 +14,16 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+# The reference interpreter, for tests and fuzzing only.
+reference = []
+
+[dependencies]
+unicode-ident = "1.0.27"
+
+[dev-dependencies]
+# Turns on the reference interpreter for this crate's own tests.
+fastpeg = { path = ".", features = ["reference"] }
+
 [lints]
 workspace = true

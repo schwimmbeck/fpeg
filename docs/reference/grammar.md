@@ -151,8 +151,8 @@ A successful parse produces a tree of nodes and tokens. Every token keeps its ex
 ### Nodes and tokens
 
 - A syntactic or lexical rule produces a node whose kind is the rule's name. Its children are what its body produces.
-- A token is produced by each terminal used in a syntactic or lexical rule, and by each literal, class, property or `.` written in one. Inside a terminal nothing produces a token of its own: the terminal's whole match is one token.
-- Tokens of literals, classes, properties, `.` and hidden terminals `_NAME` are hidden. Views of the tree skip hidden tokens, but the tree keeps them.
+- A token is produced by each terminal used in a syntactic or lexical rule, and by each literal, class, property, `.` or `%ref` written in one. Inside a terminal nothing produces a token of its own: the terminal's whole match is one token.
+- Tokens of literals, classes, properties, `.`, `%ref` and hidden terminals `_NAME` are hidden. Views of the tree skip hidden tokens, but the tree keeps them.
 
 ### Aliases
 
@@ -174,7 +174,7 @@ call: func=NAME "(" args=(expr ** ",") ")"
 binary: left=term op=("+" | "-") right=term
 ```
 
-- A field makes the tokens written directly inside it visible, as `op` above shows.
+- A field captures the token of a literal, class, property, `.` or hidden terminal when that token is the field's whole match, as `op` above shows: directly, or through choices and repetitions. Tokens that stand in a sequence with others, a separator or a lookahead stay hidden, so `args=(expr ** ",")` holds the expressions and not the commas.
 - The cardinality of a field is fixed by the grammar: one value for `x=e`, a value or none for `x=e?`, a list for `x=e*`, `x=e+`, `x=e{n,m}`, a separated repetition, or a label used more than once in the rule.
 - A field captures one item per match. A field whose expression may produce several visible items in one match, such as `x=(A B)`, is an error.
 
@@ -217,11 +217,11 @@ A grammar without `%ignore` skips nothing.
 
 | Directive | Meaning |
 |---|---|
-| `%word e` | the word characters, usually a class. Default `[A-Za-z0-9_]` |
+| `%word e` | the word characters, a class, and word boundaries for literals |
 | `%keywords soft "match" "case"` | literals that remain valid identifiers |
 
-- A literal in a syntactic or lexical rule whose last character is a word character does not match when a word character follows. `"if"` never matches the start of `iffy`.
-- The reserved words are the literals of the syntactic and lexical rules that consist only of word characters, minus the soft keywords. A terminal marked `@reserved` fails where its match is a reserved word. Case-insensitive literals reserve every spelling.
+- In a grammar with `%word`, a literal in a syntactic or lexical rule whose last character is a word character does not match when a word character follows. `"if"` never matches the start of `iffy`. Without `%word`, literals match as written.
+- The reserved words are the literals of the syntactic and lexical rules that consist only of word characters, minus the soft keywords. Without `%word`, the word characters for this purpose are `[A-Za-z0-9_]`. A terminal marked `@reserved` fails where its match is a reserved word. Case-insensitive literals reserve every spelling.
 
 ## Context
 

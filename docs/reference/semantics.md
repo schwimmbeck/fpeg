@@ -46,11 +46,11 @@ The translation runs in this order.
 2. **Precedence blocks.** A rule `r: %precedence { L1 ... Ln }` becomes one rule per level. The rule of level `Lk` is `choice(A1, ..., Aj, call(Lk+1))`, with the alternatives `A` of that level and the fall-through to the next level, which the last level does not have. A reference to a level name inside the block calls that level's rule. The rule `r` itself becomes `call(L1)`.
 3. **Sugar.** `e?` is `rep(e, 0, 1)`, `e*` is `rep(e, 0, ∞)`, `e+` is `rep(e, 1, ∞)`. `e ** s` is `rep(seq(e, rep(seq(s, e), 0, ∞)), 0, 1)` and `e ++ s` is `seq(e, rep(seq(s, e), 0, ∞))`. `e ^ l` is `choice(e, throw(l))`, where a message forms a label of its own. `()` is `ε`.
 4. **Modes.** Every expression is translated in the mode of the rule whose body it ends up in: *syntactic* for syntactic rules, *lexical* for lexical rules, *plain* for terminals and the skip expression.
-   - In syntactic mode, a literal, class, property or `.` becomes `seq(skip, token(k, h, a))` with the atom `a`, a reference to a terminal `T` becomes `seq(skip, token(T, h, call(T)))`, and a reference to a lexical rule becomes `seq(skip, call(R))`.
+   - In syntactic mode, a literal, class, property, `.` or `ref(x)` becomes `seq(skip, token(k, h, a))` with the atom `a`, a reference to a terminal `T` becomes `seq(skip, token(T, h, call(T)))`, and a reference to a lexical rule becomes `seq(skip, call(R))`.
    - In lexical mode the same holds without the `skip`.
    - In plain mode atoms stay atoms and a reference to a terminal is `call(T)`. References to syntactic or lexical rules are errors.
-   - The kind `k` of an anonymous token is the atom as written, normalized: `"+"`, `[0-9]`, `.`. A token is hidden (`h`) if it comes from an atom or a hidden terminal and is not written directly inside a field.
-   - A literal token whose last character is a word character becomes `token(k, h, seq(a, word_end))`.
+   - The kind `k` of an anonymous token is the atom as written, normalized: `"+"`, `[0-9]`, `.`. A token is hidden (`h`) if it comes from an atom or a hidden terminal and is not captured by a field. A field captures the atoms and terminal references that are its whole match: reached from the field through choices, repetitions and the items of separated repetitions only, not through a sequence of several parts, a separator or a lookahead.
+   - In a grammar with `%word`, a literal token whose last character is a word character becomes `token(k, h, seq(a, word_end))`.
    - `%indent` and `%same` carry `s = true` in syntactic mode and `s = false` otherwise.
 5. **Rules.** The body of a terminal marked `@reserved` becomes `unreserved(body)`. In a syntactic or lexical rule `r`, each top-level alternative `A` becomes `node(alias, A)` when it has an alias, and otherwise `node(r, A)`, `transparent(r, A)` for a transparent rule, or `A` alone for an inlined rule or a precedence level.
 6. **Fields.** `label=e` becomes `field(f, e)`.
@@ -102,7 +102,7 @@ A rule that is not left recursive gives the same result as matching its body onc
 
 - `skip` matches the skip expression at `i`, in plain mode, with the current context, then again where it ended, as long as it succeeds and consumes input. Its result is success at the last end, without items. A grammar without `%ignore` has an empty skip expression, so `skip` matches the empty string.
 - `token(k, h, e)` matches `e`, drops what `e` produces, and on success produces one token of kind `k` from `i` to the end of the match, hidden if `h`.
-- `word_end` succeeds without consuming input unless a word character follows at `i`. The word characters are those of `%word`, by default `[A-Za-z0-9_]`.
+- `word_end` succeeds without consuming input unless a word character follows at `i`. The word characters are those of `%word`, and `[A-Za-z0-9_]` for reserved words in a grammar without `%word`.
 - `unreserved(e)` matches `e` and fails when the matched text is a reserved word. The reserved words are the texts of literals that occur as tokens of syntactic or lexical rules and consist only of word characters, minus the soft keywords. A case-insensitive literal reserves every ASCII spelling of its text.
 
 ## Context
@@ -134,6 +134,7 @@ To parse an input with a start rule `S`, the expression for a reference to `S` i
 A parse that does not succeed fails at the *farthest failure position*, with an *expected set*:
 
 - A `token` expression that fails at position `p` records `p`, outside of `not`, `and` and the skip expression. Of all recorded positions the largest is the farthest failure position. The expected set holds the kinds of the tokens that failed there, by display name where the grammar gives one.
+- An `indent` or `same` that fails records the position it checked, expecting indentation.
 - If the input does not end where the parse ended, that position counts as a failure that expects the end of the input.
 - A parse that ends in an error fails with that error instead.
 
