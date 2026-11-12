@@ -43,7 +43,7 @@ cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warn
 
 ## Documentation
 
-The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. The build output lands in `docs/_build/html`.
+The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. `cargo test` reads every `fpeg` grammar block, and resolves the ones that define a `start` rule. The build output lands in `docs/_build/html`.
 
 ## Benchmarks
 
