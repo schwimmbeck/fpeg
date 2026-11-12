@@ -4,7 +4,7 @@
 //! fastpeg compiles a parsing expression grammar, given as text at runtime, to bytecode for a
 //! parsing machine and builds a lossless parse tree with exact source spans.
 //!
-//! The crate is at its first milestone and holds no parser yet.
+//! The crate holds no parser yet.
 
 // The core returns errors as values and never panics on any grammar or input.
 #![cfg_attr(

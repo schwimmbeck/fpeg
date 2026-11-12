@@ -2,7 +2,7 @@
 
 A general-purpose PEG parsing library with a native engine and a Lark-style `Transformer`.
 
-> fastpeg is in the planning stage. Nothing can be installed yet. This page describes what is being built.
+> fastpeg is at an early stage and does not parse anything yet. Nothing can be installed. This page describes what is being built.
 
 ## The idea
 
@@ -60,7 +60,7 @@ The goal for speed is to be the fastest PEG parser that can be used from Python 
 
 ## Status
 
-Design and planning. The first milestones build the core engine, the Python binding and the documentation side by side.
+Early development. The first milestone, the foundations, is done. Next come the written specification of the grammar language, then the core engine and the Python binding. See the [roadmap](docs/roadmap.md).
 
 ## License
 

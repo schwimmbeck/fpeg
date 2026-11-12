@@ -3,7 +3,7 @@
 
 """A PEG parsing library with a native engine and a Lark-style Transformer.
 
-The package is at its first milestone and holds no parser yet.
+The package holds no parser yet.
 """
 
 from fastpeg._fastpeg import __version__

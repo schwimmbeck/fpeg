@@ -8,7 +8,7 @@ fastpeg is a general-purpose parsing library for Parsing Expression Grammars (PE
 - From Python you read that tree or turn it into your own objects with a `Transformer`, a class with one method per rule.
 
 ```{note}
-fastpeg is at its first milestone. The build, the checks and the benchmark harness are in place, the parser is not. The [roadmap](roadmap.md) says what comes next.
+fastpeg is at an early stage and does not parse anything yet. The [roadmap](roadmap.md) says what comes next.
 ```
 
 ## Install
