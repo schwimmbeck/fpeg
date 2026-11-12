@@ -6,6 +6,12 @@
 //! It runs the core language as the semantics define it, one case per core expression, and is
 //! the oracle every engine and optimization is compared against. It is compiled only for tests
 //! and fuzzing, behind the `reference` feature.
+//!
+//! One shortcut keeps deep grammars tractable without changing a result: a rule call whose
+//! evaluation consulted no left-recursion table entry from outside itself depends only on the
+//! rule, the position, the context and whether failures are being recorded, so its result is
+//! remembered under those. Without it, every operator level of a precedence block re-parses
+//! the levels below it in each growing step, which is exponential in the number of levels.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -177,16 +183,28 @@ enum Abort {
 
 type Eval = Result<Outcome, Abort>;
 
+/// A rule, a position and a context: what a rule call's result depends on.
+type CallKey = (RuleId, usize, Ctx);
+
+/// The result of a rule call: the end and the items, or failure.
+type CallResult = Option<(usize, Vec<Item>)>;
+
 struct LrEntry {
-    result: Option<(usize, Vec<Item>)>,
+    result: CallResult,
     used: bool,
+    /// How many entries were active when this one was made. Entries form a stack.
+    depth: usize,
 }
 
 struct Interp<'a> {
     g: &'a ir::Grammar,
     input: &'a str,
     lines: LineIndex,
-    lr: HashMap<(RuleId, usize, Ctx), LrEntry>,
+    lr: HashMap<CallKey, LrEntry>,
+    /// Results of calls that depend on no outside table entry, keyed with the quiet state.
+    memo: HashMap<(CallKey, bool), CallResult>,
+    /// The smallest depth of a table entry the evaluation in progress consulted.
+    dependency: usize,
     farthest: Option<usize>,
     expected: BTreeSet<String>,
     quiet: u32,
@@ -202,6 +220,8 @@ impl<'a> Interp<'a> {
             input,
             lines: LineIndex::new(input),
             lr: HashMap::new(),
+            memo: HashMap::new(),
+            dependency: usize::MAX,
             farthest: None,
             expected: BTreeSet::new(),
             quiet: 0,
@@ -324,15 +344,12 @@ impl<'a> Interp<'a> {
         let key = (rule, pos, ctx.clone());
         if let Some(entry) = self.lr.get_mut(&key) {
             entry.used = true;
-            return match &entry.result {
-                None => Interp::fail(),
-                Some((end, items)) => Ok(Outcome::Ok(Success {
-                    end: *end,
-                    items: items.clone(),
-                    captures: ctx.captures.clone(),
-                    cut: false,
-                })),
-            };
+            self.dependency = self.dependency.min(entry.depth);
+            return Ok(Interp::call_outcome(entry.result.clone(), ctx));
+        }
+        let memo_key = (key.clone(), self.quiet > 0);
+        if let Some(result) = self.memo.get(&memo_key) {
+            return Ok(Interp::call_outcome(result.clone(), ctx));
         }
         if self.depth >= self.limits.max_depth {
             return Err(Abort::Limit(Limit::Depth));
@@ -340,19 +357,31 @@ impl<'a> Interp<'a> {
         let Some(body) = self.g.rules.get(rule.0 as usize).map(|r| &r.body) else {
             return Interp::fail();
         };
+        let height = self.lr.len();
         self.lr.insert(
             key.clone(),
             LrEntry {
                 result: None,
                 used: false,
+                depth: height,
             },
         );
+        let outer_dependency = std::mem::replace(&mut self.dependency, usize::MAX);
         self.depth += 1;
         let result = self.grow(&key, body, pos, ctx);
         self.depth -= 1;
         self.lr.remove(&key);
+        let inner_dependency = self.dependency;
+        self.dependency = outer_dependency.min(inner_dependency);
         let best = result?;
-        Ok(match best {
+        if inner_dependency >= height {
+            self.memo.insert(memo_key, best.clone());
+        }
+        Ok(Interp::call_outcome(best, ctx))
+    }
+
+    fn call_outcome(result: CallResult, ctx: &Ctx) -> Outcome {
+        match result {
             None => Outcome::Fail { cut: false },
             Some((end, items)) => Outcome::Ok(Success {
                 end,
@@ -360,7 +389,7 @@ impl<'a> Interp<'a> {
                 captures: ctx.captures.clone(),
                 cut: false,
             }),
-        })
+        }
     }
 
     /// Match a rule body, then match it again with the table entry holding the last result for
@@ -368,11 +397,11 @@ impl<'a> Interp<'a> {
     /// left recursive here, and matching again would give the same result.
     fn grow(
         &mut self,
-        key: &(RuleId, usize, Ctx),
+        key: &CallKey,
         body: &ir::Expr,
         pos: usize,
         ctx: &Ctx,
-    ) -> Result<Option<(usize, Vec<Item>)>, Abort> {
+    ) -> Result<CallResult, Abort> {
         let Outcome::Ok(first) = self.eval(body, pos, ctx)? else {
             return Ok(None);
         };
