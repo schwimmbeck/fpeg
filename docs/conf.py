@@ -14,7 +14,7 @@ author = "Dominik Schwimmbeck"
 copyright = "2026 Dominik Schwimmbeck"
 release = importlib.metadata.version("fastpeg")
 
-extensions = ["myst_parser", "run_code_blocks"]
+extensions = ["myst_parser", "run_code_blocks", "fpeg_lexer"]
 source_suffix = {".md": "markdown"}
 exclude_patterns = ["_build"]
 

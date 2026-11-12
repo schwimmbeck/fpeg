@@ -21,9 +21,16 @@ import fastpeg
 print(fastpeg.__version__)
 ```
 
+## Reference
+
+- [Grammar language](reference/grammar.md): the syntax of grammars.
+- [Semantics](reference/semantics.md): what a grammar means.
+
 ```{toctree}
 :hidden:
 
 roadmap
+reference/grammar
+reference/semantics
 development
 ```
