@@ -5,7 +5,8 @@
 // a line, and f-strings and t-strings nest inside replacement fields, with any quotes inside
 // them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
 // superset that a later check narrows: indentation may mix tabs and spaces where Python finds
-// it ambiguous, and the targets of assignments, deletions and loops take primary expressions.
+// it ambiguous, and the targets of assignments, deletions, loops and with items take primary
+// expressions.
 // Starred items and comprehension clauses call the levels of the expression block that Python
 // takes there.
 
