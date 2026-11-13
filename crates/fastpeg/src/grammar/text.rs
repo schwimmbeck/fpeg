@@ -456,9 +456,11 @@ impl<'t> Converter<'t> {
                 Some(c @ ('[' | ']' | '-' | '^')) if in_class => Some(c),
                 Some('x') => {
                     let hex: String = chars.by_ref().take(2).collect();
+                    // from_str_radix would also take a sign.
+                    let digits = hex.len() == 2 && hex.chars().all(|c| c.is_ascii_hexdigit());
                     u32::from_str_radix(&hex, 16)
                         .ok()
-                        .filter(|_| hex.len() == 2)
+                        .filter(|_| digits)
                         .and_then(char::from_u32)
                 }
                 Some('u') => {
@@ -467,7 +469,8 @@ impl<'t> Converter<'t> {
                         .strip_prefix('{')
                         .and_then(|r| r.split_once('}'))
                         .map(|(hex, _)| hex)
-                        .filter(|hex| (1..=6).contains(&hex.len()));
+                        .filter(|hex| (1..=6).contains(&hex.len()))
+                        .filter(|hex| hex.chars().all(|c| c.is_ascii_hexdigit()));
                     match digits {
                         Some(hex) => {
                             let value = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32);
@@ -637,7 +640,11 @@ fn named_constant(text: &str) -> Option<Constant> {
 fn escape_length(rest: &str) -> usize {
     let mut chars = rest.char_indices().skip(1);
     match chars.next() {
-        Some((i, 'x')) => (i + 3).min(rest.len()),
+        // Only ASCII digits belong to it, so the length ends on a character boundary.
+        Some((i, 'x')) => {
+            let digits = rest[i + 1..].chars().take(2);
+            i + 1 + digits.take_while(char::is_ascii_hexdigit).count()
+        }
         Some((i, 'u')) => rest[i..]
             .find('}')
             .map_or(rest.len(), |close| i + close + 1),

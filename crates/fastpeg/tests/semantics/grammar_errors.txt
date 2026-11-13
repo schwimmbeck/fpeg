@@ -30,6 +30,16 @@ inner: "b"
 --- grammar
 cannot use the rule inner
 
+=== a hex escape in a class needs two hex digits
+start: [\xaé]
+--- grammar
+invalid escape
+
+=== a hex escape takes no sign
+start: "\x+a"
+--- grammar
+invalid escape
+
 === a transparent rule cannot have fields
 ?start: x="a"
 --- grammar
