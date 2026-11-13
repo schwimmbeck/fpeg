@@ -3,6 +3,8 @@
 
 import copy
 import pickle
+from collections.abc import Callable
+from typing import Any
 
 import fpeg
 import pytest
@@ -41,6 +43,35 @@ def test_the_children_of_a_view_keep_their_identity() -> None:
     assert tree.children[0] is tree.children[0]
 
 
+def test_the_children_of_a_view_read_as_a_list_and_refuse_changes() -> None:
+    call = first_call("f(a, b)")
+    children = call.children
+    assert isinstance(children, list)
+    assert children == ["f", "a", "b"]
+    changes: list[Callable[[list[Any]], object]] = [
+        lambda c: c.append("x"),
+        lambda c: c.extend(["x"]),
+        lambda c: c.insert(0, "x"),
+        lambda c: c.remove("a"),
+        lambda c: c.pop(),
+        lambda c: c.clear(),
+        lambda c: c.sort(),
+        lambda c: c.reverse(),
+        lambda c: c.__setitem__(0, "x"),
+        lambda c: c.__delitem__(0),
+        lambda c: c.__iadd__(["x"]),
+        lambda c: c.__imul__(2),
+    ]
+    for change in changes:
+        with pytest.raises(TypeError, match="cannot change"):
+            change(children)
+    assert call.children == ["f", "a", "b"]
+    # A copy is a tree built in Python, whose children change freely.
+    shallow = copy.copy(call)
+    shallow.children.append("x")
+    assert shallow.children == ["f", "a", "b", "x"]
+
+
 def test_meta_and_token_positions_count_code_points() -> None:
     call = first_call("ä(b) ")
     meta = call.meta
@@ -77,6 +108,9 @@ def test_trees_built_in_python_equal_views_of_the_same_shape() -> None:
     assert hash(call) == hash(built)
     assert call != fpeg.Tree("call", ["f"])
     assert call != "call"
+    # An object equals itself, as in Python's lists.
+    odd = fpeg.Tree("x", [float("nan")])
+    assert odd == odd
 
 
 def test_pretty_writes_lark_s_layout_with_fields() -> None:

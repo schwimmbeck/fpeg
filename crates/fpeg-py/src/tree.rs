@@ -17,7 +17,8 @@ use pyo3::PyTypeInfo;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
-use pyo3::types::{PyIterator, PyList, PyTuple};
+use pyo3::sync::PyOnceLock;
+use pyo3::types::{PyIterator, PyList, PyTuple, PyType};
 
 use crate::grammar::GrammarCore;
 use crate::token::{self, Positions};
@@ -188,6 +189,9 @@ enum Inner {
     },
 }
 
+/// The type of the children of a view, `fpeg._tree.Children`, found on first need.
+static CHILDREN_TYPE: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+
 /// A node of a parse tree, as Lark's `Tree`: `data`, `children` and `meta`.
 ///
 /// A tree from a parse is a view of the native tree, and its children are made when asked for.
@@ -243,7 +247,10 @@ impl Tree {
         };
         let node = (parsed.tree.node(*index as usize))
             .ok_or_else(|| PyValueError::new_err("a bug in fpeg: a view past the end of a tree"))?;
-        let children = PyList::empty(py);
+        // A list that refuses changes, filled through the C API, which its methods do not see.
+        let children = (CHILDREN_TYPE.import(py, "fpeg._tree", "Children")?)
+            .call0()?
+            .cast_into::<PyList>()?;
         for child in node
             .children()
             .into_iter()
@@ -762,6 +769,10 @@ fn trees_equal(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<bool> {
             }
             continue;
         };
+        // An object equals itself, as in Python's lists, also a NaN.
+        if x.is(&y) {
+            continue;
+        }
         match (x.cast::<Tree>(), y.cast::<Tree>()) {
             (Ok(s), Ok(t)) => {
                 if same_node(s, t) {
