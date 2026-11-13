@@ -2,7 +2,7 @@
 
 fastpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 is done. Work continues with M1.
+M0 and M1 are done. Work continues with M2.
 
 ## M0 Foundations
 
