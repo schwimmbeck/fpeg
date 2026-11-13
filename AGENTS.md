@@ -15,7 +15,7 @@ fastpeg is a general-purpose parsing library for Parsing Expression Grammars (PE
 - Python is the first binding. It exposes the tree lazily and runs a `Transformer`, a class with one method per rule, after the parse.
 - Grammar analysis reports diagnostics with stable codes. A command-line checker and later a language server use the same diagnostics.
 
-Status: milestones M0 and M1 are done. M1 brought the normative drafts of the grammar language and its semantics, the grammar model and builder, the reference interpreter with the text front end, and the acceptance grammars with their samples. There is no engine yet, so grammars run on the reference interpreter, which is compiled only for tests. M2 builds the engine. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`) appear with the milestone that needs them.
+Status: milestones M0 and M1 are done, M2 is under way. M1 brought the normative drafts of the grammar language and its semantics, the grammar model and builder, the reference interpreter with the text front end, and the acceptance grammars with their samples. M2 builds the engine: so far the parsing machine runs grammars without left recursion, cuts, columns and captures, and the reference interpreter, compiled only for tests, stays the definition it is compared with. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`) appear with the milestone that needs them.
 
 ## Principles
 

@@ -4,9 +4,10 @@
 //! fastpeg compiles a parsing expression grammar, given as text at runtime, to bytecode for a
 //! parsing machine and builds a lossless parse tree with exact source spans.
 //!
-//! The crate holds no parser yet. It has the grammar model with its [`builder`], the parse tree,
-//! and, behind the `reference` feature, the reference interpreter that defines what a grammar
-//! means.
+//! A [`Grammar`] is read from text or built with the [`builder`], and a [`Parser`] compiles it
+//! for the machine and parses inputs into a [`Tree`]. The machine does not run left recursion,
+//! cuts, columns and captures yet. Behind the `reference` feature, the reference interpreter
+//! defines what a grammar means, and the tests compare the machine with it.
 
 // The core returns errors as values and never panics on any grammar or input.
 #![cfg_attr(
@@ -14,6 +15,7 @@
     warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)
 )]
 
+mod analysis;
 mod grammar;
 mod ir;
 mod lines;
@@ -22,6 +24,7 @@ mod parse;
 mod reference;
 mod resolve;
 mod tree;
+mod vm;
 
 pub use grammar::builder;
 pub use grammar::{
@@ -34,6 +37,7 @@ pub use parse::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limit, Limits, ParseError,
 #[cfg(feature = "reference")]
 pub use reference::Reference;
 pub use tree::{FieldId, KindId, Names, NodeRef, Tree};
+pub use vm::Parser;
 
 /// The version of this crate, which the command line and the Python package report.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

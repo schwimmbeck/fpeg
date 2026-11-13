@@ -133,13 +133,6 @@ fn write_alternatives(
 }
 
 /// The canonical text of an expression, as it would appear in a grammar.
-#[cfg_attr(
-    not(feature = "reference"),
-    expect(
-        dead_code,
-        reason = "the resolver uses it, which serves only the reference interpreter yet"
-    )
-)]
 pub(crate) fn expr_text(expr: &Expr) -> String {
     ExprText(expr, Strength::Choice).to_string()
 }

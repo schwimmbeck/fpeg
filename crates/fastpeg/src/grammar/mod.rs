@@ -294,13 +294,6 @@ impl Expr {
 
     /// How many expressions this one holds, itself included, and how deeply they nest, this one
     /// being at depth 1. It does not recurse, so it is safe on expressions of any depth.
-    #[cfg_attr(
-        not(feature = "reference"),
-        expect(
-            dead_code,
-            reason = "the resolver and the text front end serve only the reference interpreter yet"
-        )
-    )]
     pub(crate) fn measure(&self) -> (usize, usize) {
         let mut pending = vec![(self, 1)];
         let (mut size, mut depth) = (0, 0);

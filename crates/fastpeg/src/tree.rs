@@ -9,14 +9,6 @@
 //! the node. The tree is lossless: every matched byte lies in a token, except skipped text,
 //! which lies in the gaps between tokens.
 
-#![cfg_attr(
-    not(feature = "reference"),
-    expect(
-        dead_code,
-        reason = "only the reference interpreter builds trees until the engine exists"
-    )
-)]
-
 use std::fmt::Write;
 use std::sync::Arc;
 
@@ -68,93 +60,10 @@ pub struct Tree {
     names: Arc<Names>,
 }
 
-/// An item as a parser produces it, before the tree is laid out.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Item {
-    Token {
-        kind: KindId,
-        field: FieldId,
-        hidden: bool,
-        start: u32,
-        end: u32,
-    },
-    Node {
-        kind: KindId,
-        field: FieldId,
-        start: u32,
-        end: u32,
-        children: Vec<Item>,
-    },
-}
-
-impl Item {
-    pub(crate) fn field(&self) -> FieldId {
-        match self {
-            Item::Token { field, .. } | Item::Node { field, .. } => *field,
-        }
-    }
-
-    pub(crate) fn set_field(&mut self, value: FieldId) {
-        match self {
-            Item::Token { field, .. } | Item::Node { field, .. } => *field = value,
-        }
-    }
-
-    pub(crate) fn is_hidden_token(&self) -> bool {
-        matches!(self, Item::Token { hidden: true, .. })
-    }
-
-    /// How many items `items` holds at any depth, counted without recursion.
-    pub(crate) fn count(items: &[Item]) -> u64 {
-        let mut pending = vec![items];
-        let mut count = 0;
-        while let Some(items) = pending.pop() {
-            count += items.len() as u64;
-            for item in items {
-                if let Item::Node { children, .. } = item {
-                    pending.push(children);
-                }
-            }
-        }
-        count
-    }
-
-    /// The span of a node over `children`: from the first token to the last, at any depth,
-    /// or empty at `at` when there is no token.
-    pub(crate) fn span_of(children: &[Item], at: u32) -> (u32, u32) {
-        let mut span: Option<(u32, u32)> = None;
-        for child in children {
-            let (start, end, has_token) = match child {
-                Item::Token { start, end, .. } => (*start, *end, true),
-                Item::Node {
-                    start,
-                    end,
-                    children,
-                    ..
-                } => (*start, *end, contains_token(children)),
-            };
-            if has_token {
-                span = Some(match span {
-                    None => (start, end),
-                    Some((first, _)) => (first, end),
-                });
-            }
-        }
-        span.unwrap_or((at, at))
-    }
-}
-
-fn contains_token(items: &[Item]) -> bool {
-    items.iter().any(|item| match item {
-        Item::Token { .. } => true,
-        Item::Node { children, .. } => contains_token(children),
-    })
-}
-
 impl Tree {
-    /// Lay out items, in order, as the top level of a tree.
-    pub(crate) fn from_items(items: Vec<Item>, names: Arc<Names>) -> Tree {
-        let mut tree = Tree {
+    /// A tree without entries, for an engine to append to in postorder.
+    pub(crate) fn empty(names: Arc<Names>) -> Tree {
+        Tree {
             kinds: Vec::new(),
             flags: Vec::new(),
             starts: Vec::new(),
@@ -162,38 +71,32 @@ impl Tree {
             sizes: Vec::new(),
             fields: Vec::new(),
             names,
-        };
-        for item in items {
-            tree.push(item);
         }
-        tree
     }
 
-    fn push(&mut self, item: Item) -> u32 {
-        match item {
-            Item::Token {
-                kind,
-                field,
-                hidden,
-                start,
-                end,
-            } => {
-                let flags = TOKEN | if hidden { HIDDEN } else { 0 };
-                self.append(kind, flags, start, end, 1, field);
-                1
-            }
-            Item::Node {
-                kind,
-                field,
-                start,
-                end,
-                children,
-            } => {
-                let size = 1 + children.into_iter().map(|c| self.push(c)).sum::<u32>();
-                self.append(kind, 0, start, end, size, field);
-                size
-            }
-        }
+    /// Append a token.
+    pub(crate) fn push_token(
+        &mut self,
+        kind: KindId,
+        hidden: bool,
+        start: u32,
+        end: u32,
+        field: FieldId,
+    ) {
+        let flags = TOKEN | if hidden { HIDDEN } else { 0 };
+        self.append(kind, flags, start, end, 1, field);
+    }
+
+    /// Append a node whose subtree, itself included, is the last `size` entries.
+    pub(crate) fn push_node(
+        &mut self,
+        kind: KindId,
+        start: u32,
+        end: u32,
+        size: u32,
+        field: FieldId,
+    ) {
+        self.append(kind, 0, start, end, size, field);
     }
 
     fn append(&mut self, kind: KindId, flags: u8, start: u32, end: u32, size: u32, field: FieldId) {

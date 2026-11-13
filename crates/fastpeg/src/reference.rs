@@ -16,12 +16,19 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
+use std::sync::Arc;
 
 use crate::grammar::{Grammar, GrammarError};
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
-use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
-use crate::tree::{FieldId, Item, KindId, Tree};
+use crate::parse::{END_OF_INPUT, Limit, Limits, ParseError, ParseErrorKind};
+use crate::tree::{FieldId, KindId, Names, Tree};
+
+/// Evaluation steps a parse may take by default. Work beyond a plain step counts too, so the
+/// limit bounds the time a parse takes: copying a remembered result counts one step per item,
+/// and capturing, comparing, looking up or scanning text counts one per byte. About ten
+/// seconds, enough for a megabyte of Python.
+const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
 const STACK_BYTES: usize = 256 * 1024 * 1024;
@@ -35,8 +42,128 @@ const MAX_NESTED_EVALUATIONS: u32 = 10_000;
 /// What a failed column check expects, in an expected set.
 const INDENTATION: &str = "indentation";
 
-/// What a parse that stopped before the end of the input expects, in an expected set.
-const END_OF_INPUT: &str = "end of input";
+/// An item as the interpreter produces it, before the tree is laid out.
+#[derive(Clone, Debug, PartialEq)]
+enum Item {
+    Token {
+        kind: KindId,
+        field: FieldId,
+        hidden: bool,
+        start: u32,
+        end: u32,
+    },
+    Node {
+        kind: KindId,
+        field: FieldId,
+        start: u32,
+        end: u32,
+        children: Vec<Item>,
+    },
+}
+
+impl Item {
+    fn field(&self) -> FieldId {
+        match self {
+            Item::Token { field, .. } | Item::Node { field, .. } => *field,
+        }
+    }
+
+    fn set_field(&mut self, value: FieldId) {
+        match self {
+            Item::Token { field, .. } | Item::Node { field, .. } => *field = value,
+        }
+    }
+
+    fn is_hidden_token(&self) -> bool {
+        matches!(self, Item::Token { hidden: true, .. })
+    }
+
+    /// How many items `items` holds at any depth, counted without recursion.
+    fn count(items: &[Item]) -> u64 {
+        let mut pending = vec![items];
+        let mut count = 0;
+        while let Some(items) = pending.pop() {
+            count += items.len() as u64;
+            for item in items {
+                if let Item::Node { children, .. } = item {
+                    pending.push(children);
+                }
+            }
+        }
+        count
+    }
+
+    /// The span of a node over `children`: from the first token to the last, at any depth,
+    /// or empty at `at` when there is no token.
+    fn span_of(children: &[Item], at: u32) -> (u32, u32) {
+        let mut span: Option<(u32, u32)> = None;
+        for child in children {
+            let (start, end, has_token) = match child {
+                Item::Token { start, end, .. } => (*start, *end, true),
+                Item::Node {
+                    start,
+                    end,
+                    children,
+                    ..
+                } => (*start, *end, contains_token(children)),
+            };
+            if has_token {
+                span = Some(match span {
+                    None => (start, end),
+                    Some((first, _)) => (first, end),
+                });
+            }
+        }
+        span.unwrap_or((at, at))
+    }
+}
+
+fn contains_token(items: &[Item]) -> bool {
+    items.iter().any(|item| match item {
+        Item::Token { .. } => true,
+        Item::Node { children, .. } => contains_token(children),
+    })
+}
+
+/// Lay out items, in order, as the top level of a tree. It recurses as deeply as the tree
+/// nests, which the interpreter's own stack allows, since it built the items recursively.
+fn tree_from_items(items: Vec<Item>, names: Arc<Names>) -> Tree {
+    let mut tree = Tree::empty(names);
+    for item in items {
+        push_item(&mut tree, item);
+    }
+    tree
+}
+
+/// Append an item and its children in postorder, and return how many entries it made.
+fn push_item(tree: &mut Tree, item: Item) -> u32 {
+    match item {
+        Item::Token {
+            kind,
+            field,
+            hidden,
+            start,
+            end,
+        } => {
+            tree.push_token(kind, hidden, start, end, field);
+            1
+        }
+        Item::Node {
+            kind,
+            field,
+            start,
+            end,
+            children,
+        } => {
+            let size = 1 + children
+                .into_iter()
+                .map(|c| push_item(tree, c))
+                .sum::<u32>();
+            tree.push_node(kind, start, end, size, field);
+            size
+        }
+    }
+}
 
 /// A grammar resolved for the reference interpreter.
 pub struct Reference {
@@ -59,9 +186,14 @@ impl Reference {
         crate::resolve::resolve(grammar).map(|grammar| Reference { grammar })
     }
 
-    /// Parse the whole input from the rule `start`, with the default limits.
+    /// Parse the whole input from the rule `start`, with the default depth and a limit of the
+    /// interpreter's own steps that takes about ten seconds.
     pub fn parse(&self, input: &str, start: &str) -> Result<Tree, ParseError> {
-        self.parse_with(input, start, Limits::default())
+        let limits = Limits {
+            max_steps: DEFAULT_MAX_STEPS,
+            ..Limits::default()
+        };
+        self.parse_with(input, start, limits)
     }
 
     /// Parse the whole input from the rule `start`.
@@ -240,7 +372,7 @@ impl<'a> Interp<'a> {
         });
         match result {
             Ok(Some((end, items))) if end == self.input.len() => {
-                Ok(Tree::from_items(items, self.g.names.clone()))
+                Ok(tree_from_items(items, Arc::clone(&self.g.names)))
             }
             Ok(Some((end, _))) => {
                 self.record_expected(end, END_OF_INPUT.to_owned());

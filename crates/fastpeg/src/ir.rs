@@ -10,14 +10,14 @@
     not(feature = "reference"),
     expect(
         dead_code,
-        reason = "only the reference interpreter runs the core language until the engine exists"
+        reason = "only the reference interpreter reads columns and captures until the machine runs them"
     )
 )]
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::grammar::ClassItem;
+use crate::grammar::{ClassItem, Span};
 use crate::tree::{FieldId, KindId, Names};
 
 /// Identifies a rule of a resolved grammar.
@@ -54,9 +54,13 @@ pub(crate) struct Grammar {
     pub labels: Vec<Label>,
 }
 
-/// A resolved rule. Its name and kind live on in the expressions that call it.
+/// A resolved rule. Its kind lives on in the expressions that call it.
 #[derive(Debug)]
 pub(crate) struct Rule {
+    /// The name as written. The instances of a template share it, and a level has its own.
+    pub name: String,
+    /// Where the name stands in the grammar source.
+    pub span: Span,
     pub body: Expr,
 }
 

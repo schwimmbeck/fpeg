@@ -4,14 +4,6 @@
 //! Resolve a grammar: check its names and translate it into the core language, following the
 //! translation steps of the semantics page.
 
-#![cfg_attr(
-    not(feature = "reference"),
-    expect(
-        dead_code,
-        reason = "only the reference interpreter resolves grammars until the engine exists"
-    )
-)]
-
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
@@ -32,7 +24,7 @@ const MAX_TEMPLATE_INSTANCES: usize = 1_000;
 const MAX_INSTANCE_EXPRESSIONS: usize = 100_000;
 
 /// Flags a grammar may declare. The engine keeps the flags in one 64-bit register.
-const MAX_FLAGS: usize = 64;
+pub(crate) const MAX_FLAGS: usize = 64;
 
 /// The tab width when a grammar sets none.
 const DEFAULT_TAB_WIDTH: u32 = 8;
@@ -41,7 +33,7 @@ const DEFAULT_TAB_WIDTH: u32 = 8;
 const MAX_TAB_WIDTH: u32 = 1_000;
 
 /// Errors resolving reports at most. More would not help a reader fix the first ones.
-const MAX_ERRORS: usize = 100;
+pub(crate) const MAX_ERRORS: usize = 100;
 
 /// The attributes a rule may carry.
 const ATTRIBUTES: [&str; 5] = ["lexical", "reserved", "sync", "memo", "nomemo"];
@@ -656,6 +648,8 @@ impl<'g> Resolver<'g> {
             rule.name.span,
         ) {
             self.rules[id.0 as usize] = Some(ir::Rule {
+                name: rule.name.text.clone(),
+                span: rule.name.span,
                 body: ir::Expr::Empty,
             });
             return;
@@ -727,7 +721,11 @@ impl<'g> Resolver<'g> {
         if kind == RuleKind::Terminal && rule.has_attribute("reserved") {
             body = ir::Expr::Unreserved(Box::new(body));
         }
-        self.rules[id.0 as usize] = Some(ir::Rule { body });
+        self.rules[id.0 as usize] = Some(ir::Rule {
+            name: rule.name.text.clone(),
+            span: rule.name.span,
+            body,
+        });
     }
 
     /// The node an alternative of a rule produces.
@@ -833,6 +831,8 @@ impl<'g> Resolver<'g> {
                 lowered.push(ir::Expr::Call(*next));
             }
             self.rules[ids[k].0 as usize] = Some(ir::Rule {
+                name: level.name.text.clone(),
+                span: level.name.span,
                 body: choice(lowered),
             });
         }

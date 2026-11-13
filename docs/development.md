@@ -59,6 +59,7 @@ The tests of the core crate run on the reference interpreter.
 | `tests/mutated.rs` | the grammars of `crates/fastpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
 | `tests/docs.rs` | every `fpeg` block of the documentation |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
+| `src/vm/tests.rs` | the code the compiler makes for small grammars, exact character classes, the verifier against broken programs, and what the machine does not run yet |
 
 `FASTPEG_BLESS=1 cargo test` rewrites the expected results of the case files and the `.tree` files, which are then reviewed before a commit. `FASTPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FASTPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FASTPEG_MUTANTS` and `FASTPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
 

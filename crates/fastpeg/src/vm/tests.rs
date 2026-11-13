@@ -1,0 +1,385 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+//! Tests of the compiler, the verifier and the machine that need their insides. What a parse
+//! returns is compared with the reference interpreter in the crate's differential tests.
+
+use super::Parser;
+use super::program::{Class, Inst, Program};
+use super::verify::verify;
+use crate::builder::{GrammarBuilder, lit, r, sep_many};
+use crate::grammar::{ClassItem, Grammar, MAX_EXPRESSION_DEPTH, Property};
+use crate::ir::CharSet;
+
+fn parser(text: &str) -> Parser {
+    let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
+    Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"))
+}
+
+fn errors(text: &str) -> Vec<String> {
+    let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
+    match Parser::new(&grammar) {
+        Ok(_) => Vec::new(),
+        Err(errors) => errors.into_iter().map(|e| e.message).collect(),
+    }
+}
+
+#[test]
+fn an_instruction_takes_at_most_twelve_bytes() {
+    assert!(size_of::<Inst>() <= 12, "{}", size_of::<Inst>());
+}
+
+#[test]
+fn rules_compile_to_their_templates_and_shared_items_to_one_routine() {
+    let program = parser(concat!(
+        "start: pair\n",
+        "pair: key=STRING \":\" value=value\n",
+        "value: STRING | \"[\" (value ** \",\") \"]\"\n",
+        "STRING: \"'\" [^']* \"'\"\n",
+        "%ignore \" \"+\n",
+    ))
+    .program;
+    let expected = "\
+rule start:
+     0  Open
+     1  Call pair
+     2  CloseNode start
+     3  Ret
+rule pair:
+     4  Open
+     5  Open
+     6  Skip
+     7  TokenOpen STRING
+     8  Call STRING
+     9  TokenClose
+    10  CloseField key
+    11  Skip
+    12  TokenOpen \":\"
+    13  Char ':'
+    14  TokenClose hidden
+    15  Open
+    16  Call value
+    17  CloseField value
+    18  CloseNode pair
+    19  Ret
+rule value:
+    20  Choice 28
+    21  Open
+    22  Skip
+    23  TokenOpen STRING
+    24  Call STRING
+    25  TokenClose
+    26  CloseNode value
+    27  Commit 48
+    28  Open
+    29  Skip
+    30  TokenOpen \"[\"
+    31  Char '['
+    32  TokenClose hidden
+    33  Choice 43
+    34  Sub shared 0
+    35  Choice 42
+    36  Skip
+    37  TokenOpen \",\"
+    38  Char ','
+    39  TokenClose hidden
+    40  Sub shared 0
+    41  LoopCommit 36
+    42  Commit 43
+    43  Skip
+    44  TokenOpen \"]\"
+    45  Char ']'
+    46  TokenClose hidden
+    47  CloseNode value
+    48  Ret
+rule STRING:
+    49  Char '\\''
+    50  Choice 53
+    51  Class [^']
+    52  LoopCommit 51
+    53  Char '\\''
+    54  Ret
+skip:
+    55  QuietOn
+    56  Choice 61
+    57  RepOpen {1,} 60
+    58  Char ' '
+    59  RepNext 58
+    60  LoopCommit 57
+    61  QuietOff
+    62  Ret
+entry STRING:
+    63  Skip
+    64  TokenOpen STRING
+    65  Call STRING
+    66  TokenClose
+    67  Skip
+    68  End
+entry pair:
+    69  Call pair
+    70  Skip
+    71  End
+entry start:
+    72  Call start
+    73  Skip
+    74  End
+entry value:
+    75  Call value
+    76  Skip
+    77  End
+shared 0:
+    78  Call value
+    79  Ret
+";
+    assert_eq!(program.to_string(), expected);
+}
+
+#[test]
+fn repetitions_lookahead_labels_and_flags_compile_to_their_templates() {
+    let program = parser(concat!(
+        "start: \"a\"? \"b\"* \"c\"+ \"d\"{2,3} &\"e\" !\"f\" (\"g\" ^ \"need g\") ",
+        "%on(x, \"h\") %if(!x) \"ij\"i\n",
+        "%flag x\n",
+    ))
+    .program;
+    let expected = "\
+rule start:
+     0  Open
+     1  Choice 6
+     2  TokenOpen \"a\"
+     3  Char 'a'
+     4  TokenClose hidden
+     5  Commit 6
+     6  Choice 11
+     7  TokenOpen \"b\"
+     8  Char 'b'
+     9  TokenClose hidden
+    10  LoopCommit 7
+    11  RepOpen {1,} 16
+    12  TokenOpen \"c\"
+    13  Char 'c'
+    14  TokenClose hidden
+    15  RepNext 12
+    16  RepOpen {2,3} 21
+    17  TokenOpen \"d\"
+    18  Char 'd'
+    19  TokenClose hidden
+    20  RepNext 17
+    21  PredChoice 26
+    22  TokenOpen \"e\"
+    23  Char 'e'
+    24  TokenClose hidden
+    25  BackCommit 27
+    26  Fail
+    27  PredChoice 32
+    28  TokenOpen \"f\"
+    29  Char 'f'
+    30  TokenClose hidden
+    31  FailTwice
+    32  LabelChoice 37
+    33  TokenOpen \"g\"
+    34  Char 'g'
+    35  TokenClose hidden
+    36  Commit 38
+    37  Throw \"need g\"
+    38  FlagOn 0
+    39  TokenOpen \"h\"
+    40  Char 'h'
+    41  TokenClose hidden
+    42  FlagsPop
+    43  FlagTest !0
+    44  TokenOpen \"ij\"i
+    45  StrFold \"ij\"
+    46  TokenClose hidden
+    47  CloseNode start
+    48  Ret
+entry start:
+    49  Call start
+    50  End
+";
+    assert_eq!(program.to_string(), expected);
+}
+
+#[test]
+fn a_class_matches_exactly_the_code_points_its_set_contains() {
+    let property = |property, negated| ClassItem::Property { property, negated };
+    let sets = [
+        (
+            false,
+            vec![ClassItem::Range('a', 'z'), ClassItem::Range('_', '_')],
+        ),
+        (
+            true,
+            vec![ClassItem::Range('"', '"'), ClassItem::Range('\\', '\\')],
+        ),
+        (false, vec![property(Property::XidStart, false)]),
+        (true, vec![property(Property::Lowercase, false)]),
+        (false, vec![property(Property::WhiteSpace, true)]),
+        (false, vec![ClassItem::Range('é', 'ü')]),
+        (true, vec![ClassItem::Range('\u{0}', '\u{7f}')]),
+        (false, vec![ClassItem::Range('\u{0}', '\u{10ffff}')]),
+        (false, vec![ClassItem::Range('x', 'Ω')]),
+    ];
+    let beyond = [
+        'é',
+        'ü',
+        'ß',
+        'Ω',
+        'Ä',
+        '中',
+        '😀',
+        '\u{80}',
+        '\u{a0}',
+        '\u{10ffff}',
+    ];
+    let chars = (0..0x80u8).map(char::from).chain(beyond);
+    for c in chars {
+        let text = format!("{c}rest");
+        for (negated, items) in &sets {
+            let set = CharSet {
+                negated: *negated,
+                items: items.clone(),
+            };
+            let expected = set.contains(c).then_some(c.len_utf8());
+            assert_eq!(
+                Class::new(&set).matches(&text),
+                expected,
+                "{c:?} in {set:?}"
+            );
+        }
+    }
+}
+
+/// The first position of an instruction the predicate picks, in the routine of `start`.
+fn find(program: &Program, pick: impl Fn(&Inst) -> bool) -> usize {
+    program
+        .code
+        .iter()
+        .position(pick)
+        .expect("the program has it")
+}
+
+/// A broken program: what the verifier must say about it, and how to break it.
+type Break = (&'static str, fn(&mut Program));
+
+/// A grammar whose program has a choice, a commit, a call, a token and a node.
+const VERIFIED: &str = "start: x=\"a\" (\"b\" | \"c\")\n";
+
+#[test]
+fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
+    assert_eq!(verify(&parser(VERIFIED).program), Ok(()));
+    fn choice(p: &Program) -> usize {
+        find(p, |i| matches!(i, Inst::Choice(_)))
+    }
+    let breaks: [Break; 6] = [
+        ("expects [Choice, Label] on top", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::Any;
+        }),
+        ("leaves the program", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::Choice(1_000);
+        }),
+        ("leaves Shape", |p| {
+            let close = find(p, |i| matches!(i, Inst::CloseNode(_)));
+            p.code[close] = Inst::Any;
+        }),
+        ("calls no rule", |p| {
+            let call = find(p, |i| matches!(i, Inst::Call(_)));
+            p.code[call] = Inst::Call(1);
+        }),
+        ("opens a token inside a token", |p| {
+            let close = find(p, |i| matches!(i, Inst::TokenClose { .. }));
+            p.code[close] = p.code[close - 2];
+        }),
+        ("two shapes of the stack", |p| {
+            let after_choice = choice(p) as u32 + 1;
+            let commit = find(p, |i| matches!(i, Inst::Commit(_)));
+            p.code[commit] = Inst::Commit(after_choice);
+        }),
+    ];
+    for (problem, broken) in breaks {
+        let mut program = parser(VERIFIED).program;
+        broken(&mut program);
+        let verdict = verify(&program);
+        assert!(
+            verdict.as_ref().is_err_and(|e| e.contains(problem)),
+            "{problem}: {verdict:?}\n{program}"
+        );
+    }
+}
+
+#[test]
+fn left_recursion_cuts_columns_and_captures_wait_for_their_milestones() {
+    let cases = [
+        ("start: start \"a\" | \"a\"\n", "start is left recursive"),
+        (
+            "start: a\na: b \"x\"\nb: \"y\"? start\n",
+            "a is left recursive",
+        ),
+        ("start: &start \"a\"\n", "start is left recursive"),
+        (
+            "start: e\ne: %precedence {\n    sum: sum \"+\" atom\n    atom: \"1\"\n}\n",
+            "sum is left recursive",
+        ),
+        ("start: \"a\" ~ \"b\" | \"c\"\n", "start uses a cut"),
+        ("start: %indent(\"a\")\n", "start uses %indent or %same"),
+        ("start: %def(x, \"a\") %ref(x)\n", "start uses %def or %ref"),
+        (
+            "start: \"a\"\n%ignore %def(x, \" \")\n",
+            "the %ignore expression uses %def or %ref",
+        ),
+    ];
+    for (text, problem) in cases {
+        let errors = errors(text);
+        assert!(
+            errors.iter().any(|e| e.contains(problem)),
+            "{text}: {errors:?}"
+        );
+    }
+    // Recursion after input, and before a lookahead that consumes nothing, stays allowed.
+    for text in [
+        "start: \"a\" start | \"b\"\n",
+        "start: !\"a\" \"b\" start?\n",
+    ] {
+        assert_eq!(errors(text), Vec::<String>::new(), "{text}");
+    }
+}
+
+#[test]
+fn nested_separated_repetitions_compile_to_code_linear_in_their_depth() {
+    let mut expr = lit("a");
+    for _ in 0..40 {
+        expr = sep_many(expr, lit(","));
+    }
+    let mut g = GrammarBuilder::new();
+    g.rule("start", r("_items"));
+    g.rule("_items", expr);
+    let parser = Parser::new(&g.build()).expect("the grammar compiles");
+    // Forty levels that each copied their item would make more than a trillion instructions.
+    assert!(parser.program.code.len() < 2_000, "{parser:?}");
+    let input = "a,a";
+    assert!(parser.parse(input, "start").is_ok());
+}
+
+#[test]
+fn the_deepest_grammar_compiles_on_a_small_stack() {
+    // The compiler recurses once per level of an expression, which the resolver bounds.
+    let mut expr = lit("a");
+    for _ in 1..MAX_EXPRESSION_DEPTH {
+        expr = sep_many(expr, lit(","));
+    }
+    let mut g = GrammarBuilder::new();
+    g.rule("start", expr);
+    let grammar = g.build();
+    let compiled = std::thread::Builder::new()
+        .stack_size(SMALL_STACK_BYTES)
+        .spawn(move || Parser::new(&grammar).is_ok())
+        .expect("the thread starts")
+        .join()
+        .expect("compiling finishes");
+    assert!(compiled);
+}
+
+/// A stack of the size Windows gives a program's main thread.
+const SMALL_STACK_BYTES: usize = 1024 * 1024;

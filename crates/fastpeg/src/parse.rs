@@ -8,11 +8,14 @@ use std::fmt;
 /// Rule activations that may be nested before a parse stops.
 pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
 
-/// Evaluation steps a parse may take before it stops. Work beyond a plain step counts too, so
-/// the limit bounds the time a parse takes: copying a remembered result counts one step per
-/// item, and capturing, comparing, looking up or scanning text counts one per byte. About ten
-/// seconds, enough for a megabyte of Python.
-pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
+/// Steps a parse may take before it stops. A step is an instruction of the parsing machine,
+/// and work beyond one counts too, so that the limit bounds the time a parse takes: closing a
+/// node counts its items, and looking up a reserved word counts its length. About ten seconds
+/// on a desktop, enough for several hundred megabytes of JSON.
+pub const DEFAULT_MAX_STEPS: u64 = 4_000_000_000;
+
+/// What a parse that stopped before the end of the input expects, in an expected set.
+pub(crate) const END_OF_INPUT: &str = "end of input";
 
 /// How far a parse may go before it stops with [`ParseErrorKind::Limit`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,7 +24,8 @@ pub struct Limits {
     /// reference interpreter within its own stack, stops a parse with the same limit whatever
     /// this allows.
     pub max_depth: u32,
-    /// The number of evaluation steps, counted as for [`DEFAULT_MAX_STEPS`].
+    /// The number of steps, counted as for [`DEFAULT_MAX_STEPS`]. The reference interpreter
+    /// counts steps of its own.
     pub max_steps: u64,
 }
 
