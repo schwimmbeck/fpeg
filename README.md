@@ -12,7 +12,7 @@
 
 A general-purpose PEG parsing library with a native engine and a `Transformer` that turns parse trees into your own objects.
 
-> fpeg is at an early stage and cannot be used yet. This page describes what is being built.
+> fpeg is at an early stage and not on PyPI yet. Parts of what this page describes are still being built, see the status below.
 
 ## The idea
 
@@ -20,38 +20,52 @@ A general-purpose PEG parsing library with a native engine and a `Transformer` t
 - Parse with a native engine written in Rust.
 - Get a parse tree with exact source positions, or turn it into your own objects with a `Transformer`, a class with one method per rule.
 
-A sketch of where this is going. The grammar syntax and the API will still change:
+JSON, from text to Python objects:
 
 ```python
-import operator
 import fpeg
 
 grammar = fpeg.Grammar(r"""
-    ?start: expr
-
-    expr: %precedence {
-        sum: left=sum op=("+" | "-") right=product   -> binary
-        product: left=product op=("*" | "/") right=atom   -> binary
-        atom: NUMBER | "(" expr ")"
-    }
-
-    NUMBER: [0-9]+ ("." [0-9]+)?
-    %ignore [ \t]+
+    ?start: value
+    ?value: object | array | STRING | NUMBER
+          | "true" => True | "false" => False | "null" => None
+    object: "{" (member ** ",") "}"
+    member: key=STRING ":" value=value
+    array: "[" (value ** ",") "]"
+    STRING: "\"" ([^"\\] | "\\" .)* "\"" => unquote
+    NUMBER: "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? => float
+    %ignore [ \t\r\n]+
 """)
 
-OPERATORS = {"+": operator.add, "-": operator.sub, "*": operator.mul, "/": operator.truediv}
+
+class ToPython(fpeg.Transformer):
+    def object(self, *members):
+        return dict(members)
+
+    def member(self, key, value):
+        return key, value
+
+    def array(self, *values):
+        return list(values)
 
 
-class Calculate(fpeg.Transformer):
-    def binary(self, left, op, right):
-        return OPERATORS[op](left, right)
-
-    def NUMBER(self, token):
-        return float(token)
-
-
-print(Calculate().transform(grammar.parse("1 + 2 * 3")))  # 7.0
+tree = grammar.parse('{"name": "fpeg", "tags": ["peg", "rust"], "stable": false}')
+print(ToPython().transform(tree))
 ```
+
+```output
+{'name': 'fpeg', 'tags': ['peg', 'rust'], 'stable': False}
+```
+
+Each method is named after a rule and gets what its signature asks for: `*members` the children of the node, `key` and `value` its fields. `=> unquote`, `=> float` and the constants are value builders, which make the values of tokens and nodes in the grammar itself, without a Python call.
+
+## Install
+
+fpeg is not on PyPI yet. To build it from a checkout, follow [Development](docs/development.md).
+
+## Documentation
+
+The [documentation](docs/index.md) has two tutorials, one that writes a first grammar and one that builds your own objects with a `Transformer`, and the reference of the grammar language and the Python API.
 
 ## What is planned
 

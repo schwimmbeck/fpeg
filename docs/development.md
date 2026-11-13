@@ -87,7 +87,7 @@ The tests of the core crate run on the reference interpreter, and the differenti
 
 ## Documentation
 
-The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. A block in the language `output` right after a Python block shows what that block printed, and the build fails when it differs. `cargo test` reads every `fpeg` grammar block, and resolves the ones that define a `start` rule. The build output lands in `docs/_build/html`.
+The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. A block in the language `output` right after a Python block shows what that block printed, and the build fails when it differs. `tests/test_readme.py` holds the Python blocks of `README.md` to the same rules. `cargo test` reads every `fpeg` grammar block, and resolves the ones that define a `start` rule. The build output lands in `docs/_build/html`.
 
 The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for light and dark pages, used by the documentation and by `README.md`, and `favicon.svg`, a heavier cut of the mark that follows the browser's colour scheme by itself.
 
