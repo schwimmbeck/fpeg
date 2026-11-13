@@ -107,6 +107,7 @@ ESCAPE: [abfnrtv\\"'] | "z" [ \t\r\n\x0B\x0C]* | "x" HEX HEX | BYTE
 BYTE: "25" [0-5] | "2" [0-4] DIGIT | [01] DIGIT DIGIT | DIGIT DIGIT? !DIGIT
 CODE_POINT: [1-7] HEX{0,7} | [89a-fA-F] HEX{0,6}
 LONG_BRACKET: "[" %def(level, "="*) "[" (!("]" %ref(level) "]") .)* "]" %ref(level) "]"
-COMMENT: "--" (LONG_BRACKET | [^\r\n]*)
+// What opens a long bracket after "--" is a long comment, closed or an error.
+COMMENT: "--" (LONG_BRACKET | !("[" "="* "[") [^\r\n]*)
 
 %ignore [ \t\r\n]+ | COMMENT
