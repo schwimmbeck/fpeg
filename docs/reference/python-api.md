@@ -100,15 +100,16 @@ A `Transformer` turns a tree into values. A method named like a rule gives the v
 
 | Method | Gets |
 |---|---|
+| `def pair(self, key, value)`, every parameter a field | the fields by name: the value, or `None` when absent, for a field of at most one item, a list for a field that can hold several |
 | `def pair(self, *children)` | the visible children as arguments |
-| `def pair(self, children)` | the list of the visible children, as in Lark |
+| `def pair(self, children)`, a parameter that is no field | the list of the visible children, as in Lark |
 | `def pair(self)` | nothing |
 | `def NAME(self, token)` | the token |
+| `meta`, `node` or `children` as keyword-only parameters | beside the rest: where the node spans, the node as parsed, the list of children |
 
 ```python
 class Pairs(fpeg.Transformer):
-    def pair(self, children):
-        key, value = children
+    def pair(self, key, value):
         return (str(key), int(value))
 
     def start(self, *pairs):
@@ -118,11 +119,17 @@ class Pairs(fpeg.Transformer):
 assert Pairs().transform(grammar.parse("x = 1, y = 22")) == {"x": 1, "y": 22}
 ```
 
-A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles. A signature that fits none of these fails at the first transform.
+A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles.
+
+A wrong signature fails at the first transform with the fields of the node.
+
+`fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Transformer
    :members: transform, __default__, __default_token__
+
+.. autofunction:: fpeg.v_args
 ```
 
 ## Errors

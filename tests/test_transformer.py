@@ -50,15 +50,33 @@ NUMBER: [0-9]+
     assert Lists().transform(adjacent.parse("a b 1 c 2")) == ["a", ["b", "1"], ["c", "2"]]
 
 
-def test_a_star_parameter_gets_the_children_as_arguments() -> None:
+def test_a_star_parameter_or_inline_v_args_gets_the_children_as_arguments() -> None:
     class Inline(fpeg.Transformer):
         def call(self, *children: Any) -> tuple[Any, ...]:
             return children
 
+        @fpeg.v_args(inline=True)
         def start(self, *calls: Any) -> list[Any]:
             return list(calls)
 
     assert Inline().transform(parse("f(a), g()")) == [("f", "a"), ("g",)]
+
+
+def test_parameters_named_after_fields_get_one_value_none_or_a_list() -> None:
+    class Fields(fpeg.Transformer):
+        def call(self, name: Any, args: list[Any], kw: Any) -> tuple[Any, ...]:
+            return (name, args, kw)
+
+        def kw(self, children: list[Any]) -> str:
+            return f"!{children[0]}"
+
+        def start(self, *calls: Any) -> list[Any]:
+            return list(calls)
+
+    assert Fields().transform(parse("f(a, 1) ! k, g()")) == [
+        ("f", ["a", "1"], "!k"),
+        ("g", [], None),
+    ]
 
 
 def test_a_method_without_parameters_is_called_with_nothing() -> None:
@@ -68,6 +86,20 @@ def test_a_method_without_parameters_is_called_with_nothing() -> None:
 
     call = Constant().transform(parse("f() ! k")).children[0]
     assert call.children == ["f", "keyword"]
+
+
+def test_v_args_passes_meta_or_a_tree_of_the_transformed_children() -> None:
+    class Options(fpeg.Transformer):
+        @fpeg.v_args(meta=True)
+        def call(self, meta: fpeg.Meta, children: list[Any]) -> tuple[int | None, int]:
+            return (meta.column, len(children))
+
+        @fpeg.v_args(tree=True)
+        def start(self, tree: fpeg.Tree) -> fpeg.Tree:
+            return tree
+
+    tree = Options().transform(parse("f(a),  g()"))
+    assert tree == fpeg.Tree("start", [(1, 2), (8, 1)])
 
 
 def test_a_callable_class_attribute_gets_the_list_as_in_lark() -> None:
@@ -89,17 +121,29 @@ def test_terminal_methods_get_their_token_and_any_callable_works() -> None:
     assert call.children == ["NAME:f", 7]
 
 
-def test_a_signature_that_fits_no_rule_fails_at_the_first_transform() -> None:
+def test_keyword_only_extras_give_meta_node_and_children_beside_fields() -> None:
+    seen: list[Any] = []
+
+    class Extras(fpeg.Transformer):
+        def call(self, name: Any, *, meta: fpeg.Meta, node: fpeg.Tree, children: list[Any]) -> str:
+            seen.append((meta.start_pos, node.data, node.text, children))
+            return str(name)
+
+    Extras().transform(parse("x, f(a)"[3:]))
+    assert seen == [(0, "call", "f(a)", ["f", "a"])]
+
+
+def test_a_signature_that_fits_no_rule_fails_at_the_first_transform_naming_the_fields() -> None:
     class Wrong(fpeg.Transformer):
         def call(self, name: Any, values: Any) -> None: ...
 
-    with pytest.raises(TypeError, match="takes name, values"):
+    with pytest.raises(TypeError, match="the fields of call are name, args, kw"):
         Wrong().transform(parse("f()"))
 
     class Keyword(fpeg.Transformer):
         def call(self, *, position: Any) -> None: ...
 
-    with pytest.raises(TypeError, match="takes the keyword position"):
+    with pytest.raises(TypeError, match="takes only meta, node, children by keyword"):
         Keyword().transform(parse("f()"))
 
 
@@ -144,6 +188,33 @@ def test_a_lone_token_and_any_other_value_transform_too() -> None:
     number = parse("f(7)").children[0].children[1]
     assert Tokens().transform(number) == 7
     assert Tokens().transform("plain") == "plain"
+
+
+def test_methods_are_found_on_the_instance_at_each_transform() -> None:
+    class Instance(fpeg.Transformer):
+        def call(self, name: Any) -> str:
+            return f"class {name}"
+
+    transformer = Instance()
+    tree = parse("f()")
+    assert transformer.transform(tree).children == ["class f"]
+    transformer.call = lambda name: f"instance {name}"  # type: ignore[method-assign] # the test replaces it
+    assert transformer.transform(tree).children == ["instance f"]
+
+
+def test_a_method_may_transform_a_subtree_itself() -> None:
+    class Nested(fpeg.Transformer):
+        def start(self, *calls: Any) -> list[Any]:
+            return list(calls)
+
+        def call(self, name: Any, *, node: fpeg.Tree) -> Any:
+            return (name, Inner().transform(node))
+
+    class Inner(fpeg.Transformer):
+        def call(self, children: list[Any]) -> int:
+            return len(children)
+
+    assert Nested().transform(parse("f(a, b)")) == [("f", 3)]
 
 
 def test_deep_trees_transform_without_recursion() -> None:

@@ -12,7 +12,7 @@ from __future__ import annotations
 import inspect
 import types
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from fpeg import _fpeg
 from fpeg._fpeg import Token, Tree
@@ -20,8 +20,55 @@ from fpeg._fpeg import Token, Tree
 # How a plan calls a method, as the native scan reads it.
 LIST = 1
 INLINE = 2
+FIELDS = 3
 NOTHING = 4
+META = 5
+META_INLINE = 6
+TREE = 7
 TOKEN = 8
+
+# The keyword-only parameters a method may take beside its children or fields, as bits.
+EXTRAS = {"meta": 1, "node": 2, "children": 4}
+
+_Callable = TypeVar("_Callable")
+
+
+class _VArgs:
+    """A callable that is no function, such as `float`, with the options of `v_args`."""
+
+    def __init__(self, function: Callable[..., Any], options: tuple[bool, bool, bool]) -> None:
+        self.function = function
+        self.__fpeg_v_args__ = options
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self.function(*args, **kwargs)
+
+
+def v_args(
+    inline: bool = False, meta: bool = False, tree: bool = False, wrapper: None = None
+) -> Callable[[_Callable], _Callable]:
+    """Say how methods are called, as Lark's `v_args` does, for code ported from Lark.
+
+    `inline` passes the children as arguments, `meta` passes the node's position first and
+    `tree` passes a tree of the transformed children. On a class it applies to every method
+    without options of its own. fpeg reads the same from a signature without a decorator:
+    `*children` for inline, and a keyword-only `meta` parameter for the position.
+    """
+    if wrapper is not None:
+        raise TypeError("fpeg's v_args takes no wrapper")
+    options = (inline, meta, tree)
+
+    def decorate(target: _Callable) -> _Callable:
+        if isinstance(target, type):
+            target.__fpeg_v_args__ = options  # type: ignore[attr-defined] # a class carries the default
+            return target
+        function = _unwrap(target)
+        if isinstance(function, types.FunctionType):
+            function.__fpeg_v_args__ = options  # type: ignore[attr-defined] # read by the plan
+            return target
+        return _VArgs(target, options)  # type: ignore[arg-type,return-value] # a builtin keeps no attributes
+
+    return decorate
 
 
 class Transformer:
@@ -30,8 +77,8 @@ class Transformer:
     A method gives the value of the nodes or tokens of its name, called children first. A
     node without a method gets the value of `__default__` when a subclass overrides it, else
     it stays a tree. The signature of a method
-    says what it gets: `*children` for the children, one parameter for the list of children,
-    or nothing.
+    says what it gets: the fields of the node by name, `*children` for the children, one other
+    parameter for the list of children, and keyword-only `meta`, `node` or `children` beside.
     """
 
     def __init__(self, visit_tokens: bool = True) -> None:
@@ -98,10 +145,16 @@ def _unwrap(method: Any) -> Any:
     return method
 
 
-def _function(cls: type, name: str) -> Callable[..., Any] | None:
-    """Return the function behind a method, or `None` for another callable such as `float`."""
-    function = _unwrap(inspect.getattr_static(cls, name))
-    return function if isinstance(function, types.FunctionType) else None
+def _function(cls: type, name: str) -> tuple[Callable[..., Any] | None, Any]:
+    """Return the function behind a method and its `v_args` options."""
+    attribute = inspect.getattr_static(cls, name)
+    if isinstance(attribute, _VArgs):
+        return None, attribute.__fpeg_v_args__
+    function = _unwrap(attribute)
+    options = getattr(function, "__fpeg_v_args__", None) or getattr(cls, "__fpeg_v_args__", None)
+    if not isinstance(function, types.FunctionType):
+        return None, options
+    return function, options
 
 
 def _parameters(cls: type, name: str, function: Callable[..., Any]) -> list[inspect.Parameter]:
@@ -114,7 +167,7 @@ def _parameters(cls: type, name: str, function: Callable[..., Any]) -> list[insp
 
 def _token_convention(cls: type, name: str) -> int:
     """Say how a method of a terminal is called: with the token, or with nothing."""
-    function = _function(cls, name)
+    function, _ = _function(cls, name)
     if function is None:
         # Another callable, such as `float`, gets the token.
         return TOKEN
@@ -133,19 +186,26 @@ def _token_convention(cls: type, name: str) -> int:
     )
 
 
-def _node_convention(cls: type, name: str) -> int:
-    """Say how a method of a node is called."""
-    function = _function(cls, name)
+def _node_convention(
+    cls: type, name: str, fields: dict[str, bool]
+) -> tuple[int, tuple[str, ...], int]:
+    """Say how a method of a node is called: its mode, the fields it takes and its extras."""
+    function, options = _function(cls, name)
     if function is None:
-        # Another callable, such as `list`, gets the list of children, as in Lark.
-        return LIST
+        inline, meta, tree = options or (False, False, False)
+        return _option_mode(inline, meta, tree), (), 0
     parameters = _parameters(cls, name, function)
+    extras = 0
     for parameter in parameters:
-        if parameter.kind == parameter.KEYWORD_ONLY and parameter.default is parameter.empty:
-            raise TypeError(
-                f"{cls.__qualname__}.{name} takes the keyword {parameter.name}, and fpeg passes "
-                "nothing by keyword"
-            )
+        if parameter.kind == parameter.KEYWORD_ONLY:
+            if parameter.name not in EXTRAS:
+                raise TypeError(
+                    f"{cls.__qualname__}.{name} takes the keyword {parameter.name}, and a method "
+                    f"takes only {', '.join(EXTRAS)} by keyword"
+                )
+            extras |= EXTRAS[parameter.name]
+    if options:
+        return _option_mode(*options), (), extras
     positional = [p for p in parameters if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
     if any(p.kind == p.VAR_POSITIONAL for p in parameters):
         if positional:
@@ -153,34 +213,47 @@ def _node_convention(cls: type, name: str) -> int:
                 f"{cls.__qualname__}.{name} takes parameters before its *parameter, which fpeg "
                 "cannot fill"
             )
-        return INLINE
+        return INLINE, (), extras
     if not positional:
-        return NOTHING
-    if len(positional) == 1:
-        return LIST
-    names = ", ".join(p.name for p in positional)
+        return NOTHING, (), extras
+    names = tuple(p.name for p in positional)
+    if fields and all(n in fields for n in names):
+        return FIELDS, names, extras
+    if len(names) == 1:
+        return LIST, (), extras
+    known = f"the fields of {name} are {', '.join(fields)}" if fields else f"{name} has no fields"
     raise TypeError(
-        f"{cls.__qualname__}.{name} takes {names}. Take the children as one list or as *children"
+        f"{cls.__qualname__}.{name} takes {', '.join(names)}, and {known}. Take the children as "
+        "one list, as *children, or by field"
     )
 
 
+def _option_mode(inline: bool, meta: bool, tree: bool) -> int:
+    if tree:
+        return TREE
+    if meta:
+        return META_INLINE if inline else META
+    return INLINE if inline else LIST
+
+
 def _make_plan(
-    cls: type, kinds: list[tuple[str, bool]]
-) -> tuple[list[tuple[int, str, int]], bool, bool]:
+    cls: type, kinds: list[tuple[str, bool, tuple[tuple[str, bool], ...]]]
+) -> tuple[list[tuple[int, str, int, tuple[str, ...], int]], bool, bool]:
     """Make the plan of a transformer class for a grammar.
 
     It says for each kind with a method how the method is called. The native scan asks for
     it once per class and grammar.
     """
-    entries: list[tuple[int, str, int]] = []
-    conventions: dict[tuple[str, bool], int] = {}
-    for kind, (name, token) in enumerate(kinds):
+    entries: list[tuple[int, str, int, tuple[str, ...], int]] = []
+    conventions: dict[tuple[str, bool], tuple[int, tuple[str, ...], int]] = {}
+    for kind, (name, token, fields) in enumerate(kinds):
         if not _is_handler(cls, name):
             continue
         if (name, token) not in conventions:
             if token:
-                conventions[(name, token)] = _token_convention(cls, name)
+                conventions[(name, token)] = (_token_convention(cls, name), (), 0)
             else:
-                conventions[(name, token)] = _node_convention(cls, name)
-        entries.append((kind, name, conventions[(name, token)]))
+                conventions[(name, token)] = _node_convention(cls, name, dict(fields))
+        mode, field_names, extras = conventions[(name, token)]
+        entries.append((kind, name, mode, field_names, extras))
     return entries, _overrides(cls, "__default__"), _overrides(cls, "__default_token__")

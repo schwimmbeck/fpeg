@@ -157,7 +157,7 @@ def scan(
     transformer: object,
     view: Tree,
     make_plan: Callable[
-        [type, list[tuple[str, bool]]],
-        tuple[list[tuple[int, str, int]], bool, bool],
+        [type, list[tuple[str, bool, tuple[tuple[str, bool], ...]]]],
+        tuple[list[tuple[int, str, int, tuple[str, ...], int]], bool, bool],
     ],
 ) -> tuple[Any, ...]: ...

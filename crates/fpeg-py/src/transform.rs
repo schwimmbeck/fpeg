@@ -12,7 +12,7 @@
 use std::ptr::null_mut;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use fpeg::{LineCursor, NodeRef};
+use fpeg::{FieldCount, FieldId, LineCursor, NodeRef};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::intern;
@@ -31,7 +31,11 @@ const SIGNAL_CHECK_ENTRIES: usize = 65_536;
 enum Mode {
     List,
     Inline,
+    Fields,
     Nothing,
+    Meta,
+    MetaInline,
+    Tree,
     Token,
 }
 
@@ -40,17 +44,29 @@ impl Mode {
         Ok(match code {
             1 => Mode::List,
             2 => Mode::Inline,
+            3 => Mode::Fields,
             4 => Mode::Nothing,
+            5 => Mode::Meta,
+            6 => Mode::MetaInline,
+            7 => Mode::Tree,
             8 => Mode::Token,
             _ => return Err(PyValueError::new_err(format!("no calling mode {code}"))),
         })
     }
 }
 
+/// The keyword-only extras of a method, as bits, as `fpeg._transformer` gives them.
+const EXTRA_META: u8 = 1;
+const EXTRA_NODE: u8 = 2;
+const EXTRA_CHILDREN: u8 = 4;
+
 /// How the method of a kind is called.
 struct Handler {
     name: Py<PyString>,
     mode: Mode,
+    /// The fields of a method that takes fields, in its order, with how many items each holds.
+    fields: Vec<(FieldId, FieldCount)>,
+    extras: u8,
 }
 
 /// How a transformer class handles the kinds of a grammar.
@@ -85,11 +101,22 @@ impl Plans {
     }
 }
 
-/// The kinds of a grammar as the plan maker reads them: name, and whether they are tokens.
+/// The kinds of a grammar as the plan maker reads them: name, whether they are tokens, and the
+/// fields a node of that name has, each with whether it can hold several items.
 fn kind_table<'py>(py: Python<'py>, core: &GrammarCore) -> PyResult<Bound<'py, PyList>> {
     let mut rows = Vec::new();
     for (id, kind) in core.parser.kinds().iter().enumerate() {
-        let row = (core.kind_names[id].clone_ref(py), kind.token);
+        let fields = (core.name_fields[id].iter())
+            .map(|&(field, count)| {
+                let name = core.field_names[usize::from(field.0)].clone_ref(py);
+                (name, count == FieldCount::Many)
+            })
+            .collect::<Vec<_>>();
+        let row = (
+            core.kind_names[id].clone_ref(py),
+            kind.token,
+            PyTuple::new(py, fields)?,
+        );
         rows.push(row.into_pyobject(py)?);
     }
     PyList::new(py, rows)
@@ -105,15 +132,31 @@ fn plan_for(
     if let Some(plan) = core.plans.find(class) {
         return Ok(plan);
     }
-    type Entry = (usize, String, u8);
+    type Entry = (usize, String, u8, Vec<String>, u8);
     let made = make_plan.call1((class, kind_table(py, core)?))?;
     let (entries, default_node, default_token): (Vec<Entry>, bool, bool) = made.extract()?;
     let mut handlers: Vec<Option<Handler>> = (0..core.kind_names.len()).map(|_| None).collect();
-    for (kind, name, mode) in entries {
+    for (kind, name, mode, field_names, extras) in entries {
+        let known = core.name_fields.get(kind).map_or(&[][..], Vec::as_slice);
+        let mut fields = Vec::new();
+        for field in &field_names {
+            let id = core.field_ids.get(field).copied();
+            let count = id.and_then(|id| known.iter().find(|&&(f, _)| f == id));
+            match (id, count) {
+                (Some(id), Some(&(_, count))) => fields.push((id, count)),
+                _ => {
+                    return Err(PyValueError::new_err(format!(
+                        "{name} has no field {field}"
+                    )));
+                }
+            }
+        }
         if let Some(slot) = handlers.get_mut(kind) {
             *slot = Some(Handler {
                 name: PyString::intern(py, &name).unbind(),
                 mode: Mode::from_code(mode)?,
+                fields,
+                extras,
             });
         }
     }
@@ -125,10 +168,11 @@ fn plan_for(
     Ok(core.plans.insert(class, plan))
 }
 
-/// A value on the stack: the entry it came from, and the object, or none for an entry that no
-/// method reached.
+/// A value on the stack: the entry it came from, the field that entry fills in its parent, and
+/// the object, or none for an entry that no method reached.
 struct Value {
     entry: u32,
+    field: FieldId,
     object: Option<Py<PyAny>>,
 }
 
@@ -209,9 +253,10 @@ impl<'py, 'p> Scan<'py, 'p> {
     }
 
     /// Push what a method returned.
-    fn push(&mut self, entry: usize, result: Bound<'py, PyAny>) -> PyResult<()> {
+    fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
         self.stack.push(Value {
             entry: entry as u32,
+            field,
             object: Some(result.unbind()),
         });
         Ok(())
@@ -232,16 +277,17 @@ impl<'py, 'p> Scan<'py, 'p> {
                 _ => method.call1((token,)),
             };
             let result = result?;
-            return self.push(index, result);
+            return self.push(index, node.field(), result);
         }
         if self.plan.default_token {
             let token = self.make_token(node)?;
             let result =
                 (self.transformer).call_method1(intern!(self.py, "__default_token__"), (token,))?;
-            return self.push(index, result);
+            return self.push(index, node.field(), result);
         }
         self.stack.push(Value {
             entry: index as u32,
+            field: node.field(),
             object: None,
         });
         Ok(())
@@ -257,8 +303,8 @@ impl<'py, 'p> Scan<'py, 'p> {
         let kind = node.kind().0 as usize;
         let handler = (self.plan.handlers.get(kind)).and_then(Option::as_ref);
         if let Some(handler) = handler {
-            let result = self.call(kind, handler, children)?;
-            return self.push(index, result);
+            let result = self.call(node, kind, handler, children)?;
+            return self.push(index, node.field(), result);
         }
         let data = self.parsed.grammar.kind_names[kind].clone_ref(self.py);
         if self.plan.default_node {
@@ -266,11 +312,12 @@ impl<'py, 'p> Scan<'py, 'p> {
             let meta = self.meta(node)?;
             let result = (self.transformer)
                 .call_method1(intern!(self.py, "__default__"), (data, children, meta))?;
-            return self.push(index, result);
+            return self.push(index, node.field(), result);
         }
         if children.iter().all(|child| child.object.is_none()) {
             self.stack.push(Value {
                 entry: index as u32,
+                field: node.field(),
                 object: None,
             });
             return Ok(());
@@ -280,6 +327,7 @@ impl<'py, 'p> Scan<'py, 'p> {
         let tree = Tree::owned(data.into_any(), children.unbind(), origin);
         self.stack.push(Value {
             entry: index as u32,
+            field: node.field(),
             object: Some(Py::new(self.py, tree)?.into_any()),
         });
         Ok(())
@@ -288,6 +336,7 @@ impl<'py, 'p> Scan<'py, 'p> {
     /// Call the method of a node as its plan says.
     fn call(
         &mut self,
+        node: NodeRef<'_>,
         kind: usize,
         handler: &Handler,
         children: Vec<Value>,
@@ -295,13 +344,85 @@ impl<'py, 'p> Scan<'py, 'p> {
         let py = self.py;
         let name = handler.name.clone_ref(py);
         let method = self.method(kind, &name)?;
-        let objects = self.objects(children)?;
-        let args: Vec<Py<PyAny>> = match handler.mode {
-            Mode::List => vec![PyList::new(py, objects)?.into_any().unbind()],
-            Mode::Inline => objects,
-            Mode::Nothing | Mode::Token => Vec::new(),
-        };
-        vectorcall(&method, &args, &[])
+        let needs_all = handler.mode != Mode::Fields || handler.extras & EXTRA_CHILDREN != 0;
+        let mut args: Vec<Py<PyAny>> = Vec::new();
+        let mut all: Option<Vec<Py<PyAny>>> = None;
+        if handler.mode == Mode::Fields {
+            let mut fielded: Vec<(FieldId, Py<PyAny>)> = Vec::new();
+            let mut rest = Vec::new();
+            for child in children {
+                let field = child.field;
+                let object = self.object(child)?;
+                if needs_all {
+                    rest.push(object.clone_ref(py));
+                }
+                if field != FieldId::NONE {
+                    fielded.push((field, object));
+                }
+            }
+            for &(field, count) in &handler.fields {
+                let items: Vec<Py<PyAny>> = (fielded.iter())
+                    .filter(|(f, _)| *f == field)
+                    .map(|(_, object)| object.clone_ref(py))
+                    .collect();
+                args.push(match count {
+                    FieldCount::Many => PyList::new(py, items)?.into_any().unbind(),
+                    FieldCount::One if items.len() > 1 => {
+                        let field_name = &self.parsed.grammar.field_names[usize::from(field.0)];
+                        let message = format!(
+                            "the field {} holds one item, and its children gave {} values",
+                            field_name.bind(py),
+                            items.len()
+                        );
+                        let error = PyTypeError::new_err(message);
+                        return Err(error);
+                    }
+                    FieldCount::One => items.into_iter().next().unwrap_or_else(|| py.None()),
+                });
+            }
+            if needs_all {
+                all = Some(rest);
+            }
+        } else {
+            let objects = self.objects(children)?;
+            let list = || -> PyResult<Py<PyAny>> {
+                let items = objects.iter().map(|o| o.clone_ref(py));
+                Ok(PyList::new(py, items)?.into_any().unbind())
+            };
+            match handler.mode {
+                Mode::List => args.push(list()?),
+                Mode::Inline => args.extend(objects.iter().map(|o| o.clone_ref(py))),
+                Mode::Meta => {
+                    args.push(self.meta(node)?);
+                    args.push(list()?);
+                }
+                Mode::MetaInline => {
+                    args.push(self.meta(node)?);
+                    args.extend(objects.iter().map(|o| o.clone_ref(py)));
+                }
+                Mode::Tree => {
+                    let data = self.parsed.grammar.kind_names[kind].clone_ref(py);
+                    let children = PyList::new(py, objects.iter().map(|o| o.clone_ref(py)))?;
+                    let origin = Some((Arc::clone(self.parsed), node.index() as u32));
+                    let tree = Tree::owned(data.into_any(), children.unbind(), origin);
+                    args.push(Py::new(py, tree)?.into_any());
+                }
+                Mode::Nothing | Mode::Fields | Mode::Token => {}
+            }
+            all = Some(objects);
+        }
+        let mut keywords: Vec<(&'static str, Py<PyAny>)> = Vec::new();
+        if handler.extras & EXTRA_META != 0 {
+            keywords.push(("meta", self.meta(node)?));
+        }
+        if handler.extras & EXTRA_NODE != 0 {
+            keywords.push(("node", item(py, self.parsed, node.index())?));
+        }
+        if handler.extras & EXTRA_CHILDREN != 0 {
+            let items = all.unwrap_or_default();
+            keywords.push(("children", PyList::new(py, items)?.into_any().unbind()));
+        }
+        vectorcall(&method, &args, &keywords)
     }
 }
 
