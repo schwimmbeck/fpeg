@@ -15,7 +15,7 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use fastpeg::grammar::Grammar;
+use fastpeg::grammar::{Grammar, GrammarError};
 use fastpeg::reference::{ParseErrorKind, Reference};
 
 struct Check {
@@ -136,12 +136,17 @@ fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> 
     .collect()
 }
 
-fn load(text: &str) -> Result<Grammar, Vec<String>> {
-    let grammar = Grammar::from_text(text)
-        .map_err(|errors| errors.iter().map(ToString::to_string).collect::<Vec<_>>())?;
-    Reference::new(&grammar)
-        .map_err(|errors| errors.iter().map(ToString::to_string).collect::<Vec<_>>())?;
-    Ok(grammar)
+/// The grammar if it resolves, else the errors, and the grammar as read, if it reads, since a
+/// grammar that does not resolve must still print back.
+fn load(text: &str) -> (Result<Grammar, Vec<String>>, Option<Grammar>) {
+    let strings = |errors: Vec<GrammarError>| errors.iter().map(ToString::to_string).collect();
+    match Grammar::from_text(text) {
+        Err(errors) => (Err(strings(errors)), None),
+        Ok(grammar) => match Reference::new(&grammar) {
+            Ok(_) => (Ok(grammar.clone()), Some(grammar)),
+            Err(errors) => (Err(strings(errors)), Some(grammar)),
+        },
+    }
 }
 
 fn matches(expected: &[String], actual: &[String], grammar_error: bool) -> bool {
@@ -192,8 +197,8 @@ fn run_file(path: &Path, bless: bool) -> Vec<String> {
     let mut blessed = text.lines().map(str::to_owned).collect::<Vec<_>>();
     let mut replacements: Vec<(usize, usize, Vec<String>)> = Vec::new();
     for case in &cases {
-        let grammar = load(&case.grammar);
-        if let Ok(g) = &grammar
+        let (grammar, read) = load(&case.grammar);
+        if let Some(g) = &read
             && let Some(problem) = check_printing(g)
         {
             failures.push(format!(
