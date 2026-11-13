@@ -5,6 +5,11 @@
   </picture>
 </h1>
 
+[![CI](https://github.com/schwimmbeck/fastpeg/actions/workflows/ci.yml/badge.svg)](https://github.com/schwimmbeck/fastpeg/actions/workflows/ci.yml)
+[![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue)](#license)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-blue)](Cargo.toml)
+
 A general-purpose PEG parsing library with a native engine and a `Transformer` that turns parse trees into your own objects.
 
 > fastpeg is at an early stage and cannot be used yet. This page describes what is being built.
