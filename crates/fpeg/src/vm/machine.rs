@@ -6,10 +6,11 @@
 //! The machine keeps one stack of entries on the heap, so a deep grammar never touches the
 //! caller's stack. Items of nodes being built wait on a stack of their own, and a closed node
 //! moves its items to the arena. The entry that catches a failure truncates both to where they
-//! stood when it was pushed, since before memoization nothing else refers to what was made
-//! since, so a parse holds no more nodes than its alternatives in progress make.
+//! stood when it was pushed, so a parse holds no more nodes than its alternatives in progress
+//! make, and those that remembered results hold: no failure cuts the arena below its length
+//! at the newest result remembered with a node.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use super::program::{Inst, Program};
@@ -106,6 +107,36 @@ enum Entry {
     Flags {
         saved: u64,
     },
+    /// A call whose result is remembered. What it needs is the newest of [`Machine::frames`],
+    /// so that the entries keep their size.
+    Frame,
+}
+
+/// What a remembered result depends on: the rule, the position, the flags that are on, and
+/// whether failures were being recorded, since a result found while they were not recorded none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct MemoKey {
+    rule: u32,
+    pos: u32,
+    flags: u64,
+    quiet: bool,
+}
+
+/// A remembered result: a failure, or where the match ended and the items it left, a range of
+/// [`Machine::memo_items`].
+#[derive(Clone, Copy, Debug)]
+enum Stored {
+    Failure,
+    Match { end: u32, first: u32, count: u32 },
+}
+
+/// A remembered call in progress: where it returns, the key of its result, and the height of
+/// the item stack when it started.
+#[derive(Clone, Copy, Debug)]
+struct Frame {
+    ret: u32,
+    key: MemoKey,
+    items: u32,
 }
 
 /// The token being matched: where it started, its kind, and how many entries the stack held
@@ -146,6 +177,14 @@ pub(crate) struct Machine<'p, 'i> {
     items: Vec<Item>,
     nodes: Vec<Node>,
     children: Vec<Item>,
+    /// The remembered calls in progress, one for each `Frame` entry of the stack.
+    frames: Vec<Frame>,
+    memo: HashMap<MemoKey, Stored>,
+    /// The items of the remembered matches.
+    memo_items: Vec<Item>,
+    /// The length of the arena at the newest remembered match that holds a node. The nodes
+    /// below it stay, since remembered items point at them.
+    protected: u32,
     token: Option<OpenToken>,
     flags: u64,
     /// Failures are recorded only while this is 0: outside lookahead and the skip routine.
@@ -177,6 +216,10 @@ impl<'p, 'i> Machine<'p, 'i> {
             items: Vec::new(),
             nodes: Vec::new(),
             children: Vec::new(),
+            frames: Vec::new(),
+            memo: HashMap::new(),
+            memo_items: Vec::new(),
+            protected: 0,
             token: None,
             flags: 0,
             quiet: 0,
@@ -390,6 +433,43 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.stack.push(Entry::Call { ret: self.pc + 1 });
                     self.pc = target;
                 }
+                Inst::MemoCall(rule) => {
+                    let key = MemoKey {
+                        rule,
+                        pos: self.pos,
+                        flags: self.flags,
+                        quiet: self.quiet > 0,
+                    };
+                    match self.memo.get(&key).copied() {
+                        Some(Stored::Failure) => self.fail()?,
+                        Some(Stored::Match { end, first, count }) => {
+                            // Giving a result again is work of its length.
+                            self.steps += u64::from(count);
+                            let range = first as usize..(first + count) as usize;
+                            let items = self.memo_items.get(range).unwrap_or_default();
+                            self.items.extend_from_slice(items);
+                            self.pos = end;
+                            self.pc += 1;
+                        }
+                        None => {
+                            // The verifier holds the index inside the rules.
+                            let Some(info) = self.program.rules.get(rule as usize) else {
+                                return Err(Stop::NoMatch);
+                            };
+                            if self.depth >= self.limits.max_depth {
+                                return Err(Stop::Limit(Limit::Depth));
+                            }
+                            self.depth += 1;
+                            self.frames.push(Frame {
+                                ret: self.pc + 1,
+                                key,
+                                items: self.items.len() as u32,
+                            });
+                            self.stack.push(Entry::Frame);
+                            self.pc = info.pc;
+                        }
+                    }
+                }
                 Inst::Sub(target) => {
                     self.stack.push(Entry::Sub { ret: self.pc + 1 });
                     self.pc = target;
@@ -407,6 +487,14 @@ impl<'p, 'i> Machine<'p, 'i> {
                         self.pc = ret;
                     }
                     Some(Entry::Sub { ret }) => self.pc = ret,
+                    Some(Entry::Frame) => {
+                        let Some(frame) = self.frames.pop() else {
+                            return Err(Stop::NoMatch);
+                        };
+                        self.depth -= 1;
+                        self.remember(frame)?;
+                        self.pc = frame.ret;
+                    }
                     _ => return Err(Stop::NoMatch),
                 },
                 Inst::End => {
@@ -544,12 +632,40 @@ impl<'p, 'i> Machine<'p, 'i> {
         }
     }
 
+    /// Remember the match a call left: its items, and where it ended. A match that holds a
+    /// node keeps the arena as long as it is now.
+    fn remember(&mut self, frame: Frame) -> Result<(), Stop> {
+        let made = self.items.get(frame.items as usize..).unwrap_or_default();
+        self.steps += made.len() as u64;
+        // Indices are 32 bits wide. Every stored item costs a step, so a limit of steps stops
+        // first.
+        let (Ok(first), Ok(nodes)) = (
+            u32::try_from(self.memo_items.len()),
+            u32::try_from(self.nodes.len()),
+        ) else {
+            return Err(Stop::Limit(Limit::Steps));
+        };
+        if made.iter().any(|item| item.flags & TOKEN == 0) {
+            self.protected = nodes;
+        }
+        self.memo_items.extend_from_slice(made);
+        let stored = Stored::Match {
+            end: self.pos,
+            first,
+            count: made.len() as u32,
+        };
+        self.memo.insert(frame.key, stored);
+        Ok(())
+    }
+
     /// Go back to what an entry saved. The nodes made since lie at the end of the arena, and
-    /// their children at the end of the children, so both are cut back.
+    /// their children at the end of the children, so both are cut back, as far as no
+    /// remembered match holds them.
     fn restore(&mut self, saved: Saved) {
         self.pos = saved.pos;
         self.items.truncate(saved.items as usize);
-        self.nodes.truncate(saved.nodes as usize);
+        self.nodes
+            .truncate(saved.nodes.max(self.protected) as usize);
         let children = self.nodes.last().map_or(0, |node| node.first + node.count);
         self.children.truncate(children as usize);
     }
@@ -576,6 +692,13 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Entry::Mark { .. } => None,
                 Entry::Call { .. } => {
                     self.depth -= 1;
+                    None
+                }
+                Entry::Frame => {
+                    if let Some(frame) = self.frames.pop() {
+                        self.depth -= 1;
+                        self.memo.insert(frame.key, Stored::Failure);
+                    }
                     None
                 }
                 Entry::Flags { saved } => {
@@ -610,7 +733,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     *cut = true;
                     break;
                 }
-                Entry::Call { .. } | Entry::Predicate { .. } => break,
+                Entry::Call { .. } | Entry::Frame | Entry::Predicate { .. } => break,
                 Entry::Label { .. }
                 | Entry::Sub { .. }
                 | Entry::Open { .. }
@@ -652,6 +775,11 @@ impl<'p, 'i> Machine<'p, 'i> {
                     return Ok(());
                 }
                 Entry::Call { .. } => self.depth -= 1,
+                // An error is no result to remember.
+                Entry::Frame => {
+                    self.frames.pop();
+                    self.depth -= 1;
+                }
                 Entry::Flags { saved } => self.flags = saved,
                 _ => {}
             }

@@ -69,6 +69,9 @@ pub(crate) enum Inst {
     Cut,
     /// Call the rule whose routine starts at the target.
     Call(u32),
+    /// Call the rule with this index, whose results are remembered: a result stored for this
+    /// position, flags and quiet state is given at once, and a call that runs stores its own.
+    MemoCall(u32),
     /// Call the shared part whose routine starts at the target.
     Sub(u32),
     /// Return from the routine.
@@ -183,11 +186,12 @@ impl Class {
     }
 }
 
-/// A rule's name and where its routine starts.
+/// A rule's name, where its routine starts, and whether its results are remembered.
 #[derive(Clone, Debug)]
 pub(crate) struct RuleInfo {
     pub name: String,
     pub pc: u32,
+    pub memo: bool,
 }
 
 /// A compiled grammar. See the module documentation.

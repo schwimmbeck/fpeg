@@ -103,6 +103,10 @@ impl Program {
                 Some(name) => format!("Call {name}"),
                 None => format!("Call ?{target}"),
             },
+            Inst::MemoCall(rule) => match self.rules.get(rule as usize) {
+                Some(info) => format!("MemoCall {}", info.name),
+                None => format!("MemoCall ?{rule}"),
+            },
             Inst::Sub(target) => match routines.shared.get(&target) {
                 Some(index) => format!("Sub shared {index}"),
                 None => format!("Sub ?{target}"),

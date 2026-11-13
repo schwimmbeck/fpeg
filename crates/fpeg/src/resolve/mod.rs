@@ -853,6 +853,7 @@ impl<'g> Resolver<'g> {
                 name: rule.name.text.clone(),
                 span: rule.name.span,
                 body: ir::Expr::Empty,
+                memo: ir::MemoMark::None,
             });
             return;
         }
@@ -878,6 +879,19 @@ impl<'g> Resolver<'g> {
             let message = format!("the terminal {} cannot be transparent", rule.name.text);
             self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
+        let memo = match (rule.has_attribute("memo"), rule.has_attribute("nomemo")) {
+            (true, true) => {
+                let message = format!(
+                    "the rule {} cannot be both @memo and @nomemo",
+                    rule.name.text
+                );
+                self.error(DiagnosticCode::RuleForm, message, rule.name.span);
+                ir::MemoMark::None
+            }
+            (true, false) => ir::MemoMark::Memo,
+            (false, true) => ir::MemoMark::NoMemo,
+            (false, false) => ir::MemoMark::None,
+        };
         let params: HashMap<String, Expr> = rule
             .params
             .iter()
@@ -926,7 +940,7 @@ impl<'g> Resolver<'g> {
                 }
                 choice(lowered)
             }
-            RuleBody::Precedence(levels) => self.lower_precedence(rule, kind, levels),
+            RuleBody::Precedence(levels) => self.lower_precedence(rule, kind, levels, memo),
         };
         if kind == RuleKind::Terminal && rule.has_attribute("reserved") {
             body = ir::Expr::Unreserved(Box::new(body));
@@ -935,6 +949,11 @@ impl<'g> Resolver<'g> {
             name: rule.name.text.clone(),
             span: rule.name.span,
             body,
+            // The mark of a precedence block is for its levels, the block only calls the first.
+            memo: match rule.body {
+                RuleBody::Alternatives(_) => memo,
+                RuleBody::Precedence(_) => ir::MemoMark::None,
+            },
         });
     }
 
@@ -991,7 +1010,13 @@ impl<'g> Resolver<'g> {
         }
     }
 
-    fn lower_precedence(&mut self, rule: &Rule, kind: RuleKind, levels: &[Level]) -> ir::Expr {
+    fn lower_precedence(
+        &mut self,
+        rule: &Rule,
+        kind: RuleKind,
+        levels: &[Level],
+        memo: ir::MemoMark,
+    ) -> ir::Expr {
         if kind != RuleKind::Syntactic || rule.transparent || rule.is_underscored() {
             let message = format!(
                 "the precedence block {} must be a plain syntactic rule",
@@ -1074,6 +1099,7 @@ impl<'g> Resolver<'g> {
                 name: level.name.text.clone(),
                 span: level.name.span,
                 body: choice(lowered),
+                memo,
             });
         }
         match ids.first() {

@@ -158,6 +158,11 @@ impl Tables<'_> {
                 true => vec![(next, shape)],
                 false => return Err("calls no rule".into()),
             },
+            Inst::MemoCall(rule) => match p.rules.get(rule as usize) {
+                Some(info) if info.memo => vec![(next, shape)],
+                Some(_) => return Err("remembers a rule that is not remembered".into()),
+                None => return Err(format!("no rule {rule}")),
+            },
             Inst::Sub(target) => match self.shared.contains(&target) {
                 true => vec![(next, shape)],
                 false => return Err("calls no shared part".into()),

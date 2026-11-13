@@ -88,6 +88,18 @@ pub(crate) struct Rule {
     /// Where the name stands in the grammar source.
     pub span: Span,
     pub body: Expr,
+    pub memo: MemoMark,
+}
+
+/// What a grammar says about remembering the results of a rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MemoMark {
+    /// Nothing: the engine decides.
+    None,
+    /// `@memo`.
+    Memo,
+    /// `@nomemo`.
+    NoMemo,
 }
 
 /// An error label: a message or a name.

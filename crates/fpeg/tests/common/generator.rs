@@ -10,7 +10,9 @@ use std::panic::catch_unwind;
 use std::sync::Mutex;
 
 use fpeg::builder::*;
-use fpeg::{Alternative, ClassItem, Expr, ExprKind, Grammar, Level, Limits, RuleBody, Span, Text};
+use fpeg::{
+    Alternative, ClassItem, Expr, ExprKind, Grammar, Level, Limits, Rule, RuleBody, Span, Text,
+};
 
 /// Grammars a normal test run tries.
 pub const DEFAULT_CASES: u64 = 400;
@@ -307,7 +309,7 @@ impl Generator {
         for name in self.rules.clone() {
             if name == "prec" {
                 let levels = self.levels();
-                g.precedence(&name, levels);
+                self.memo_mark(g.precedence(&name, levels));
                 continue;
             }
             let alternatives = self.alternatives();
@@ -318,6 +320,7 @@ impl Generator {
             if self.rng.chance(10) {
                 rule.attribute("lexical");
             }
+            self.memo_mark(rule);
         }
         if self.template {
             self.params = vec!["p".to_owned()];
@@ -334,6 +337,7 @@ impl Generator {
             if self.rng.chance(25) {
                 rule.attribute("reserved");
             }
+            self.memo_mark(rule);
         }
         let mut grammar = g.build();
         if word && self.rng.chance(50) {
@@ -343,6 +347,15 @@ impl Generator {
             });
         }
         grammar
+    }
+
+    /// Mark some rules to be remembered and some not, so that parses mix both.
+    fn memo_mark(&mut self, rule: &mut Rule) {
+        match self.rng.below(8) {
+            0 | 1 => drop(rule.attribute("memo")),
+            2 => drop(rule.attribute("nomemo")),
+            _ => {}
+        }
     }
 
     fn char(&mut self) -> char {

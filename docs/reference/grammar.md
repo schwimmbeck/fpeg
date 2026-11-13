@@ -109,10 +109,22 @@ Attributes stand on their own lines directly above a rule.
 | `@lexical` | the rule is a lexical rule | now |
 | `@reserved` | the terminal never matches a reserved word (see [Words and keywords](#words-and-keywords)) | now |
 | `@sync` | error recovery may resume before this rule or terminal | reserved, M8 |
-| `@memo` | always memoize this rule | reserved, M4 |
-| `@nomemo` | never memoize this rule | reserved, M4 |
+| `@memo` | remember the results of this rule (see [Remembered results](#remembered-results)) | now |
+| `@nomemo` | never remember the results of this rule | reserved, M4 |
 
 An unknown attribute is an error.
+
+### Remembered results
+
+A parser may try a rule at one position of the input more than once, when an alternative that used the rule fails and the next one starts with it again. A rule marked `@memo` is matched once at each position, and every later call there gets the stored result.
+
+```fpeg
+start: item "." | item "!" | item
+@memo
+item: "(" start ")" | "x"
+```
+
+Remembering never changes what a grammar matches or the tree it gives, only the work a parse takes. It pays for a rule that is tried again and again and takes long to match, and costs a lookup for every call otherwise. A rule cannot be `@memo` and `@nomemo` at once ([E302](diagnostics/E302.md)).
 
 ### Parameters
 

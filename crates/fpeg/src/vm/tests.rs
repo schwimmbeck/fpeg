@@ -4,14 +4,14 @@
 //! Tests of the compiler, the verifier and the machine that need their insides. What a parse
 //! returns is compared with the reference interpreter in the crate's differential tests.
 
-use super::Parser;
 use super::machine::Machine;
 use super::program::{Class, Inst, Program};
 use super::verify::verify;
+use super::{Memo, Options, Parser};
 use crate::builder::{GrammarBuilder, lit, opt, r, r_args, sep_many, seq};
 use crate::grammar::{ClassItem, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Property};
 use crate::ir::CharSet;
-use crate::parse::Limits;
+use crate::parse::{Limit, Limits, ParseErrorKind};
 
 fn parser(text: &str) -> Parser {
     let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
@@ -305,8 +305,9 @@ fn find(program: &Program, pick: impl Fn(&Inst) -> bool) -> usize {
 /// A broken program: what the verifier must say about it, and how to break it.
 type Break = (&'static str, fn(&mut Program));
 
-/// A grammar whose program has a choice, a commit, a call, a token and a node.
-const VERIFIED: &str = "start: x=\"a\" (\"b\" | \"c\")\n";
+/// A grammar whose program has a choice, a commit, a call, a remembered call, a token and a
+/// node.
+const VERIFIED: &str = "start: x=\"a\" (\"b\" | \"c\") m\n@memo\nm: \"d\"\n";
 
 #[test]
 fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
@@ -314,7 +315,14 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 6] = [
+    let breaks: [Break; 8] = [
+        ("no rule 1000", |p| {
+            let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
+            p.code[call] = Inst::MemoCall(1_000);
+        }),
+        ("remembers a rule that is not remembered", |p| {
+            p.rules.iter_mut().for_each(|rule| rule.memo = false);
+        }),
         ("expects [Choice, Label] on top", |p| {
             let at = choice(p);
             p.code[at] = Inst::Any;
@@ -396,6 +404,43 @@ entry start:
     33  End
 ";
     assert_eq!(program.to_string(), expected);
+}
+
+#[test]
+fn the_options_decide_which_calls_remember() {
+    let grammar = Grammar::from_text("start: m m\n@memo\nm: \"a\"\n").expect("it reads");
+    let remembered = |memo| {
+        let parser = Parser::with_options(&grammar, &Options { memo }).expect("it compiles");
+        let calls = parser.program.code.iter();
+        calls.filter(|i| matches!(i, Inst::MemoCall(_))).count()
+    };
+    // The two calls in `start` and the one that starts a parse from `m`, then none, then also
+    // the call that starts a parse from `start`.
+    assert_eq!(
+        [Memo::Grammar, Memo::Off, Memo::All].map(remembered),
+        [3, 0, 4]
+    );
+}
+
+#[test]
+fn a_remembered_rule_is_matched_once_at_a_position() {
+    // Each alternative of `start` matches `item` afresh, so without the mark thirty levels of
+    // brackets take 3^30 matches of the innermost one.
+    let text = |mark: &str| {
+        format!("start: item \".\" | item \"!\" | item\n{mark}item: \"(\" start \")\" | \"x\"\n")
+    };
+    let input = format!("{}x{}", "(".repeat(30), ")".repeat(30));
+    let limits = Limits {
+        max_steps: 100_000,
+        ..Limits::default()
+    };
+    let marked = parser(&text("@memo\n")).parse_with(&input, "start", limits);
+    assert!(marked.is_ok(), "{marked:?}");
+    let plain = parser(&text("")).parse_with(&input, "start", limits);
+    assert_eq!(
+        plain.err().map(|error| error.kind),
+        Some(ParseErrorKind::Limit(Limit::Steps))
+    );
 }
 
 #[test]

@@ -22,6 +22,27 @@ use crate::tree::{Kind, Names, Tree};
 use machine::{Machine, Stop};
 use program::Program;
 
+/// How a grammar is compiled. The default suits every use but tests and measurements, which
+/// turn single parts of the engine off or on. No setting changes what a parse returns.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Options {
+    /// Which rules remember their results.
+    pub memo: Memo,
+}
+
+/// Which rules remember their results, so that a second call of a rule at a position is
+/// answered at once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Memo {
+    /// The rules the grammar marks `@memo`.
+    #[default]
+    Grammar,
+    /// No rule.
+    Off,
+    /// Every rule.
+    All,
+}
+
 /// A grammar compiled for the parsing machine.
 ///
 /// A parser is immutable, so one parser serves any number of parses, from any thread.
@@ -56,8 +77,13 @@ impl Parser {
     /// recursion, columns and captures are reported as problems until the milestones of the
     /// roadmap bring them to the machine.
     pub fn new(grammar: &Grammar) -> Result<Parser, Vec<GrammarError>> {
+        Parser::with_options(grammar, &Options::default())
+    }
+
+    /// Compile a grammar as [`Parser::new`] does, with parts of the engine turned off or on.
+    pub fn with_options(grammar: &Grammar, options: &Options) -> Result<Parser, Vec<GrammarError>> {
         let resolved = crate::resolve::resolve(grammar)?;
-        let program = compile::compile(&resolved)?;
+        let program = compile::compile(&resolved, options)?;
         #[cfg(feature = "reference")]
         if let Err(problem) = verify::verify(&program) {
             return Err(vec![GrammarError {

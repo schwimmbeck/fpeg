@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::program::{Class, Inst, Program, RuleInfo};
+use super::{Memo, Options};
 use crate::analysis;
 use crate::diag::DiagnosticCode;
 use crate::grammar::{GrammarError, Span};
@@ -18,7 +19,10 @@ use crate::ir::{self, RuleId};
 use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
 
 /// Compile a resolved grammar, or report what the machine cannot run yet.
-pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError>> {
+pub(crate) fn compile(
+    grammar: &ir::Grammar,
+    options: &Options,
+) -> Result<Program, Vec<GrammarError>> {
     let errors = unsupported(grammar);
     if !errors.is_empty() {
         return Err(errors);
@@ -43,6 +47,11 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
         rules.push(RuleInfo {
             name: rule.name.clone(),
             pc: c.here(),
+            memo: match options.memo {
+                Memo::Grammar => rule.memo == ir::MemoMark::Memo,
+                Memo::Off => false,
+                Memo::All => true,
+            },
         });
         // A cut ends at the call of its rule.
         c.cuttable = false;
@@ -87,6 +96,7 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
     }
     for (at, rule) in std::mem::take(&mut c.calls) {
         c.code[at] = match rules.get(rule.0 as usize) {
+            Some(info) if info.memo => Inst::MemoCall(rule.0),
             Some(info) => Inst::Call(info.pc),
             // A call to a rule that does not exist fails, as the reference interpreter has it.
             None => Inst::Fail,

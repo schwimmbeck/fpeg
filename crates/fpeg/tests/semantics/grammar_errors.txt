@@ -125,6 +125,13 @@ start: START
 --- grammar
 cannot be @lexical
 
+=== a rule cannot be marked to be remembered and not to be
+@memo
+@nomemo
+start: "a"
+--- grammar
+the rule start cannot be both @memo and @nomemo
+
 === a range must not run backwards
 start: [z-a]
 --- grammar
