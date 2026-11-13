@@ -535,7 +535,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
             };
             if let Some((alt, pos, items, quiet)) = caught {
-                self.end_failed_token();
+                self.end_failed_token(Some(self.stack.len()));
                 self.pos = pos;
                 self.items.truncate(items as usize);
                 if let Some(quiet) = quiet {
@@ -545,15 +545,18 @@ impl<'p, 'i> Machine<'p, 'i> {
                 return Ok(());
             }
         }
-        self.end_failed_token();
+        // Nothing caught the failure, so the open token failed, even one opened on an empty
+        // stack, as a parse from a terminal opens its token.
+        self.end_failed_token(None);
         Err(Stop::NoMatch)
     }
 
-    /// The open token failed when the entry that caught the failure is older than the token.
-    /// Its start is recorded then, with the quiet count of the failure.
-    fn end_failed_token(&mut self) {
+    /// The open token failed when the entry that caught the failure, at `catcher` on the stack,
+    /// is older than the token, or when nothing caught it. Its start is recorded then, with the
+    /// quiet count of the failure.
+    fn end_failed_token(&mut self, catcher: Option<usize>) {
         if let Some(token) = self.token
-            && (self.stack.len() as u32) < token.height
+            && catcher.is_none_or(|at| (at as u32) < token.height)
         {
             self.token = None;
             self.record(token.start, Expected::Kind(token.kind));

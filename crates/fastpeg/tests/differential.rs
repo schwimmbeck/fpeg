@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use common::cases::{CheckKind, case_files, parse_cases};
 use common::generator::{Features, check_seeds, generate_with, reference_limits};
-use fastpeg::{Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, Tree};
+use fastpeg::{Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, RuleKind, Tree};
 
 /// What the machine reports for what it does not run yet.
 const NOT_YET: &str = "which the parser does not run yet";
@@ -242,14 +242,22 @@ fn check_against_reference(seed: u64) -> Option<String> {
         max_steps: MACHINE_MAX_STEPS,
         ..Limits::default()
     };
-    for input in &inputs {
-        let limits = [reference_limits(), machine];
-        match compare(&reference, &parser, input, "start", limits) {
-            Verdict::Same => COMPARED.fetch_add(1, Ordering::Relaxed),
-            Verdict::MachineLimit => MACHINE_LIMITS.fetch_add(1, Ordering::Relaxed),
-            Verdict::ReferenceLimit => REFERENCE_LIMITS.fetch_add(1, Ordering::Relaxed),
-            Verdict::Differ(problem) => return Some(format!("{problem}\n{grammar}")),
-        };
+    // A parse from a terminal opens its token on an empty stack, which a start rule never does.
+    let terminal = (grammar.rules.iter())
+        .find(|r| r.kind() == RuleKind::Terminal && r.params.is_empty())
+        .map(|r| r.name.text.as_str());
+    for start in std::iter::once("start").chain(terminal) {
+        for input in &inputs {
+            let limits = [reference_limits(), machine];
+            match compare(&reference, &parser, input, start, limits) {
+                Verdict::Same => COMPARED.fetch_add(1, Ordering::Relaxed),
+                Verdict::MachineLimit => MACHINE_LIMITS.fetch_add(1, Ordering::Relaxed),
+                Verdict::ReferenceLimit => REFERENCE_LIMITS.fetch_add(1, Ordering::Relaxed),
+                Verdict::Differ(problem) => {
+                    return Some(format!("from {start}: {problem}\n{grammar}"));
+                }
+            };
+        }
     }
     None
 }
