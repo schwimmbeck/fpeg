@@ -279,10 +279,10 @@ strings: parts=BYTES+
 @lexical
 fstring<raw, plain>: prefix=raw (
         _f_body<"\"\"\"", _LINE_BREAK, F_RAW_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_RAW_ESCAPE>
-        | _f_body<"\"", NEVER, F_RAW_ESCAPE> | _f_body<"'", NEVER, F_RAW_ESCAPE>)
+        | !"\"\"\"" _f_body<"\"", NEVER, F_RAW_ESCAPE> | !"'''" _f_body<"'", NEVER, F_RAW_ESCAPE>)
     | prefix=plain (
         _f_body<"\"\"\"", _LINE_BREAK, F_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_ESCAPE>
-        | _f_body<"\"", NEVER, F_ESCAPE> | _f_body<"'", NEVER, F_ESCAPE>)
+        | !"\"\"\"" _f_body<"\"", NEVER, F_ESCAPE> | !"'''" _f_body<"'", NEVER, F_ESCAPE>)
 
 @lexical
 _f_body<quote, line_break, escape>: quote %off(bracket, %off(spec, %off(nested_spec, parts=(F_TEXT<quote, line_break, escape> | replacement_field)*))) quote
@@ -316,7 +316,8 @@ ASCII: [\x00-\x7F]
 STRING_BODY<escape, char>: LONG_STRING<"\"\"\"", escape, char> | LONG_STRING<"'''", escape, char>
                          | SHORT_STRING<"\"", escape, char> | SHORT_STRING<"'", escape, char>
 LONG_STRING<quote, escape, char>: quote (!quote (escape | !"\\" char))* quote
-SHORT_STRING<quote, escape, char>: quote (!quote (escape | ![\\\r\n] char))* quote
+// Three quotes always open a long string, so a short one never starts there.
+SHORT_STRING<quote, escape, char>: !(quote quote quote) quote (!quote (escape | ![\\\r\n] char))* quote
 RAW_ESCAPE: "\\" (_LINE_BREAK | .)
 RAW_BYTES_ESCAPE: "\\" (_LINE_BREAK | ASCII)
 BYTES_ESCAPE: "\\" ("x" HEX{2} | ![x] (_LINE_BREAK | ASCII))
