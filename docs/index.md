@@ -8,7 +8,7 @@ fpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
 - From Python you read that tree or turn it into your own objects with a `Transformer`, a class with one method per rule.
 
 ```{note}
-fpeg is at an early stage. The [command line](reference/cli.md) and the [Python package](reference/python-api.md) parse with grammars that need no left recursion, cuts, columns or captures, and turn trees into Python values through a `Transformer` or the value builders written in the grammar. The [roadmap](roadmap.md) says what comes next.
+fpeg is at an early stage. The [command line](reference/cli.md) and the [Python package](reference/python-api.md) parse with grammars that need no left recursion, columns or captures, and turn trees into Python values through a `Transformer` or the value builders written in the grammar. The [roadmap](roadmap.md) says what comes next.
 ```
 
 ## Install

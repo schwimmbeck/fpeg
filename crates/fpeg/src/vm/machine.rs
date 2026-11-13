@@ -66,6 +66,8 @@ enum Entry {
     Choice {
         alt: u32,
         saved: Saved,
+        /// A cut marked the entry: a failure drops it and unwinds on.
+        cut: bool,
     },
     Label {
         alt: u32,
@@ -85,6 +87,8 @@ enum Entry {
         need: u32,
         /// Steps still allowed, `u32::MAX` without a maximum.
         left: u32,
+        /// A cut marked the entry, as for a choice.
+        cut: bool,
     },
     Call {
         ret: u32,
@@ -282,6 +286,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Inst::Choice(alt) => self.push(Entry::Choice {
                     alt,
                     saved: self.saved(),
+                    cut: false,
                 }),
                 Inst::LabelChoice(alt) => self.push(Entry::Label {
                     alt,
@@ -300,12 +305,14 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.pc = target;
                 }
                 Inst::LoopCommit(target) => match self.stack.last_mut() {
-                    Some(Entry::Choice { saved, .. }) if self.pos > saved.pos => {
+                    Some(Entry::Choice { saved, cut, .. }) if self.pos > saved.pos => {
                         *saved = Saved {
                             pos: self.pos,
                             items: self.items.len() as u32,
                             nodes: self.nodes.len() as u32,
                         };
+                        // A cut inside a step that succeeded is spent.
+                        *cut = false;
                         self.pc = target;
                     }
                     _ => {
@@ -322,12 +329,18 @@ impl<'p, 'i> Machine<'p, 'i> {
                         saved: self.saved(),
                         need,
                         left,
+                        cut: false,
                     });
                 }
                 Inst::RepNext(target) => match self.stack.last_mut() {
                     Some(Entry::Repetition {
-                        saved, need, left, ..
+                        saved,
+                        need,
+                        left,
+                        cut,
+                        ..
                     }) if self.pos > saved.pos => {
+                        *cut = false;
                         *need = need.saturating_sub(1);
                         if *left != u32::MAX {
                             *left -= 1;
@@ -365,6 +378,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::Throw(label) => self.throw(label)?,
                 Inst::Fail => self.fail()?,
+                Inst::Cut => {
+                    self.cut();
+                    self.pc += 1;
+                }
                 Inst::Call(target) => {
                     if self.depth >= self.limits.max_depth {
                         return Err(Stop::Limit(Limit::Depth));
@@ -542,7 +559,9 @@ impl<'p, 'i> Machine<'p, 'i> {
     fn fail(&mut self) -> Result<(), Stop> {
         while let Some(entry) = self.stack.pop() {
             let caught = match entry {
-                Entry::Choice { alt, saved } | Entry::Label { alt, saved } => {
+                // A cut made the failure pass the entry, so what it guards fails as a whole.
+                Entry::Choice { cut: true, .. } | Entry::Repetition { cut: true, .. } => None,
+                Entry::Choice { alt, saved, .. } | Entry::Label { alt, saved } => {
                     Some((alt, saved, None))
                 }
                 Entry::Predicate { alt, saved, quiet } => Some((alt, saved, Some(quiet))),
@@ -578,6 +597,28 @@ impl<'p, 'i> Machine<'p, 'i> {
         // stack, as a parse from a terminal opens its token.
         self.end_failed_token(None);
         Err(Stop::NoMatch)
+    }
+
+    /// Mark the innermost choice or repetition entry of the rule activation. Entries that are
+    /// no choice points are passed, and a call or a lookahead ends the search, since a cut
+    /// reaches neither the caller of its rule nor past the lookahead it stands in.
+    fn cut(&mut self) {
+        let mut passed = 0;
+        for entry in self.stack.iter_mut().rev() {
+            match entry {
+                Entry::Choice { cut, .. } | Entry::Repetition { cut, .. } => {
+                    *cut = true;
+                    break;
+                }
+                Entry::Call { .. } | Entry::Predicate { .. } => break,
+                Entry::Label { .. }
+                | Entry::Sub { .. }
+                | Entry::Open { .. }
+                | Entry::Mark { .. }
+                | Entry::Flags { .. } => passed += 1,
+            }
+        }
+        self.steps += passed;
     }
 
     /// The open token failed when the entry that caught the failure, at `catcher` on the stack,

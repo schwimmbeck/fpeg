@@ -22,6 +22,11 @@ error at 0: bad if
 --- "ify"
 error at 0: bad if
 
+=== a cut inside a labeled expression that matches commits the choice around it
+start: ("a" ~ "b") ^ "bad" "x" | "a" "b" "y"
+--- "aby"
+error at 2: expected "x"
+
 === a labeled error points past ignored text
 start: "a" ("b" ^ "b is missing")
 %ignore " "+

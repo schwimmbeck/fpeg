@@ -98,6 +98,7 @@ impl Program {
                 None => format!("Throw ?{label}"),
             },
             Inst::Fail => "Fail".to_owned(),
+            Inst::Cut => "Cut".to_owned(),
             Inst::Call(target) => match routines.rules.get(&target) {
                 Some(name) => format!("Call {name}"),
                 None => format!("Call ?{target}"),

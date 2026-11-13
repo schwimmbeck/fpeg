@@ -35,6 +35,8 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
         queue: Vec::new(),
         shared_pcs: Vec::new(),
         subs: Vec::new(),
+        cuttable: false,
+        free_cuts: HashMap::new(),
     };
     let mut rules = Vec::new();
     for rule in &grammar.rules {
@@ -42,6 +44,8 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
             name: rule.name.clone(),
             pc: c.here(),
         });
+        // A cut ends at the call of its rule.
+        c.cuttable = false;
         c.expr(&rule.body);
         c.emit(Inst::Ret);
     }
@@ -51,7 +55,10 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
         c.emit(Inst::QuietOn);
         let choice = c.emit(Inst::Choice(0));
         let step = c.here();
-        c.expr(skip);
+        c.cuttable = true;
+        // A failure after a cut ends the skipping as any other does, so it must not pass the
+        // entry of the loop.
+        c.cut_scope(skip);
         c.emit(Inst::LoopCommit(step));
         c.patch(choice);
         c.emit(Inst::QuietOff);
@@ -63,6 +70,7 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
     let mut entries = HashMap::new();
     for name in names {
         entries.insert(name.clone(), c.here());
+        c.cuttable = false;
         c.expr(&grammar.entry[name]);
         if c.has_skip {
             c.emit(Inst::Skip);
@@ -71,6 +79,9 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
     }
     while let Some((index, expr)) = c.queue.pop() {
         c.shared_pcs[index] = c.here();
+        // A cut passes the call of a shared part, and what stands around its uses is not
+        // known here.
+        c.cuttable = true;
         c.expr(&expr);
         c.emit(Inst::Ret);
     }
@@ -130,7 +141,6 @@ fn flag_bit(flag: ir::FlagId) -> Option<u8> {
 /// The core forms of a rule body that the machine does not run yet.
 #[derive(Default)]
 struct Uses {
-    cut: bool,
     columns: bool,
     captures: bool,
 }
@@ -140,7 +150,6 @@ impl Uses {
     fn scan(&mut self, expr: &ir::Expr, seen: &mut HashSet<*const ir::Expr>) {
         use ir::Expr as E;
         match expr {
-            E::Cut => self.cut = true,
             E::Same { .. } => self.columns = true,
             E::Ref { .. } => self.captures = true,
             E::Indent { expr, .. } => {
@@ -177,6 +186,7 @@ impl Uses {
             | E::Class(_)
             | E::Any
             | E::Call(_)
+            | E::Cut
             | E::Skip
             | E::WordEnd
             | E::FlagTest { .. }
@@ -188,7 +198,6 @@ impl Uses {
     fn messages(&self, who: &str) -> Vec<String> {
         let mut messages = Vec::new();
         for (used, what, milestone) in [
-            (self.cut, "a cut", "M4"),
             (self.columns, "%indent or %same", "M6"),
             (self.captures, "%def or %ref", "M6"),
         ] {
@@ -203,8 +212,8 @@ impl Uses {
     }
 }
 
-/// Report what the machine does not run yet: left recursion, cuts, columns and captures, the
-/// first hundred at most.
+/// Report what the machine does not run yet: left recursion, columns and captures, the first
+/// hundred at most.
 fn unsupported(grammar: &ir::Grammar) -> Vec<GrammarError> {
     let facts = analysis::analyze(grammar);
     let mut errors: Vec<GrammarError> = Vec::new();
@@ -260,6 +269,11 @@ struct Compiler {
     shared_pcs: Vec<u32>,
     /// Calls to point at the routine of the shared part they call, once every part has one.
     subs: Vec<(usize, usize)>,
+    /// Whether a cut in the code being compiled could mark an entry of the routine: one of a
+    /// choice or repetition around it, with no lookahead between.
+    cuttable: bool,
+    /// Whether each shared part met so far holds a free cut.
+    free_cuts: HashMap<*const ir::Expr, bool>,
 }
 
 impl Compiler {
@@ -318,7 +332,7 @@ impl Compiler {
             E::Repeat { expr, min, max } => self.repeat(expr, *min, *max),
             E::And(inner) => {
                 let choice = self.emit(Inst::PredChoice(0));
-                self.expr(inner);
+                self.inside(false, inner);
                 let back = self.emit(Inst::BackCommit(0));
                 self.patch(choice);
                 self.emit(Inst::Fail);
@@ -326,9 +340,12 @@ impl Compiler {
             }
             E::Not(inner) => {
                 let choice = self.emit(Inst::PredChoice(0));
-                self.expr(inner);
+                self.inside(false, inner);
                 self.emit(Inst::FailTwice);
                 self.patch(choice);
+            }
+            E::Cut => {
+                self.emit(Inst::Cut);
             }
             E::Skip => {
                 if self.has_skip {
@@ -412,9 +429,77 @@ impl Compiler {
                 self.subs.push((at, index));
             }
             // Rejected before compiling, see `unsupported`.
-            E::Cut | E::Indent { .. } | E::Same { .. } | E::Def { .. } | E::Ref { .. } => {
+            E::Indent { .. } | E::Same { .. } | E::Def { .. } | E::Ref { .. } => {
                 self.emit(Inst::Fail);
             }
+        }
+    }
+
+    /// Compile `expr` where a cut can mark an entry of the routine, or cannot.
+    fn inside(&mut self, cuttable: bool, expr: &ir::Expr) {
+        let outer = std::mem::replace(&mut self.cuttable, cuttable);
+        self.expr(expr);
+        self.cuttable = outer;
+    }
+
+    /// Compile an expression that is a choice point of the semantics and has no entry of its
+    /// own: the last alternative of a choice, an expression repeated exactly once, the skip
+    /// expression. A cut in it must not mark an entry around it, so where it holds a free cut
+    /// and there is such an entry, it gets a guard, a choice entry that resumes at a failure.
+    fn cut_scope(&mut self, expr: &ir::Expr) {
+        if !(self.cuttable && self.free_cut(expr)) {
+            self.expr(expr);
+            return;
+        }
+        let guard = self.emit(Inst::Choice(0));
+        self.expr(expr);
+        let commit = self.emit(Inst::Commit(0));
+        self.patch(guard);
+        self.emit(Inst::Fail);
+        self.patch(commit);
+    }
+
+    /// Whether `expr` holds a cut that no choice, repetition, lookahead or call inside it
+    /// takes. A shared part is looked at once.
+    fn free_cut(&mut self, expr: &ir::Expr) -> bool {
+        use ir::Expr as E;
+        match expr {
+            E::Cut => true,
+            E::Seq(parts) => parts.iter().any(|part| self.free_cut(part)),
+            E::Token { expr, .. }
+            | E::Node { expr, .. }
+            | E::Transparent { expr, .. }
+            | E::Field { expr, .. }
+            | E::Unreserved(expr)
+            | E::FlagOn { expr, .. }
+            | E::FlagOff { expr, .. }
+            | E::Indent { expr, .. }
+            | E::Def { expr, .. }
+            | E::Label { expr, .. } => self.free_cut(expr),
+            E::Shared(expr) => {
+                let key = Arc::as_ptr(expr);
+                if let Some(&known) = self.free_cuts.get(&key) {
+                    return known;
+                }
+                let free = self.free_cut(expr);
+                self.free_cuts.insert(key, free);
+                free
+            }
+            E::Empty
+            | E::Literal { .. }
+            | E::Class(_)
+            | E::Any
+            | E::Call(_)
+            | E::Choice(_)
+            | E::Repeat { .. }
+            | E::And(_)
+            | E::Not(_)
+            | E::Skip
+            | E::WordEnd
+            | E::FlagTest { .. }
+            | E::Same { .. }
+            | E::Ref { .. }
+            | E::ErrorAlternative => false,
         }
     }
 
@@ -448,11 +533,11 @@ impl Compiler {
         let mut commits = Vec::new();
         for alternative in rest {
             let choice = self.emit(Inst::Choice(0));
-            self.expr(alternative);
+            self.inside(true, alternative);
             commits.push(self.emit(Inst::Commit(0)));
             self.patch(choice);
         }
-        self.expr(last);
+        self.cut_scope(last);
         for commit in commits {
             self.patch(commit);
         }
@@ -465,10 +550,10 @@ impl Compiler {
             (_, Some(max)) if max < min => {
                 self.emit(Inst::Fail);
             }
-            (1, Some(1)) => self.expr(expr),
+            (1, Some(1)) => self.cut_scope(expr),
             (0, Some(1)) => {
                 let choice = self.emit(Inst::Choice(0));
-                self.expr(expr);
+                self.inside(true, expr);
                 let commit = self.emit(Inst::Commit(0));
                 self.patch(choice);
                 self.patch(commit);
@@ -476,7 +561,7 @@ impl Compiler {
             (0, None) => {
                 let choice = self.emit(Inst::Choice(0));
                 let step = self.here();
-                self.expr(expr);
+                self.inside(true, expr);
                 self.emit(Inst::LoopCommit(step));
                 self.patch(choice);
             }
@@ -485,7 +570,7 @@ impl Compiler {
                 let bounds = (self.bounds.len() - 1) as u32;
                 let open = self.emit(Inst::RepOpen { end: 0, bounds });
                 let step = self.here();
-                self.expr(expr);
+                self.inside(true, expr);
                 self.emit(Inst::RepNext(step));
                 self.patch(open);
             }

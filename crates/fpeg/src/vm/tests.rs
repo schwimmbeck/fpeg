@@ -353,7 +353,53 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
 }
 
 #[test]
-fn left_recursion_cuts_columns_and_captures_wait_for_their_milestones() {
+fn a_cut_without_an_entry_of_its_own_choice_gets_a_guard() {
+    // The last alternative of the group has no entry, so its cut would mark the choice of the
+    // rule. The last alternative of the rule has none around it and needs no guard.
+    let program = parser("start: (\"a\" | \"b\" ~ \"c\") \"d\" | \"e\" ~ \"f\"\n").program;
+    let expected = "\
+rule start:
+     0  Choice 22
+     1  Open
+     2  Choice 7
+     3  TokenOpen \"a\"
+     4  Char 'a'
+     5  TokenClose hidden
+     6  Commit 17
+     7  Choice 16
+     8  TokenOpen \"b\"
+     9  Char 'b'
+    10  TokenClose hidden
+    11  Cut
+    12  TokenOpen \"c\"
+    13  Char 'c'
+    14  TokenClose hidden
+    15  Commit 17
+    16  Fail
+    17  TokenOpen \"d\"
+    18  Char 'd'
+    19  TokenClose hidden
+    20  CloseNode start
+    21  Commit 31
+    22  Open
+    23  TokenOpen \"e\"
+    24  Char 'e'
+    25  TokenClose hidden
+    26  Cut
+    27  TokenOpen \"f\"
+    28  Char 'f'
+    29  TokenClose hidden
+    30  CloseNode start
+    31  Ret
+entry start:
+    32  Call start
+    33  End
+";
+    assert_eq!(program.to_string(), expected);
+}
+
+#[test]
+fn left_recursion_columns_and_captures_wait_for_their_milestones() {
     let cases = [
         ("start: start \"a\" | \"a\"\n", "start is left recursive"),
         (
@@ -365,7 +411,6 @@ fn left_recursion_cuts_columns_and_captures_wait_for_their_milestones() {
             "start: e\ne: %precedence {\n    sum: sum \"+\" atom\n    atom: \"1\"\n}\n",
             "sum is left recursive",
         ),
-        ("start: \"a\" ~ \"b\" | \"c\"\n", "start uses a cut"),
         ("start: %indent(\"a\")\n", "start uses %indent or %same"),
         ("start: %def(x, \"a\") %ref(x)\n", "start uses %def or %ref"),
         (

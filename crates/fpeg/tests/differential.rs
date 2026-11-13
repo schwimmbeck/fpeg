@@ -167,7 +167,7 @@ fn case_files_give_the_same_results_on_both_engines() {
     tally.report("case files");
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
     assert!(
-        tally.compared >= 70,
+        tally.compared >= 95,
         "only {} parses compared",
         tally.compared
     );

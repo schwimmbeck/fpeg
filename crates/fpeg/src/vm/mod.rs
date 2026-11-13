@@ -53,8 +53,8 @@ impl fmt::Debug for Parser {
 
 impl Parser {
     /// Compile a grammar, or report the problems in it, the first hundred at most. Left
-    /// recursion, cuts, columns and captures are reported as problems until the milestones of
-    /// the roadmap bring them to the machine.
+    /// recursion, columns and captures are reported as problems until the milestones of the
+    /// roadmap bring them to the machine.
     pub fn new(grammar: &Grammar) -> Result<Parser, Vec<GrammarError>> {
         let resolved = crate::resolve::resolve(grammar)?;
         let program = compile::compile(&resolved)?;

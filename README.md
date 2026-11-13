@@ -81,7 +81,7 @@ The goal for speed is to be the fastest PEG parser that can be used from Python 
 
 ## Status
 
-Early development. The written specification of the grammar language is done, with a reference interpreter that defines what every grammar means, and so are the first versions of the core engine and the Python binding: grammars without left recursion, cuts, indentation and captures parse from Python, Rust and the command line, and a `Transformer` or the builders of a grammar turn the tree into objects. Next comes the rest of the language, with operator precedence, left recursion and cuts. See the [roadmap](docs/roadmap.md).
+Early development. The written specification of the grammar language is done, with a reference interpreter that defines what every grammar means, and so are the first versions of the core engine and the Python binding: grammars without left recursion, indentation and captures parse from Python, Rust and the command line, and a `Transformer` or the builders of a grammar turn the tree into objects. Next comes the rest of the language, with operator precedence and left recursion. See the [roadmap](docs/roadmap.md).
 
 ## License
 

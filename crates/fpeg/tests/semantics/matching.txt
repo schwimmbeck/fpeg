@@ -82,6 +82,71 @@ start: ("a" "b")? "a" "c"
 --- "ac"
 (start ~"a" ~"c")
 
+=== a cut in the last alternative of a group commits the group alone
+start: ("a" | "b" ~ "c") | "b" "d"
+--- "bd"
+(start ~"b" ~"d")
+--- "bc"
+(start ~"b" ~"c")
+
+=== a cut that a group has taken does not commit the choice around it
+start: ("a" | "b" ~) "c" | "b" "d"
+--- "bd"
+(start ~"b" ~"d")
+
+=== a cut inside an expression repeated once ends with it
+start: ("a" ~){1} "b" | "a" "c"
+--- "ac"
+(start ~"a" ~"c")
+
+=== a cut inside a repetition makes the whole repetition fail
+start: ("a" ~ "b")* "a" "c" | "a" "b" "a" "d"
+--- "abad"
+(start ~"a" ~"b" ~"a" ~"d")
+--- "abac"
+error at 3: expected "b", "d"
+
+=== a cut in a step that matched is spent
+start: ("a" ~ "b")* "d"
+--- "abd"
+(start ~"a" ~"b" ~"d")
+
+=== a cut in a counted step that matched is spent
+start: ("a" ~ "b"){1,3} "d"
+--- "abd"
+(start ~"a" ~"b" ~"d")
+
+=== a cut inside a counted repetition makes it fail though it has steps enough
+start: ("a" ~ "b"){1,2} "a" | "a" "b" "a" "c"
+--- "aba"
+error at 3: expected "b", "c"
+
+=== a cut does not reach past the lookahead it stands in
+start: &("a" ~ "b") "a" "b" | "a" "c"
+--- "ac"
+(start ~"a" ~"c")
+
+=== a cut does not reach the rule that calls its rule
+start: pair | "a" "c"
+pair: "a" ~ "b"
+--- "ac"
+(start ~"a" ~"c")
+
+=== a cut in the item of a separated list commits the list
+start: ("a" ~ "b") ** "," "c" | "a" "c"
+--- "ac"
+(start ~"a" ~"c")
+--- "ab,ac"
+error at 4: expected "b"
+
+=== a cut in the ignored text ends the skipping where it fails
+start: "a" "b"
+%ignore " " ~ " "
+--- "a  b"
+(start ~"a" ~"b")
+--- "a b"
+error at 1: expected "b"
+
 === a repetition step that matches empty is the last
 start: ("a"?)* "b"
 --- "b"

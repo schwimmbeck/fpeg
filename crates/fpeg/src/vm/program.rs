@@ -64,6 +64,9 @@ pub(crate) enum Inst {
     Throw(u32),
     /// Fail.
     Fail,
+    /// Mark the innermost choice or repetition entry of the rule activation, so that a failure
+    /// drops it and unwinds on. Calls and lookahead end the search for it.
+    Cut,
     /// Call the rule whose routine starts at the target.
     Call(u32),
     /// Call the shared part whose routine starts at the target.

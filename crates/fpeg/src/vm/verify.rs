@@ -111,7 +111,7 @@ impl Tables<'_> {
             shape
         };
         Ok(match inst {
-            Inst::Char(_) | Inst::Any | Inst::WordEnd => vec![(next, shape)],
+            Inst::Char(_) | Inst::Any | Inst::WordEnd | Inst::Cut => vec![(next, shape)],
             Inst::Str(i) | Inst::StrFold(i) => {
                 index(i, p.strings.len(), "literal")?;
                 vec![(next, shape)]

@@ -6,8 +6,8 @@
 //!
 //! A [`Grammar`] is read from text or built with the [`builder`], and a [`Parser`] compiles it
 //! for the machine and parses inputs into a [`Tree`]. The machine does not run left recursion,
-//! cuts, columns and captures yet. Behind the `reference` feature, the reference interpreter
-//! defines what a grammar means, and the tests compare the machine with it.
+//! columns and captures yet. Behind the `reference` feature, the reference interpreter defines
+//! what a grammar means, and the tests compare the machine with it.
 
 // The core returns errors as values and never panics on any grammar or input.
 #![cfg_attr(
