@@ -113,3 +113,10 @@ start: NUM
 NUM "number": [0-9]+
 --- "x"
 error at 0: expected number
+
+=== a builder names fields that a rule without a node of its own gives, and leaves the tree as it is
+start: _kv => pair(k, v)
+_kv: k=NAME "=" v=NAME
+NAME: [a-z]+
+--- "a=b"
+(start k=NAME"a" ~"=" v=NAME"b")

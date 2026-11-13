@@ -288,7 +288,7 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 
 ## Values
 
-`=> builder` after an alternative says how to turn the node into a value when no Python method handles it. Builders never affect parsing. Status: syntax now, effect with the Python binding (M3).
+`=> builder` after an alternative says how to turn its node into a value when no Python method handles it. Builders never affect parsing. Status: checked now, values with the Python binding (M3).
 
 | Builder | Result |
 |---|---|
@@ -298,6 +298,10 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 | `=> Name(a, b, key=c, items=*, flag=None)` | a call of a registered function with fields, constants and `*` for all children |
 
 - A builder belongs to its alternative. Each alternative with a builder makes nodes of a kind of their own, named like the rule or the alias, so a tree reads the same with builders and without. Alternatives with equal builders share that kind, across rules too.
+- A builder needs a node to make a value of. An alternative of a rule `_name`, or an alternative without `->` in a precedence level, makes none ([E309](diagnostics/E309.md)). In a transparent rule `?name` the builder applies when the node stays, and an alternative that gives way to its one visible child leaves its builder unused.
+- On a terminal a builder applies to every token of it, so the terminal's alternatives give one builder. A token has no children and no fields, so `list`, `tuple`, `dict`, `*` and fields do not fit there ([E309](diagnostics/E309.md)).
+- A field a builder names must be one its alternative can hold, written in it or given by a rule it calls that makes no node of its own ([E207](diagnostics/E207.md)).
+- The built-in builders take no arguments, a keyword is given once, and positional arguments come before keywords ([E310](diagnostics/E310.md)).
 
 ## Modules
 

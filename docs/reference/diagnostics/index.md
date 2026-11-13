@@ -13,8 +13,8 @@ The hundreds of a code tell its area.
 | Codes | Area |
 |---|---|
 | E101 to E104 | reading the grammar text |
-| E201 to E206 | names and references |
-| E301 to E308 | forms that do not fit where they stand |
+| E201 to E207 | names and references |
+| E301 to E310 | forms that do not fit where they stand |
 | E401, E402 | limits on the size of a grammar |
 | E501 | what a later milestone of the roadmap brings |
 | E901 | a bug of fpeg itself |

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::diag::DiagnosticCode;
 use crate::grammar::print::{builder_text, expr_text};
 use crate::grammar::{
-    Alternative, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Level,
+    Alternative, BuilderValue, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Level,
     MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
@@ -38,6 +38,12 @@ pub(crate) const MAX_ERRORS: usize = 100;
 
 /// The attributes a rule may carry.
 const ATTRIBUTES: [&str; 5] = ["lexical", "reserved", "sync", "memo", "nomemo"];
+
+/// The value builders the language defines. Any other name is a function given with the grammar.
+const BUILT_IN_BUILDERS: [&str; 7] = ["int", "float", "text", "unquote", "list", "tuple", "dict"];
+
+/// The built-in builders that make a value of a node's children, which a token does not have.
+const CHILDREN_BUILDERS: [&str; 3] = ["list", "tuple", "dict"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -70,6 +76,14 @@ struct FieldCheck {
     name: String,
     span: Span,
     parts: Vec<ir::Expr>,
+}
+
+/// The fields a builder names and the alternative it belongs to, checked once every rule is
+/// lowered, since the alternative's fields may come from rules it calls.
+struct BuilderCheck {
+    rule: String,
+    fields: Vec<Name>,
+    alternative: ir::Expr,
 }
 
 #[derive(Default)]
@@ -123,6 +137,7 @@ struct Resolver<'g> {
     soft: HashSet<&'g str>,
     reserved: ir::Reserved,
     field_checks: Vec<FieldCheck>,
+    builder_checks: Vec<BuilderCheck>,
     /// Expressions in the arguments and bodies of the template instances made so far.
     instance_expressions: usize,
     errors: Vec<GrammarError>,
@@ -164,6 +179,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
             .collect(),
         reserved: ir::Reserved::default(),
         field_checks: Vec::new(),
+        builder_checks: Vec::new(),
         instance_expressions: 0,
         errors: Vec::new(),
     };
@@ -257,11 +273,13 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         r.lower_rule(pending);
     }
     r.check_fields();
+    let counts = crate::items::Counts::new(&r.rules);
+    r.check_builders(&counts);
     if !r.errors.is_empty() {
         return Err(r.errors);
     }
-    let rules: Vec<ir::Rule> = r.rules.into_iter().flatten().collect();
-    let facts = crate::items::count(&rules, &entry, r.kind_names.len());
+    let facts = counts.facts(&r.rules, &entry, r.kind_names.len());
+    let rules = r.rules.into_iter().flatten().collect();
     Ok(ir::Grammar {
         rules,
         entry,
@@ -592,6 +610,115 @@ impl<'g> Resolver<'g> {
         KindId(id)
     }
 
+    /// Report a builder that cannot apply where it stands or whose arguments do not fit, and
+    /// keep the fields it names to check against its alternative. `owner` is the rule or level
+    /// of the alternative, and `alternative` the alternative lowered, without its node.
+    fn check_builder(
+        &mut self,
+        rule: &Rule,
+        owner: &str,
+        builder: &ValueBuilder,
+        makes_node: bool,
+        alternative: &ir::Expr,
+    ) {
+        let rule_name = owner;
+        let terminal = rule.kind() == RuleKind::Terminal;
+        let (name, args) = match builder {
+            ValueBuilder::Constant(_) => (None, &[][..]),
+            ValueBuilder::Name(name) => (Some(name), &[][..]),
+            ValueBuilder::Call { name, args } => (Some(name), &args[..]),
+        };
+        if !makes_node && !terminal {
+            let span = name.map_or(rule.span, |n| n.span);
+            let message = format!(
+                "the builder of {rule_name} has no node to make a value of, since the \
+                 alternative makes none"
+            );
+            self.error(DiagnosticCode::BuilderPlace, message, span);
+            return;
+        }
+        if let Some(name) = name {
+            if terminal && args.is_empty() && CHILDREN_BUILDERS.contains(&name.text.as_str()) {
+                let message = format!(
+                    "the builder {} needs children, which the terminal {rule_name} does not have",
+                    name.text
+                );
+                self.error(DiagnosticCode::BuilderPlace, message, name.span);
+            }
+            if !args.is_empty() && BUILT_IN_BUILDERS.contains(&name.text.as_str()) {
+                let message = format!("the builder {} takes no arguments", name.text);
+                self.error(DiagnosticCode::BuilderArguments, message, name.span);
+            }
+        }
+        let mut keys: Vec<&str> = Vec::new();
+        let mut fields = Vec::new();
+        for arg in args {
+            match &arg.key {
+                Some(key) if keys.contains(&key.text.as_str()) => {
+                    let message = format!(
+                        "the keyword {} is given twice in the builder of {rule_name}",
+                        key.text
+                    );
+                    self.error(DiagnosticCode::BuilderArguments, message, key.span);
+                }
+                Some(key) => keys.push(&key.text),
+                None if !keys.is_empty() => {
+                    let message = format!(
+                        "a positional argument follows a keyword in the builder of {rule_name}"
+                    );
+                    let span = name.map_or(rule.span, |n| n.span);
+                    self.error(DiagnosticCode::BuilderArguments, message, span);
+                }
+                None => {}
+            }
+            match &arg.value {
+                BuilderValue::Field(field) if terminal => {
+                    let message = format!(
+                        "the builder of the terminal {rule_name} names the field {}, and a \
+                         terminal has no fields",
+                        field.text
+                    );
+                    self.error(DiagnosticCode::BuilderPlace, message, field.span);
+                }
+                BuilderValue::Field(field) => fields.push(field.clone()),
+                BuilderValue::All if terminal => {
+                    let message = format!(
+                        "the builder of the terminal {rule_name} takes all children with *, \
+                         which a terminal does not have"
+                    );
+                    let span = name.map_or(rule.span, |n| n.span);
+                    self.error(DiagnosticCode::BuilderPlace, message, span);
+                }
+                BuilderValue::All | BuilderValue::Constant(_) => {}
+            }
+        }
+        if !fields.is_empty() {
+            self.builder_checks.push(BuilderCheck {
+                rule: rule_name.to_owned(),
+                fields,
+                alternative: alternative.clone(),
+            });
+        }
+    }
+
+    /// Report fields that builders name and their alternatives cannot hold.
+    fn check_builders(&mut self, counts: &crate::items::Counts) {
+        for check in std::mem::take(&mut self.builder_checks) {
+            let held = counts.fields(&check.alternative);
+            for field in &check.fields {
+                let known =
+                    (self.fields.ids.get(&field.text)).and_then(|&id| u16::try_from(id).ok());
+                if !known.is_some_and(|id| held.contains(&FieldId(id))) {
+                    let message = format!(
+                        "the builder of {} names the field {}, which its alternative cannot hold",
+                        check.rule, field.text
+                    );
+                    self.error(DiagnosticCode::BuilderField, message, field.span);
+                }
+            }
+        }
+    }
+
     fn field(&mut self, name: &Name) -> FieldId {
         let (id, _) = self.fields.id(&name.text);
         match u16::try_from(id) {
@@ -754,9 +881,16 @@ impl<'g> Resolver<'g> {
                     );
                     self.error(DiagnosticCode::TransparentField, message, rule.name.span);
                 }
+                if kind == RuleKind::Terminal {
+                    self.check_terminal_builders(rule, alternatives);
+                }
                 let mut lowered = Vec::new();
                 for alternative in alternatives {
                     let expr = self.lower(&alternative.expr, scope);
+                    if let Some(builder) = &alternative.builder {
+                        let makes_node = alternative.alias.is_some() || !rule.is_underscored();
+                        self.check_builder(rule, &rule.name.text, builder, makes_node, &expr);
+                    }
                     lowered.push(self.wrap(rule, kind, alternative, expr));
                 }
                 choice(lowered)
@@ -810,6 +944,22 @@ impl<'g> Resolver<'g> {
         }
     }
 
+    /// Report a terminal whose alternatives give different builders, since every token of a
+    /// terminal has the terminal's one kind.
+    fn check_terminal_builders(&mut self, rule: &Rule, alternatives: &[Alternative]) {
+        let texts: Vec<Option<String>> = (alternatives.iter())
+            .map(|a| a.builder.as_ref().map(builder_text))
+            .collect();
+        if texts.windows(2).any(|pair| pair[0] != pair[1]) {
+            let message = format!(
+                "the alternatives of the terminal {} give different builders, and a terminal \
+                 makes one kind of token",
+                rule.name.text
+            );
+            self.error(DiagnosticCode::BuilderPlace, message, rule.name.span);
+        }
+    }
+
     fn lower_precedence(&mut self, rule: &Rule, kind: RuleKind, levels: &[Level]) -> ir::Expr {
         if kind != RuleKind::Syntactic || rule.transparent || rule.is_underscored() {
             let message = format!(
@@ -858,6 +1008,10 @@ impl<'g> Resolver<'g> {
             let mut lowered = Vec::new();
             for alternative in &level.alternatives {
                 let expr = self.lower(&alternative.expr, scope);
+                if let Some(builder) = &alternative.builder {
+                    let aliased = alternative.alias.is_some();
+                    self.check_builder(rule, &level.name.text, builder, aliased, &expr);
+                }
                 match &alternative.alias {
                     Some(alias) => lowered.push(ir::Expr::Node {
                         kind: self.kind(&alias.text, &alias.text, alternative.builder.as_ref()),
@@ -1233,7 +1387,7 @@ impl<'g> Resolver<'g> {
                     .display
                     .as_ref()
                     .map_or(&target.name.text, |d| &d.value);
-                // A terminal makes one kind of token, with the builder of its first alternative.
+                // The alternatives of a terminal give one builder, or an error says otherwise.
                 let builder = match &target.body {
                     RuleBody::Alternatives(alternatives) => {
                         alternatives.first().and_then(|a| a.builder.as_ref())

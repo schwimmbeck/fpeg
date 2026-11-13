@@ -34,6 +34,8 @@ pub enum DiagnosticCode {
     Name,
     /// E206: a use with the wrong number of arguments.
     Arguments,
+    /// E207: a field that a value builder names and its alternative cannot hold.
+    BuilderField,
     /// E301: a terminal or the skip expression that uses a syntactic rule.
     RuleInTerminal,
     /// E302: a form that does not fit the kind of its rule.
@@ -50,6 +52,10 @@ pub enum DiagnosticCode {
     Class,
     /// E308: a count out of its range: a repetition's maximum below its minimum, a tab width.
     Bounds,
+    /// E309: a value builder that cannot apply where it stands.
+    BuilderPlace,
+    /// E310: a value builder whose arguments do not fit.
+    BuilderArguments,
     /// E401: an expression or a grammar text that nests too deeply.
     TooDeep,
     /// E402: a grammar too large: too many template instances, expressions, names or flags.
@@ -62,7 +68,7 @@ pub enum DiagnosticCode {
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 22] = [
+    pub const ALL: [DiagnosticCode; 25] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -73,6 +79,7 @@ impl DiagnosticCode {
         DiagnosticCode::Duplicate,
         DiagnosticCode::Name,
         DiagnosticCode::Arguments,
+        DiagnosticCode::BuilderField,
         DiagnosticCode::RuleInTerminal,
         DiagnosticCode::RuleForm,
         DiagnosticCode::Precedence,
@@ -81,6 +88,8 @@ impl DiagnosticCode {
         DiagnosticCode::EmptyLiteral,
         DiagnosticCode::Class,
         DiagnosticCode::Bounds,
+        DiagnosticCode::BuilderPlace,
+        DiagnosticCode::BuilderArguments,
         DiagnosticCode::TooDeep,
         DiagnosticCode::TooLarge,
         DiagnosticCode::NotYet,
@@ -100,6 +109,7 @@ impl DiagnosticCode {
             DiagnosticCode::Duplicate => "E204",
             DiagnosticCode::Name => "E205",
             DiagnosticCode::Arguments => "E206",
+            DiagnosticCode::BuilderField => "E207",
             DiagnosticCode::RuleInTerminal => "E301",
             DiagnosticCode::RuleForm => "E302",
             DiagnosticCode::Precedence => "E303",
@@ -108,6 +118,8 @@ impl DiagnosticCode {
             DiagnosticCode::EmptyLiteral => "E306",
             DiagnosticCode::Class => "E307",
             DiagnosticCode::Bounds => "E308",
+            DiagnosticCode::BuilderPlace => "E309",
+            DiagnosticCode::BuilderArguments => "E310",
             DiagnosticCode::TooDeep => "E401",
             DiagnosticCode::TooLarge => "E402",
             DiagnosticCode::NotYet => "E501",

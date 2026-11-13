@@ -248,3 +248,49 @@ the level b takes no arguments
 start: ...
 --- grammar
 ... needs a grammar that uses %extends (M7)
+
+=== a builder on a terminal cannot take children
+start: NAME
+NAME: [a-z]+ => list
+--- grammar
+the builder list needs children, which the terminal NAME does not have
+
+=== a builder on a terminal cannot name a field
+start: NAME
+NAME: [a-z]+ => f(x)
+--- grammar
+the builder of the terminal NAME names the field x, and a terminal has no fields
+
+=== a builder on a terminal cannot take all children
+start: NAME
+NAME: [a-z]+ => f(*)
+--- grammar
+the builder of the terminal NAME takes all children with *, which a terminal does not have
+
+=== the alternatives of a terminal give one builder
+start: NUM
+NUM: [0-9]+ => int | "x" [0-9a-f]+ => text
+--- grammar
+the alternatives of the terminal NUM give different builders, and a terminal makes one kind of token
+
+=== a builder on an alternative of a precedence level without an alias has no node
+start: expr
+expr: %precedence {
+    sum: product "+" product => list
+    product: NUM
+}
+NUM: [0-9]+
+--- grammar
+the builder of sum has no node to make a value of, since the alternative makes none
+
+=== a keyword is given once in a builder
+start: a=NAME => f(x=a, x=a)
+NAME: [a-z]+
+--- grammar
+the keyword x is given twice in the builder of start
+
+=== positional arguments of a builder come before its keywords
+start: a=NAME => f(x=a, a)
+NAME: [a-z]+
+--- grammar
+a positional argument follows a keyword in the builder of start

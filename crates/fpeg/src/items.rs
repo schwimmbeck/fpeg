@@ -198,43 +198,68 @@ pub(crate) struct ItemFacts {
     pub single_item: HashMap<String, bool>,
 }
 
-/// Count the items of a grammar's rules, with `kinds` kinds in its kind table.
-pub(crate) fn count(
-    rules: &[ir::Rule],
-    entry: &HashMap<String, ir::Expr>,
-    kinds: usize,
-) -> ItemFacts {
-    let summaries = summarize(rules);
-    let mut counter = Counter::new(&summaries);
-    let mut fields = vec![BTreeMap::new(); kinds];
-    let mut walked = HashSet::new();
-    for rule in rules {
-        node_fields(&mut counter, &rule.body, &mut fields, &mut walked);
+/// What each rule of a grammar adds where it is called, from which the counts of any
+/// expression follow. A rule missing from the slice, which only a grammar with errors has, never
+/// matches.
+pub(crate) struct Counts {
+    summaries: Vec<Items>,
+}
+
+impl Counts {
+    /// Count the rules, callees first.
+    pub fn new(rules: &[Option<ir::Rule>]) -> Counts {
+        Counts {
+            summaries: summarize(rules),
+        }
     }
-    let kind_fields = (fields.into_iter())
-        .map(|counts: BTreeMap<FieldId, u8>| {
-            (counts.into_iter())
-                .filter(|&(_, count)| count > 0)
-                .map(|(field, count)| {
-                    let count = if count == 1 {
-                        FieldCount::One
-                    } else {
-                        FieldCount::Many
-                    };
-                    (field, count)
-                })
-                .collect()
-        })
-        .collect();
-    let single_item = (entry.iter())
-        .map(|(name, expr)| {
-            let items = counter.of(expr);
-            (name.clone(), items.visible <= 1 && !items.empty)
-        })
-        .collect();
-    ItemFacts {
-        kind_fields,
-        single_item,
+
+    /// The fields that one match of `expr` can give items to, in the node around it.
+    pub fn fields(&self, expr: &ir::Expr) -> Vec<FieldId> {
+        let items = Counter::new(&self.summaries).of(expr);
+        (items.fields.into_iter())
+            .filter(|&(_, count)| count > 0)
+            .map(|(field, _)| field)
+            .collect()
+    }
+
+    /// The facts of the grammar, with `kinds` kinds in its kind table.
+    pub fn facts(
+        &self,
+        rules: &[Option<ir::Rule>],
+        entry: &HashMap<String, ir::Expr>,
+        kinds: usize,
+    ) -> ItemFacts {
+        let mut counter = Counter::new(&self.summaries);
+        let mut fields = vec![BTreeMap::new(); kinds];
+        let mut walked = HashSet::new();
+        for rule in rules.iter().flatten() {
+            node_fields(&mut counter, &rule.body, &mut fields, &mut walked);
+        }
+        let kind_fields = (fields.into_iter())
+            .map(|counts: BTreeMap<FieldId, u8>| {
+                (counts.into_iter())
+                    .filter(|&(_, count)| count > 0)
+                    .map(|(field, count)| {
+                        let count = if count == 1 {
+                            FieldCount::One
+                        } else {
+                            FieldCount::Many
+                        };
+                        (field, count)
+                    })
+                    .collect()
+            })
+            .collect();
+        let single_item = (entry.iter())
+            .map(|(name, expr)| {
+                let items = counter.of(expr);
+                (name.clone(), items.visible <= 1 && !items.empty)
+            })
+            .collect();
+        ItemFacts {
+            kind_fields,
+            single_item,
+        }
     }
 }
 
@@ -272,12 +297,14 @@ fn node_fields(
 
 /// What each rule adds where it is called, rules that call each other counted together until
 /// their counts stop growing. Counts only grow from `never`, so this ends.
-fn summarize(rules: &[ir::Rule]) -> Vec<Items> {
+fn summarize(rules: &[Option<ir::Rule>]) -> Vec<Items> {
     let calls: Vec<Vec<usize>> = rules
         .iter()
         .map(|rule| {
             let mut calls = Vec::new();
-            item_calls(&rule.body, rules.len(), &mut calls, &mut HashSet::new());
+            if let Some(rule) = rule {
+                item_calls(&rule.body, rules.len(), &mut calls, &mut HashSet::new());
+            }
             calls
         })
         .collect();
@@ -287,7 +314,10 @@ fn summarize(rules: &[ir::Rule]) -> Vec<Items> {
         loop {
             let mut changed = false;
             for &rule in &component {
-                let items = Counter::new(&summaries).of(&rules[rule].body);
+                let Some(body) = rules[rule].as_ref().map(|rule| &rule.body) else {
+                    continue;
+                };
+                let items = Counter::new(&summaries).of(body);
                 if items != summaries[rule] {
                     summaries[rule] = items;
                     changed = true;
