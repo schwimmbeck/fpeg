@@ -63,6 +63,8 @@ The tests of the core crate run on the reference interpreter.
 
 The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. `cargo test` reads every `fpeg` grammar block, and resolves the ones that define a `start` rule. The build output lands in `docs/_build/html`.
 
+The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for light and dark pages, used by the documentation and by `README.md`, and `favicon.svg`, a heavier cut of the mark that follows the browser's colour scheme by itself.
+
 ## Benchmarks
 
 The benchmark suites measure other parsers today, and fastpeg as soon as it parses. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).

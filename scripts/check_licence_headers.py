@@ -40,7 +40,7 @@ COMMENT_BY_SUFFIX = {
     ".sh": "#",
     ".ps1": "#",
 }
-EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt"}
+EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt", ".svg"}
 EXEMPT_NAMES = {"LICENSE", ".gitignore", ".gitattributes", ".python-version", "py.typed"}
 # Sample inputs of the acceptance grammars are data in many formats, not source files.
 EXEMPT_DIRECTORIES = ("grammars/samples/",)

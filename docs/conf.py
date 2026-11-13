@@ -20,3 +20,11 @@ exclude_patterns = ["_build"]
 
 html_theme = "furo"
 html_title = "fastpeg"
+html_static_path = ["_static"]
+html_favicon = "_static/favicon.svg"
+# The logo spells the name, so the sidebar does not repeat it as text.
+html_theme_options = {
+    "light_logo": "logo-light.svg",
+    "dark_logo": "logo-dark.svg",
+    "sidebar_hide_name": True,
+}
