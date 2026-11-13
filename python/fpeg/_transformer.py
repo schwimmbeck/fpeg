@@ -14,7 +14,7 @@ import difflib
 import inspect
 import sys
 import types
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, ClassVar, TypeVar, cast
 
 from fpeg import _fpeg
@@ -106,7 +106,7 @@ class Transformer:
         a list, and `Discard` as an empty list.
         """
         values = self._values(tree)
-        return values[0] if len(values) == 1 else list(values)
+        return values if isinstance(values, list) else values[0]
 
     def __default__(self, data: Any, children: list[Any], meta: Any) -> Any:
         """Make the value of a node without a method or builder, when a subclass overrides it."""
@@ -116,8 +116,8 @@ class Transformer:
         """Make the value of a token without a method or builder, when a subclass overrides it."""
         return token
 
-    def _values(self, item: Any) -> tuple[Any, ...]:
-        """Return the values an item gives its parent: one, none for `Discard`, or several."""
+    def _values(self, item: Any) -> Sequence[Any]:
+        """Return what an item gives its parent: one value in a tuple, or a list it spliced."""
         if isinstance(item, Tree):
             if _fpeg.is_view(item):
                 return _fpeg.scan(self, item, _make_plan)
@@ -126,7 +126,7 @@ class Transformer:
             return self._transform_token(item)
         return (item,)
 
-    def _transform_token(self, token: Token) -> tuple[Any, ...]:
+    def _transform_token(self, token: Token) -> Sequence[Any]:
         cls = type(self)
         name = token.type
         if getattr(self, "__visit_tokens__", True) and _is_handler(cls, name):
@@ -145,7 +145,7 @@ class Transformer:
             return _results(self.__default_token__(token))
         return (token,)
 
-    def _transform_owned(self, root: Tree) -> tuple[Any, ...]:
+    def _transform_owned(self, root: Tree) -> Sequence[Any]:
         """Transform a tree built in Python, children first, without recursion."""
         values: list[Any] = []
         on_path: set[int] = set()
@@ -157,7 +157,11 @@ class Transformer:
                 on_path.discard(id(item))
                 children = values[start:]
                 del values[start:]
-                values.extend(self._owned_value(item, children))
+                own = self._owned_value(item, children)
+                # The root comes last, and its values are what the walk gives.
+                if item is root:
+                    return own
+                values.extend(own)
             elif isinstance(item, Tree) and not _fpeg.is_view(item):
                 if id(item) in on_path:
                     raise ValueError("the tree contains itself")
@@ -168,7 +172,7 @@ class Transformer:
                 values.extend(self._values(item))
         return tuple(values)
 
-    def _owned_value(self, tree: Tree, children: list[Any]) -> tuple[Any, ...]:
+    def _owned_value(self, tree: Tree, children: list[Any]) -> Sequence[Any]:
         cls = type(self)
         # A tree built in Python may have any object as data.
         name: Any = tree.data
@@ -195,13 +199,13 @@ _NO_VALUE = _fpeg.NO_VALUE
 _BASE_NAMES = frozenset(vars(Transformer)) | frozenset(dir(object))
 
 
-def _results(result: Any) -> tuple[Any, ...]:
-    """Return the values a result gives the parent."""
+def _results(result: Any) -> Sequence[Any]:
+    """Return what a result gives the parent: one value in a tuple, or a list it spliced."""
     if result is Discard:
-        return ()
+        return []
     if isinstance(result, types.GeneratorType):
         # A yielded Discard puts nothing, as a returned one does.
-        return tuple(value for value in cast(Iterable[Any], result) if value is not Discard)
+        return [value for value in cast(Iterable[Any], result) if value is not Discard]
     return (result,)
 
 

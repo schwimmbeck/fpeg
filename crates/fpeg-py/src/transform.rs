@@ -222,6 +222,9 @@ struct Scan<'py, 'p> {
     /// hand, kept so that their space is reused from node to node.
     children: Vec<(FieldId, Py<PyAny>)>,
     arguments: Vec<Py<PyAny>>,
+    /// The entry whose method last yielded or discarded, which at the end says whether the
+    /// values of the top are a list.
+    spliced: Option<u32>,
     /// Positions of the tokens the scan makes, which come in input order.
     cursor: Option<LineCursor<'p>>,
     discard: Bound<'py, PyAny>,
@@ -324,11 +327,13 @@ impl<'py, 'p> Scan<'py, 'p> {
     /// value.
     fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
         if result.is(&self.discard) {
+            self.spliced = Some(entry as u32);
             return Ok(());
         }
         // SAFETY: `result` is a live object.
         let generator = unsafe { ffi::PyGen_CheckExact(result.as_ptr()) } != 0;
         if generator {
+            self.spliced = Some(entry as u32);
             for value in result.try_iter()? {
                 let value = value?;
                 // A yielded Discard puts nothing, as a returned one does.
@@ -614,14 +619,14 @@ pub fn is_view(tree: &Bound<'_, Tree>) -> bool {
 }
 
 /// Transform a view with the plan of the transformer's class, and return the values its node
-/// gives its parent: one, none for `Discard`, or several from a generator.
+/// gives its parent: one in a tuple, or a list of what its method yielded or discarded.
 #[pyfunction]
 pub fn scan<'py>(
     py: Python<'py>,
     transformer: &Bound<'py, PyAny>,
     view: &Bound<'py, Tree>,
     make_plan: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyTuple>> {
+) -> PyResult<Bound<'py, PyAny>> {
     let Some((parsed, index)) = view.get().parse_entry() else {
         return Err(PyTypeError::new_err(
             "only a tree of a parse can be scanned",
@@ -642,6 +647,7 @@ pub fn scan<'py>(
         stack: Vec::new(),
         children: Vec::new(),
         arguments: Vec::new(),
+        spliced: None,
         cursor: None,
         discard: discard(py)?.clone(),
     };
@@ -652,9 +658,14 @@ pub fn scan<'py>(
         && value.object.is_none()
         && value.entry == index
     {
-        return PyTuple::new(py, [view.clone().into_any()]);
+        return Ok(PyTuple::new(py, [view.clone().into_any()])?.into_any());
     }
-    PyTuple::new(py, scan.objects(values)?)
+    let objects = scan.objects(values)?;
+    // At the top, where no parent takes them, what a method yields or discards is a list.
+    if scan.spliced == Some(index) {
+        return Ok(PyList::new(py, objects)?.into_any());
+    }
+    Ok(PyTuple::new(py, objects)?.into_any())
 }
 
 /// The value the builder of a token's terminal gives it, or `NO_VALUE` when it has none: a

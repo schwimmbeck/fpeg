@@ -241,6 +241,26 @@ def test_a_generator_puts_its_values_into_the_parent_in_the_node_s_place() -> No
     assert Splice().transform(parse("f([a, b])").children[0].field("args")[0]) == ["a", "b"]
 
 
+def test_at_the_top_what_a_method_yields_or_discards_comes_back_as_a_list() -> None:
+    class One(fpeg.Transformer):
+        def start(self, *calls: Any) -> Iterator[Any]:
+            yield "only"
+
+    class Gone(fpeg.Transformer):
+        def start(self, *calls: Any) -> Any:
+            return fpeg.Discard
+
+    class Name(fpeg.Transformer):
+        def NAME(self, token: fpeg.Token) -> Iterator[Any]:
+            yield str(token)
+
+    tree = parse("f()")
+    for item in (tree, pickle.loads(pickle.dumps(tree))):
+        assert One().transform(item) == ["only"]
+        assert Gone().transform(item) == []
+    assert Name().transform(tree.children[0].children[0]) == ["f"]
+
+
 def test_several_values_in_a_field_of_one_item_are_an_error() -> None:
     class Twice(fpeg.Transformer):
         def kw(self, children: list[Any]) -> Iterator[Any]:
