@@ -53,6 +53,12 @@ other: "if"
 --- "x if"
 error at 2: expected NAME, end of input
 
+=== a labeled error inside a terminal inside a lookahead fails the lookahead
+start: !T "a" "c" | "a" "b"
+T: "a" ("x" ^ "need x")
+--- "ab"
+(start ~"a" ~"b")
+
 === a soft keyword stays a valid name
 start: NAME*
 @reserved

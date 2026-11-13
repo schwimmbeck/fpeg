@@ -15,7 +15,7 @@ use std::path::Path;
 
 use common::cases::{Check, CheckKind, case_files, parse_cases};
 use common::check_printing;
-use fastpeg::{Grammar, GrammarError, ParseErrorKind, Reference};
+use fastpeg::{Grammar, GrammarError, ParseErrorKind, Parser, Reference};
 
 /// What a check produces, as the lines the case file holds.
 fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> {
@@ -151,11 +151,15 @@ fn a_parse_starts_from_a_rule_or_a_level_but_not_from_an_unknown_name() {
         tree.to_text("1+2", false),
         "(add left=N\"1\" ~\"+\" right=N\"2\")"
     );
+    let unknown = ParseErrorKind::UnknownStart("missing".to_owned());
     let error = reference.parse("1", "missing").expect_err("no such rule");
-    assert_eq!(
-        error.kind,
-        ParseErrorKind::UnknownStart("missing".to_owned())
-    );
+    assert_eq!(error.kind, unknown);
+    // The machine does not run the left-recursive level, but knows which names exist.
+    let flat = Grammar::from_text("start: N\nN: [0-9]\n").expect("the grammar reads");
+    let parser = Parser::new(&flat).expect("the grammar compiles");
+    let error = parser.parse("1", "missing").expect_err("no such rule");
+    assert_eq!(error.message(), "no rule missing to start from");
+    assert_eq!(error.kind, unknown);
 }
 
 // The case files match grammar errors by subset, so this exact list is written out.

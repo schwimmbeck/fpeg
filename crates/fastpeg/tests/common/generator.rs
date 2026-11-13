@@ -198,7 +198,7 @@ impl Generator {
         if depth >= MAX_DEPTH || self.rng.chance(35) {
             return self.atom(terminal);
         }
-        let kinds = if terminal { 8 } else { 14 };
+        let kinds = if terminal { 9 } else { 14 };
         match self.rng.below(kinds) {
             0 | 1 => flat(self.parts(depth, terminal), false),
             2 | 3 => flat(self.parts(depth, terminal), true),
@@ -227,7 +227,7 @@ impl Generator {
                 false => not(self.expr(depth + 1, terminal)),
             },
             7 if self.features.captures => def("c", self.expr(depth + 1, terminal)),
-            8 => label_message(self.expr(depth + 1, false), "oops"),
+            8 => label_message(self.expr(depth + 1, terminal), "oops"),
             9 | 10 => {
                 let name = if self.rng.chance(50) { "x" } else { "y" };
                 field(name, self.expr(depth + 1, false))

@@ -40,6 +40,10 @@ fn nesting_deeper_than_the_depth_limit_is_an_error_not_a_stack_overflow() {
         .parse(&nested(100_000), "start")
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
+    assert_eq!(
+        error.message(),
+        "rule calls nest deeper than the depth limit"
+    );
 }
 
 #[test]
@@ -133,8 +137,11 @@ fn long_literals_and_large_classes_count_against_the_machine_s_step_limit() {
         let parser = Parser::new(&builder.build()).expect("the grammar compiles");
         // A parse that ends shows only the size of its tree.
         let outcome = parser.parse_with(&input, "start", limits);
-        let outcome = outcome.map(|tree| tree.len()).map_err(|error| error.kind);
-        assert_eq!(outcome, Err(ParseErrorKind::Limit(Limit::Steps)));
+        let outcome = outcome
+            .map(|tree| tree.len())
+            .map_err(|error| error.message());
+        let message = "the parse takes more steps than the step limit".to_owned();
+        assert_eq!(outcome, Err(message));
     }
 }
 
@@ -290,11 +297,12 @@ fn a_tree_as_deep_as_its_input_prints_without_recursion() {
         .expect("the grammar resolves")
         .parse(&input, "start")
         .expect("the input parses");
-    let printed = std::thread::Builder::new()
+    let (printed, lines) = std::thread::Builder::new()
         .stack_size(PRINT_STACK_BYTES)
-        .spawn(move || tree.to_text(&input, false))
+        .spawn(move || (tree.to_text(&input, false), tree.to_lines(&input, false)))
         .expect("the thread starts")
         .join()
         .expect("printing finishes");
     assert!(printed.starts_with(&format!("(start {}", "(sum ".repeat(500))));
+    assert!(lines.ends_with(&format!("\n{}~\"+\"\n{}~\"1\"\n", "    ", "    ")));
 }
