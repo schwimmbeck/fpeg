@@ -52,10 +52,11 @@ The tests of the core crate run on the reference interpreter.
 | `tests/semantics/*.txt` | case files: a grammar, inputs, and the expected tree or error for each. Every grammar must also print to text that reads back the same |
 | `tests/acceptance.rs` | every grammar in `grammars/` parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree |
 | `tests/generated.rs` | generated grammars and inputs: nothing panics, every parse ends within the limits, printing reads back, and memoization never changes a result |
+| `tests/mutated.rs` | the grammars of `grammars/` with one random edit each: reading, resolving and parsing samples never panic |
 | `tests/docs.rs` | every `fpeg` block of the documentation |
 | `tests/limits.rs` | the depth and step limits |
 
-`FASTPEG_BLESS=1 cargo test` rewrites the expected results of the case files and the `.tree` files, which are then reviewed before a commit. `FASTPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FASTPEG_GENERATED_SEED` the first seed, which replays a reported failure. Long runs are faster with `cargo test --release`.
+`FASTPEG_BLESS=1 cargo test` rewrites the expected results of the case files and the `.tree` files, which are then reviewed before a commit. `FASTPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FASTPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FASTPEG_MUTANTS` and `FASTPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
 
 ## Documentation
 
