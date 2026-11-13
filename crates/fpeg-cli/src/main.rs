@@ -9,22 +9,27 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fpeg::{Grammar, GrammarError, LineIndex, NodeRef, ParseErrorKind, Parser, Tree};
+use fpeg::{Grammar, GrammarError, LineIndex, NodeRef, ParseError, ParseErrorKind, Parser, Tree};
+
+mod profile;
 
 const USAGE: &str = "\
 Usage: fpeg <command> [options]
 
 Commands:
-  check GRAMMAR...         report the problems of grammars
-  parse GRAMMAR [INPUT]    parse INPUT, or standard input, and print its tree
+  check GRAMMAR...             report the problems of grammars
+  parse GRAMMAR [INPUT]        parse INPUT, or standard input, and print its tree
+  profile GRAMMAR INPUT...     parse the inputs and print what each rule did
+
+Options of parse and profile:
+  --start RULE                 the rule to start from, start if not given
+  --json                       print the tree, or the counts of the rules, as JSON
 
 Options of parse:
-  --start RULE             the rule to start from, start if not given
-  --spans                  show the byte span of every node and token
-  --json                   print the tree as JSON, spans included
+  --spans                      show the byte span of every node and token
 
-  -h, --help               print this help
-  -V, --version            print the version";
+  -h, --help                   print this help
+  -V, --version                print the version";
 
 /// Exit status when a grammar has problems or an input does not parse.
 const EXIT_PROBLEM: u8 = 1;
@@ -61,6 +66,7 @@ fn main() -> ExitCode {
         }
         Some("check") => check(&args[1..]),
         Some("parse") => parse(&args[1..]),
+        Some("profile") => profile::profile(&args[1..]),
         None => Err(Failure::Usage(String::new())),
         Some(first) => {
             // A known flag takes no second argument, so then the second is the culprit.
@@ -222,24 +228,29 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
             let _ = std::io::stdout().write_all(text.as_bytes());
             Ok(())
         }
-        // A start rule the grammar lacks is a problem of the grammar, not of the input.
-        Err(error) if matches!(error.kind, ParseErrorKind::UnknownStart(_)) => {
-            let message = error.message();
-            say(
-                true,
-                format_args!("{}: error: {message}", grammar.display()),
-            );
-            Err(Failure::Problem)
-        }
         Err(error) => {
-            let (line, column) = LineIndex::new(&input).line_column(&input, error.position);
-            say(
-                true,
-                format_args!("{name}:{line}:{column}: error: {}", error.message()),
-            );
+            report_failure(&grammar, &name, &input, &error);
             Err(Failure::Problem)
         }
     }
+}
+
+/// Report an input that did not parse, with the place of the failure. A start rule the grammar
+/// lacks is a problem of the grammar, not of the input.
+fn report_failure(grammar: &Path, name: &str, input: &str, error: &ParseError) {
+    let message = error.message();
+    if matches!(error.kind, ParseErrorKind::UnknownStart(_)) {
+        say(
+            true,
+            format_args!("{}: error: {message}", grammar.display()),
+        );
+        return;
+    }
+    let (line, column) = LineIndex::new(input).line_column(input, error.position);
+    say(
+        true,
+        format_args!("{name}:{line}:{column}: error: {message}"),
+    );
 }
 
 /// The tree as JSON: an array of the top items, a node as an object with its kind, field,

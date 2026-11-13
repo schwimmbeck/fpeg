@@ -1,6 +1,6 @@
 # Command line
 
-The `fpeg` command checks grammars and parses inputs with them. It reads grammars and inputs as UTF-8 text.
+The `fpeg` command checks grammars, parses inputs with them and shows where a parse spends its work. It reads grammars and inputs as UTF-8 text.
 
 ## fpeg check
 
@@ -54,3 +54,50 @@ input.txt:1:4: error: expected N
 ```
 
 The exit status is 0 when the input parses, 1 when the grammar has problems, which `parse` prints as `check` does, or the input does not parse, and 2 for a command line `fpeg` cannot understand.
+
+## fpeg profile
+
+```text
+fpeg profile [--start RULE] [--json] GRAMMAR INPUT...
+```
+
+Parses the input files and prints what each rule did, summed over the inputs, the rules that took the most steps first. With this grammar in `again.fpeg`
+
+```fpeg
+start: item "." | item "!" | item
+item: "(" start ")" | "x"
+```
+
+the input `((((x))))` gives:
+
+```text
+rule     calls  failed  steps  share  with callees  given back  repeats  hits  stored  grown
+item       363       0   4473  71.1%          6273           0      358     0       0      0
+start      121       0   1815  28.9%          6288           0      116     0       0      0
+(parse)      0       0      2   0.0%             0           0        0     0       0      0
+
+6290 steps, at most 27 entries on the stack and 10 nodes, 0 results remembered
+@memo on item: 358 of its 363 calls repeat an earlier one, about 98% of all steps
+@memo on start: 116 of its 121 calls repeat an earlier one, about 95% of all steps
+```
+
+A step is one instruction of the parser, the unit its step limit counts. The numbers of steps change from one version of fpeg to the next, their proportions are what to read.
+
+| Column | Meaning |
+|---|---|
+| `calls` | how often the rule was called, also where a remembered result or a left recursion answered |
+| `failed` | calls that ran the rule and did not match |
+| `steps`, `share` | steps spent in the rule itself, without the rules it calls, and their share of all steps |
+| `with callees` | steps from the calls of the rule to their ends, the rules it calls included |
+| `given back` | bytes that failed calls had matched before they failed |
+| `repeats` | calls at a position where the rule was called before: what remembering the rule answers |
+| `hits`, `stored` | calls that a remembered result answered, and results that were remembered |
+| `grown` | passes of a left recursion that made its match longer |
+
+- The row `%ignore` holds the steps spent skipping ignored text, and `(parse)` those of starting and ending the parse. The rows sum to the steps of the parse.
+- A rule with parameters has one row for all its uses.
+- Below the table stand the steps of all inputs and the largest stack, node count and number of remembered results that one input needed.
+- A line `@memo on` names a rule that is not remembered and whose repeated calls cost a twentieth of all steps or more. Marking the rule [`@memo`](grammar.md#remembered-results) and profiling again shows what it brings.
+- `--json` prints the same counts as JSON: the totals `steps`, `peak_stack`, `peak_nodes` and `memo_entries`, and `rows` with `name`, `remembered`, `calls`, `failures`, `steps`, `steps_with_callees`, `backtracked_bytes`, `repeats`, `memo_hits`, `memo_stores` and `growths` for every rule that was reached.
+
+An input that does not parse is reported as `parse` reports it and still counted. The exit status is 1 then, and 0 when every input parses.

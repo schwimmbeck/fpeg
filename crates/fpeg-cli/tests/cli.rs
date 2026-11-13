@@ -213,3 +213,103 @@ fn check_reports_each_problem_with_its_place_and_code() {
         )
     );
 }
+
+/// The cells of the line of a profile's table that starts with `name`.
+fn profile_row(table: &str, name: &str) -> Vec<String> {
+    let line = table.lines().find(|line| line.starts_with(name));
+    let line = line.unwrap_or_else(|| panic!("no row {name} in\n{table}"));
+    line.split_whitespace().map(str::to_owned).collect()
+}
+
+#[test]
+fn profile_prints_a_row_for_each_rule_and_the_ignored_text() {
+    let paths = files(
+        "profile",
+        &[("sums.fpeg", SUMS), ("a.txt", "1 + 23"), ("b.txt", "4")],
+    );
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let table = text(&out.stdout);
+    assert!(table.starts_with("rule "), "{table}");
+    // The name, the calls and the failures.
+    assert_eq!(profile_row(&table, "N ")[..3], ["N", "2", "0"]);
+    assert_eq!(profile_row(&table, "start")[1], "1");
+    assert!(table.contains("\n%ignore ") && table.contains("\n(parse) "));
+    assert!(table.contains(" steps, at most "), "{table}");
+    // Two inputs add up.
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+        paths[2].as_os_str(),
+    ]);
+    assert_eq!(profile_row(&text(&out.stdout), "N ")[1], "3");
+}
+
+#[test]
+fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
+    let grammar = "start: item \".\" | item \"!\" | item\nitem: \"(\" start \")\" | \"x\"\n";
+    let paths = files(
+        "suggest",
+        &[("again.fpeg", grammar), ("input.txt", "((((((x))))))")],
+    );
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).contains("\n@memo on item: "),
+        "{}",
+        text(&out.stdout)
+    );
+    // Remembered, the rule is no longer worth a suggestion.
+    let marked = grammar.replace("item:", "@memo\nitem:");
+    let paths = files(
+        "suggested",
+        &[("again.fpeg", &marked), ("input.txt", "((((((x))))))")],
+    );
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(
+        !text(&out.stdout).contains("@memo on"),
+        "{}",
+        text(&out.stdout)
+    );
+}
+
+#[test]
+fn profile_prints_json_and_reports_an_input_that_does_not_parse() {
+    let paths = files("profile_json", &[("sums.fpeg", SUMS), ("bad.txt", "1 +")]);
+    let out = run([
+        "profile".as_ref(),
+        "--json".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        format!("{}:1:4: error: expected N\n", paths[1].display())
+    );
+    let json = text(&out.stdout);
+    assert!(json.starts_with("{\"steps\":"), "{json}");
+    assert!(json.contains("{\"name\":\"N\",\"remembered\":false,\"calls\":2,\"failures\":1,"));
+    assert!(json.ends_with("]}\n"), "{json}");
+}
+
+#[test]
+fn profile_needs_a_grammar_and_an_input() {
+    let paths = files("profile_usage", &[("sums.fpeg", SUMS)]);
+    let out = run(["profile".as_ref(), paths[0].as_os_str()]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(text(&out.stderr).starts_with("error: profile needs a grammar and an input\n"));
+}

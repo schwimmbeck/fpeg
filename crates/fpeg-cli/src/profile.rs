@@ -1,0 +1,205 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+//! `fpeg profile`: what each rule of a grammar did while it parsed inputs.
+
+use std::ffi::OsString;
+use std::fmt::Write as _;
+use std::io::Write as _;
+use std::path::PathBuf;
+
+use fpeg::{Limits, Profile, ProfileRow};
+
+use crate::{Failure, compile, push_json_string, read, report_failure};
+
+/// The share of all steps, in percent, that remembering a rule must be worth before the
+/// profile suggests it.
+const SUGGEST_MEMO_PERCENT: u64 = 5;
+
+/// A count of a row: the heading of its column in the table, the name of its member in the
+/// JSON, and where a row holds it.
+struct Count {
+    heading: &'static str,
+    member: &'static str,
+    of: fn(&ProfileRow) -> u64,
+}
+
+/// The counts of a row in the order the table and the JSON show them.
+const COUNTS: [Count; 9] = [
+    count("calls", "calls", |row| row.calls),
+    count("failed", "failures", |row| row.failures),
+    count("steps", "steps", |row| row.steps),
+    count("with callees", "steps_with_callees", |row| {
+        row.steps_with_callees
+    }),
+    count("given back", "backtracked_bytes", |row| {
+        row.backtracked_bytes
+    }),
+    count("repeats", "repeats", |row| row.repeats),
+    count("hits", "memo_hits", |row| row.memo_hits),
+    count("stored", "memo_stores", |row| row.memo_stores),
+    count("grown", "growths", |row| row.growths),
+];
+
+const fn count(heading: &'static str, member: &'static str, of: fn(&ProfileRow) -> u64) -> Count {
+    Count {
+        heading,
+        member,
+        of,
+    }
+}
+
+pub(crate) fn profile(args: &[OsString]) -> Result<(), Failure> {
+    let (mut start, mut json, mut paths) = (None, false, Vec::new());
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--start") => match args.next().and_then(|rule| rule.to_str()) {
+                Some(rule) => start = Some(rule.to_owned()),
+                None => return Err(Failure::Usage("--start needs a rule".into())),
+            },
+            Some("--json") => json = true,
+            Some(option) if option.starts_with('-') => {
+                return Err(Failure::Usage(format!("unexpected argument '{option}'")));
+            }
+            _ => paths.push(PathBuf::from(arg)),
+        }
+    }
+    let Some((grammar, inputs)) = paths.split_first().filter(|(_, inputs)| !inputs.is_empty())
+    else {
+        return Err(Failure::Usage(
+            "profile needs a grammar and an input".into(),
+        ));
+    };
+    let parser = compile(grammar)?;
+    let start = start.as_deref().unwrap_or("start");
+    let mut total = Profile::default();
+    let mut failed = false;
+    for path in inputs {
+        let input = read(path)?;
+        let (result, profile) = parser.profile(&input, start, Limits::default());
+        if let Err(error) = result {
+            report_failure(grammar, &path.to_string_lossy(), &input, &error);
+            failed = true;
+        }
+        add(&mut total, profile);
+    }
+    let text = match json {
+        true => as_json(&total),
+        false => table(&total),
+    };
+    // A closed pipe is no failure of the command.
+    let _ = std::io::stdout().write_all(text.as_bytes());
+    match failed {
+        true => Err(Failure::Problem),
+        false => Ok(()),
+    }
+}
+
+/// Add the counts of one parse to those of the parses before. One parser gives every profile
+/// the same rows.
+fn add(total: &mut Profile, part: Profile) {
+    total.steps += part.steps;
+    total.peak_stack = total.peak_stack.max(part.peak_stack);
+    total.peak_nodes = total.peak_nodes.max(part.peak_nodes);
+    total.memo_entries = total.memo_entries.max(part.memo_entries);
+    if total.rows.is_empty() {
+        total.rows = part.rows;
+        return;
+    }
+    for (sum, row) in total.rows.iter_mut().zip(part.rows) {
+        sum.calls += row.calls;
+        sum.failures += row.failures;
+        sum.steps += row.steps;
+        sum.steps_with_callees += row.steps_with_callees;
+        sum.backtracked_bytes += row.backtracked_bytes;
+        sum.repeats += row.repeats;
+        sum.memo_hits += row.memo_hits;
+        sum.memo_stores += row.memo_stores;
+        sum.growths += row.growths;
+    }
+}
+
+/// The rules a parse reached, those with the most steps of their own first.
+fn reached(profile: &Profile) -> Vec<&ProfileRow> {
+    let mut rows: Vec<&ProfileRow> = (profile.rows.iter())
+        .filter(|row| row.calls > 0 || row.steps > 0)
+        .collect();
+    rows.sort_by(|a, b| b.steps.cmp(&a.steps).then_with(|| a.name.cmp(&b.name)));
+    rows
+}
+
+/// The profile as a table, a line of totals, and what it suggests.
+fn table(profile: &Profile) -> String {
+    let rows = reached(profile);
+    let mut lines: Vec<Vec<String>> = Vec::new();
+    let mut headings = vec!["rule".to_owned()];
+    headings.extend(COUNTS.iter().map(|count| count.heading.to_owned()));
+    headings.insert(4, "share".to_owned());
+    lines.push(headings);
+    for row in &rows {
+        let mut cells = vec![row.name.clone()];
+        cells.extend(COUNTS.iter().map(|count| (count.of)(row).to_string()));
+        let share = 100.0 * row.steps as f64 / profile.steps.max(1) as f64;
+        cells.insert(4, format!("{share:.1}%"));
+        lines.push(cells);
+    }
+    let width = |column: usize| {
+        let cells = lines.iter().filter_map(|cells| cells.get(column));
+        cells.map(|cell| cell.chars().count()).max().unwrap_or(0)
+    };
+    let widths: Vec<usize> = (0..=COUNTS.len() + 1).map(width).collect();
+    let mut out = String::new();
+    for cells in &lines {
+        for (column, (cell, &width)) in cells.iter().zip(&widths).enumerate() {
+            let _ = match column {
+                0 => write!(out, "{cell:<width$}"),
+                _ => write!(out, "  {cell:>width$}"),
+            };
+        }
+        out.push('\n');
+    }
+    let _ = writeln!(
+        out,
+        "\n{} steps, at most {} entries on the stack and {} nodes, {} results remembered",
+        profile.steps, profile.peak_stack, profile.peak_nodes, profile.memo_entries
+    );
+    for row in rows {
+        // A call that repeats an earlier one costs what an average call of the rule costs.
+        let saved = row.repeats * row.steps_with_callees / row.calls.max(1);
+        if !row.remembered && saved * 100 >= profile.steps * SUGGEST_MEMO_PERCENT {
+            let _ = writeln!(
+                out,
+                "@memo on {}: {} of its {} calls repeat an earlier one, about {}% of all steps",
+                row.name,
+                row.repeats,
+                row.calls,
+                saved * 100 / profile.steps.max(1)
+            );
+        }
+    }
+    out
+}
+
+/// The profile as JSON: the totals, and a member `rows` with the counts of each rule reached.
+fn as_json(profile: &Profile) -> String {
+    let mut out = format!(
+        "{{\"steps\":{},\"peak_stack\":{},\"peak_nodes\":{},\"memo_entries\":{},\"rows\":[",
+        profile.steps, profile.peak_stack, profile.peak_nodes, profile.memo_entries
+    );
+    for (index, row) in reached(profile).into_iter().enumerate() {
+        out.push_str(if index > 0 {
+            ",{\"name\":"
+        } else {
+            "{\"name\":"
+        });
+        push_json_string(&mut out, &row.name);
+        let _ = write!(out, ",\"remembered\":{}", row.remembered);
+        for count in &COUNTS {
+            let _ = write!(out, ",\"{}\":{}", count.member, (count.of)(row));
+        }
+        out.push('}');
+    }
+    out.push_str("]}\n");
+    out
+}
