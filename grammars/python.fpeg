@@ -5,8 +5,9 @@
 // a line, and f-strings and t-strings nest to any depth inside replacement fields, with any
 // quotes inside them. Hard keywords are reserved, soft keywords stay names. Three parts accept
 // a superset that a later check narrows: indentation may mix tabs and spaces where Python
-// finds it ambiguous, assignment and loop targets take primary expressions, and comprehension
-// clauses and starred items take any expression where Python takes one of a tighter level.
+// finds it ambiguous, the targets of assignments, deletions and loops take primary
+// expressions, and comprehension clauses and starred items take any expression where Python
+// takes one of a tighter level.
 
 // In a replacement field, outside any bracket in it, a colon starts the format. Format specs
 // count how deeply they nest within one f-string or t-string.
@@ -104,7 +105,7 @@ case: "case" pattern=patterns ("if" guard=named_expression)? ":" body=block
 
 ?patterns: items=maybe_star_pattern "," (items=maybe_star_pattern ** ",") ","? -> sequence_pattern
          | pattern
-?pattern: pattern=or_pattern "as" target=NAME -> as_pattern
+?pattern: pattern=or_pattern "as" !"_" target=NAME -> as_pattern
         | or_pattern
 ?or_pattern: alternatives=closed_pattern ("|" alternatives=closed_pattern)+ -> or_pattern
            | closed_pattern
@@ -117,11 +118,17 @@ case: "case" pattern=patterns ("if" guard=named_expression)? ":" body=block
                | sequence_pattern
                | mapping_pattern
 literal_pattern: value=(complex_number | signed_number | strings | "None" | "True" | "False")
-complex_number: real=signed_number op=("+" | "-") imaginary=NUMBER
+// The first part of a complex literal is real and the second imaginary.
+complex_number: !(("+" | "-")? IMAGINARY_NUMBER) real=signed_number op=("+" | "-") &IMAGINARY_NUMBER imaginary=NUMBER
 signed_number: sign=("+" | "-")? number=NUMBER
-class_pattern: class=pattern_name "(" %on(bracket, arguments=(pattern_argument ** ",") ","? ")")
-?pattern_argument: name=NAME "=" pattern=pattern -> keyword_pattern
-                 | pattern
+class_pattern: class=pattern_name "(" %on(bracket, _class_arguments)
+// Positional patterns come before keyword patterns. As in CPython, each order is tried whole,
+// so a wildcard taken as positional before a keyword pattern makes the pattern fail.
+_class_arguments: arguments=(pattern ++ ",") ","? ")"
+                | arguments=(keyword_pattern ++ ",") ","? ")"
+                | arguments=(pattern ++ ",") "," arguments=(keyword_pattern ++ ",") ","? ")"
+                | ")"
+keyword_pattern: name=NAME "=" pattern=pattern
 value_pattern: parts=NAME ("." parts=NAME)+ !"("
 wildcard_pattern: "_"
 capture_pattern: name=NAME !("." | "(" | "=")
@@ -130,9 +137,9 @@ sequence_pattern: "[" %on(bracket, items=(maybe_star_pattern ** ",") ","? "]")
                 | "(" %on(bracket, (items=maybe_star_pattern "," (items=maybe_star_pattern ** ",") ","?)? ")")
 ?maybe_star_pattern: "*" target=NAME -> star_pattern
                    | pattern
-mapping_pattern: "{" %on(bracket, items=(mapping_item ** ",") ","? "}")
-?mapping_item: "**" target=NAME -> double_star_pattern
-             | key=(literal_pattern | value_pattern) ":" pattern=pattern -> key_pattern
+mapping_pattern: "{" %on(bracket, (items=(key_pattern ++ ",") ("," items=double_star_pattern)? | items=double_star_pattern)? ","? "}")
+key_pattern: key=(literal_pattern | value_pattern) ":" pattern=pattern
+double_star_pattern: "**" !"_" target=NAME
 pattern_name: parts=(NAME ++ ".")
 
 // Parameters and arguments
@@ -323,7 +330,8 @@ HEX: [0-9a-fA-F]
 @reserved
 NAME: [\p{XID_Start}_] \p{XID_Continue}*
 // Only decimal numbers can be imaginary, and then leading zeros are fine.
-NUMBER: HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | (FLOAT_NUMBER | DIGITS) [jJ] | FLOAT_NUMBER | INT_NUMBER
+NUMBER: HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | IMAGINARY_NUMBER | FLOAT_NUMBER | INT_NUMBER
+IMAGINARY_NUMBER: (FLOAT_NUMBER | DIGITS) [jJ]
 HEX_NUMBER: "0" [xX] ("_"? [0-9a-fA-F])+
 OCT_NUMBER: "0" [oO] ("_"? [0-7])+
 BIN_NUMBER: "0" [bB] ("_"? [01])+
