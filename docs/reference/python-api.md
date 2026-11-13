@@ -171,7 +171,7 @@ except ValueError as error:
 ```python
 template = grammar.transformer_template("Pairs")
 assert "    def pair(self, key: Any, value: Any) -> Any:" in template
-assert "        key holds one item or None." in template
+assert "        key holds one item." in template
 ```
 
 `fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children. A tree built in Python transforms too, by its `data`, without fields.

@@ -38,12 +38,15 @@ impl FieldId {
     pub const NONE: FieldId = FieldId(0);
 }
 
-/// How many items a field can hold in one node.
+/// How many items a field holds in one node. The variants are ordered from the fewest cases to
+/// the most, so that the larger of two counts covers both.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum FieldCount {
-    /// At most one.
+    /// Exactly one.
     One,
-    /// Possibly several.
+    /// One or none.
+    Optional,
+    /// Possibly several, or none.
     Many,
 }
 

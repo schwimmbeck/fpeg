@@ -353,7 +353,7 @@ fn call<'py>(
                     .map(|(_, value)| value.clone_ref(py));
                 match count {
                     FieldCount::Many => PyList::new(py, items)?.into_any().unbind(),
-                    FieldCount::One => {
+                    FieldCount::One | FieldCount::Optional => {
                         let first = items.next();
                         let more = items.count();
                         if more > 0 {

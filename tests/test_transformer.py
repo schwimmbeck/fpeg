@@ -313,8 +313,10 @@ def test_a_method_may_transform_a_subtree_itself() -> None:
 
 def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     source = CALLS.transformer_template("Calls")
-    assert "    def call(self, name: Any, args: list[Any], kw: Any) -> Any:" in source
+    assert "    def call(self, name: Any, args: list[Any], kw: Any | None) -> Any:" in source
+    assert "        name holds one item." in source
     assert "        args holds a list of items." in source
+    assert "        kw holds one item or None." in source
     assert "    def NUMBER(self, token: fpeg.Token) -> Any:" in source
     # `?arg` always gives way to its one child, and only its alias makes nodes.
     assert "def arg(" not in source
@@ -324,6 +326,12 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     assert namespace["Calls"]().transform(parse("f(a, [1]) ! k")) is None
     keyword = fpeg.Grammar('start: if\nif: "x"').transformer_template()
     assert "    # if cannot be a method of the class: Python reserves the name." in keyword
+    # Builders give the nodes of one name kinds apart, and a method meets them all.
+    shared = fpeg.Grammar(
+        "start: x | y\nx: a=NAME -> item => list\ny: b=NUM -> item => tuple\n"
+        "NAME: [a-z]+\nNUM: [0-9]+"
+    ).transformer_template()
+    assert "    def item(self, a: Any | None, b: Any | None) -> Any:" in shared
 
 
 def test_deep_trees_transform_without_recursion() -> None:

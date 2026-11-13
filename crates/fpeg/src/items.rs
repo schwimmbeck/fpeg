@@ -8,10 +8,16 @@
 //! Counts are 0, 1 or 2, where 2 stands for several: summed through sequences, the largest
 //! through choices, multiplied through repetitions. A node or a token is one item to the node
 //! around it, whatever lies inside, so a rule's counts matter where it leaves no node of its own.
+//! Beside the most items, the counts know the fields that every match fills, so that a field of
+//! one item tells whether it can be absent.
+//!
 //! Rules are counted callees first, the rules that call each other together until their counts
-//! stop growing, and a shared part once per pass.
+//! stop growing, and a shared part once per pass. The fields every match fills are found after
+//! the most items are known: from every field a match can fill, dropping those that some
+//! alternative leaves out until none is dropped. Any set that this leaves stable holds for every
+//! finite match, by induction over the match, so the largest one is the most precise answer.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ir;
@@ -31,6 +37,10 @@ struct Items {
     fields: BTreeMap<FieldId, u8>,
     /// Whether some match adds no visible item.
     empty: bool,
+    /// The fields that every match gives an item, and whether every match adds a visible item
+    /// without a field.
+    present: BTreeSet<FieldId>,
+    unfielded_present: bool,
 }
 
 impl Items {
@@ -52,9 +62,20 @@ impl Items {
         Items {
             visible: 1,
             unfielded: 1,
-            fields: BTreeMap::new(),
-            empty: false,
+            unfielded_present: true,
+            ..Items::default()
         }
+    }
+
+    /// Whether the expression can match at all, as far as the counts show.
+    fn matches(&self) -> bool {
+        self.visible > 0 || self.empty
+    }
+
+    /// Whether two counts agree on the most items, leaving out the fields every match fills.
+    fn same_most(&self, other: &Items) -> bool {
+        (self.visible, self.unfielded, &self.fields, self.empty)
+            == (other.visible, other.unfielded, &other.fields, other.empty)
     }
 
     fn then(mut self, next: &Items) -> Items {
@@ -65,10 +86,20 @@ impl Items {
             *held = sum(*held, count);
         }
         self.empty &= next.empty;
+        self.present.extend(next.present.iter().copied());
+        self.unfielded_present |= next.unfielded_present;
         self
     }
 
     fn or(mut self, other: &Items) -> Items {
+        // An alternative that never matches leaves the fields every match fills as they are.
+        if !self.matches() {
+            self.present.clone_from(&other.present);
+            self.unfielded_present = other.unfielded_present;
+        } else if other.matches() {
+            self.present.retain(|field| other.present.contains(field));
+            self.unfielded_present &= other.unfielded_present;
+        }
         self.visible = self.visible.max(other.visible);
         self.unfielded = self.unfielded.max(other.unfielded);
         for (&field, &count) in &other.fields {
@@ -95,6 +126,12 @@ impl Items {
                 .map(|(field, count)| (field, times(count)))
                 .collect(),
             empty: min == 0 || self.empty,
+            present: if min > 0 {
+                self.present
+            } else {
+                BTreeSet::new()
+            },
+            unfielded_present: min > 0 && self.unfielded_present,
         }
     }
 
@@ -105,6 +142,10 @@ impl Items {
             *held = sum(*held, self.unfielded);
             self.unfielded = 0;
         }
+        if self.unfielded_present {
+            self.present.insert(field);
+        }
+        self.unfielded_present = false;
         self
     }
 }
@@ -136,10 +177,12 @@ impl Counter<'_> {
             E::Token { hidden: true, .. } => Items::nothing(),
             E::Token { .. } | E::Node { .. } => Items::one(),
             // A transparent node stays a node, or gives way to its one visible child, which
-            // keeps any field it has from inside the rule.
+            // keeps any field it has from inside the rule. So no field is sure to be filled,
+            // and the item is sure to have no field only when nothing inside has one.
             E::Transparent { expr, .. } => {
                 let inner = self.of(expr);
                 Items {
+                    unfielded_present: inner.fields.is_empty(),
                     fields: inner.fields.keys().map(|&field| (field, 1)).collect(),
                     ..Items::one()
                 }
@@ -234,6 +277,7 @@ impl Counts {
         let mut counter = Counter::new(&self.summaries);
         let mut kind_items = KindItems {
             fields: vec![BTreeMap::new(); kinds],
+            present: vec![None; kinds],
             made: vec![false; kinds],
         };
         let mut walked = HashSet::new();
@@ -242,16 +286,21 @@ impl Counts {
         for expr in bodies.chain(entry.values()) {
             kind_items.add(&mut counter, expr, &mut walked);
         }
-        let KindItems { fields, made } = kind_items;
-        let kind_fields = (fields.into_iter())
-            .map(|counts: BTreeMap<FieldId, u8>| {
+        let KindItems {
+            fields,
+            present,
+            made,
+        } = kind_items;
+        let kind_fields = (fields.into_iter().zip(present))
+            .map(|(counts, present)| {
+                let present = present.unwrap_or_default();
                 (counts.into_iter())
                     .filter(|&(_, count)| count > 0)
                     .map(|(field, count)| {
-                        let count = if count == 1 {
-                            FieldCount::One
-                        } else {
-                            FieldCount::Many
+                        let count = match count {
+                            1 if present.contains(&field) => FieldCount::One,
+                            1 => FieldCount::Optional,
+                            _ => FieldCount::Many,
                         };
                         (field, count)
                     })
@@ -272,10 +321,11 @@ impl Counts {
     }
 }
 
-/// What the kinds of a grammar hold, by kind id: the counts of each field, and whether a parse
-/// can make items of the kind.
+/// What the kinds of a grammar hold, by kind id: the counts of each field, the fields that every
+/// node of the kind fills, if the kind makes nodes, and whether a parse can make items of it.
 struct KindItems {
     fields: Vec<BTreeMap<FieldId, u8>>,
+    present: Vec<Option<BTreeSet<FieldId>>>,
     made: Vec<bool>,
 }
 
@@ -300,6 +350,12 @@ impl KindItems {
                 let items = counter.of(inner);
                 if matches!(expr, E::Node { .. }) || items.visible > 1 || items.empty {
                     self.mark(*kind);
+                    if let Some(present) = self.present.get_mut(kind.0 as usize) {
+                        match present {
+                            Some(fields) => fields.retain(|field| items.present.contains(field)),
+                            None => *present = Some(items.present.clone()),
+                        }
+                    }
                 }
                 if let Some(counts) = self.fields.get_mut(kind.0 as usize) {
                     for (field, count) in items.fields {
@@ -345,24 +401,51 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Vec<Items> {
     let mut summaries = vec![Items::never(); rules.len()];
     for component in components(&calls) {
         let recursive = component.len() > 1 || calls[component[0]].contains(&component[0]);
-        loop {
-            let mut changed = false;
+        count_until_stable(
+            &component,
+            rules,
+            &mut summaries,
+            recursive,
+            Items::same_most,
+        );
+        if recursive {
+            // The fields every match fills, from all a match can fill down, while the most items
+            // stay as they are and with them the alternatives that can match.
             for &rule in &component {
-                let Some(body) = rules[rule].as_ref().map(|rule| &rule.body) else {
-                    continue;
-                };
-                let items = Counter::new(&summaries).of(body);
-                if items != summaries[rule] {
-                    summaries[rule] = items;
-                    changed = true;
-                }
+                let summary = &mut summaries[rule];
+                let filled = summary.fields.iter().filter(|&(_, &count)| count > 0);
+                summary.present = filled.map(|(&field, _)| field).collect();
+                summary.unfielded_present = summary.unfielded > 0;
             }
-            if !changed || !recursive {
-                break;
-            }
+            count_until_stable(&component, rules, &mut summaries, true, Items::eq);
         }
     }
     summaries
+}
+
+/// Count the rules of a component again and again, while `same` finds a count changed, or once
+/// unless `repeat`.
+fn count_until_stable(
+    component: &[usize],
+    rules: &[Option<ir::Rule>],
+    summaries: &mut [Items],
+    repeat: bool,
+    same: fn(&Items, &Items) -> bool,
+) {
+    loop {
+        let mut changed = false;
+        for &rule in component {
+            let Some(body) = rules[rule].as_ref().map(|rule| &rule.body) else {
+                continue;
+            };
+            let items = Counter::new(summaries).of(body);
+            changed |= !same(&items, &summaries[rule]);
+            summaries[rule] = items;
+        }
+        if !changed || !repeat {
+            break;
+        }
+    }
 }
 
 /// The rules an expression calls where what they make joins its items: not inside a node, a
@@ -452,7 +535,7 @@ fn components(calls: &[Vec<usize>]) -> Vec<Vec<usize>> {
 #[cfg(test)]
 mod tests {
     use crate::builder::{GrammarBuilder, class, field, lit, opt, r, range, sep_many, seq, some};
-    use crate::tree::FieldCount::{Many, One};
+    use crate::tree::FieldCount::{Many, One, Optional};
     use crate::{FieldCount, Grammar, Parser};
 
     /// The fields of the kind named `kind`, by field name.
@@ -474,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn fields_hold_one_item_unless_repeated_or_written_twice() {
+    fn fields_hold_one_item_unless_optional_repeated_or_written_twice() {
         let mut g = GrammarBuilder::new();
         g.rule(
             "call",
@@ -491,7 +574,12 @@ mod tests {
         g.rule("NAME", word());
         let grammar = g.build();
         let counts = fields(&grammar, "call");
-        let expected = [("args", Many), ("kw", One), ("name", One), ("twice", Many)];
+        let expected = [
+            ("args", Many),
+            ("kw", Optional),
+            ("name", One),
+            ("twice", Many),
+        ];
         let expected: Vec<(String, FieldCount)> =
             expected.iter().map(|&(n, c)| (n.to_owned(), c)).collect();
         assert_eq!(counts, expected);
@@ -510,11 +598,28 @@ mod tests {
             [("k".to_owned(), One), ("v".to_owned(), One)]
         );
         assert_eq!(named("list"), [("x".to_owned(), Many)]);
-        // A transparent node that gives way to its child passes the child's field up.
+        // A transparent node that gives way to its child passes the child's field up, so the
+        // item lands in one field or the other.
         assert_eq!(
             named("outer"),
-            [("k".to_owned(), One), ("w".to_owned(), One)]
+            [("k".to_owned(), Optional), ("w".to_owned(), Optional)]
         );
+    }
+
+    #[test]
+    fn a_field_holds_exactly_one_item_when_every_match_fills_it() {
+        let grammar = Grammar::from_text(
+            "both: a=NAME | a=NUM\neither: a=NAME | NUM\nwrap: _wrap\n\
+             _wrap: \"(\" _wrap \")\" | a=NAME\nloop: _loop\n_loop: \"(\" _loop | NUM\n\
+             NAME: [a-z]+\nNUM: [0-9]+",
+        )
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        let named = |kind| fields(&grammar, kind);
+        assert_eq!(named("both"), [("a".to_owned(), One)]);
+        assert_eq!(named("either"), [("a".to_owned(), Optional)]);
+        // Every match of `_wrap` ends in a name, however deep, and `_loop` never has one.
+        assert_eq!(named("wrap"), [("a".to_owned(), One)]);
+        assert_eq!(named("loop"), []);
     }
 
     #[test]

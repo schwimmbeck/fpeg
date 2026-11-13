@@ -492,7 +492,7 @@ impl<'py, 'p> Scan<'py, 'p> {
                             }
                             list.into_any().unbind()
                         }
-                        FieldCount::One => {
+                        FieldCount::One | FieldCount::Optional => {
                             let first = items.next();
                             let more = items.count();
                             if more > 0 {

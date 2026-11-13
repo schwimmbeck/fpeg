@@ -60,8 +60,9 @@ fn check_memo(seed: u64) -> Option<String> {
 }
 
 /// What a parse from `start` shows against the item counts of the grammar: no node holds more
-/// items in a field than its kind allows, nor a field its kind lacks, no item is of a kind said
-/// never to be made, and a start rule said to leave one visible item leaves one.
+/// items in a field than its kind allows, nor a field its kind lacks, nor lacks a field of
+/// exactly one item, no item is of a kind said never to be made, and a start rule said to leave
+/// one visible item leaves one.
 fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option<String> {
     let Ok(tree) = reference.parse_with(input, start, limits()) else {
         return None;
@@ -96,6 +97,16 @@ fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option
             counts.entry(child.field()).or_insert((0, name)).0 += 1;
         }
         let allowed = &kinds[item.kind().0 as usize].fields;
+        for &(field, count) in allowed {
+            if count == FieldCount::One && !counts.contains_key(&field) {
+                return Some(format!(
+                    "from {start} on {input:?}: a node {} lacks its field {}, which holds one \
+                     item",
+                    item.kind_name(),
+                    field.0
+                ));
+            }
+        }
         for (field, (count, name)) in counts {
             match allowed.iter().find(|&&(f, _)| f == field) {
                 None => {
@@ -105,7 +116,7 @@ fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option
                         item.kind_name()
                     ));
                 }
-                Some((_, FieldCount::One)) if count > 1 => {
+                Some((_, FieldCount::One | FieldCount::Optional)) if count > 1 => {
                     return Some(format!(
                         "from {start} on {input:?}: a node {} holds {count} items in the field \
                          {name}, which holds one",

@@ -425,7 +425,9 @@ impl Tree {
             }
         }
         match count {
-            FieldCount::One => Ok(items.into_iter().next().unwrap_or_else(|| py.None())),
+            FieldCount::One | FieldCount::Optional => {
+                Ok(items.into_iter().next().unwrap_or_else(|| py.None()))
+            }
             FieldCount::Many => Ok(PyList::new(py, items)?.into_any().unbind()),
         }
     }

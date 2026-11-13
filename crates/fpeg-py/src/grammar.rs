@@ -92,6 +92,17 @@ impl GrammarCore {
                 *held = (*held).max(count);
             }
         }
+        // A method meets every node of its name, so a field that some of them lack can be absent.
+        for kind in kinds.iter().filter(|kind| kind.made && !kind.token) {
+            let Some(fields) = by_name.get_mut(kind.name.as_str()) else {
+                continue;
+            };
+            for (field, count) in fields.iter_mut() {
+                if kind.fields.iter().all(|&(f, _)| f != *field) {
+                    *count = (*count).max(FieldCount::Optional);
+                }
+            }
+        }
         let name_fields = (kinds.iter())
             .map(|kind| {
                 let mut fields: Vec<(FieldId, FieldCount)> = (by_name.get(kind.name.as_str()))
@@ -342,7 +353,8 @@ impl Grammar {
                 let mut parameters = vec!["self".to_owned()];
                 for (field, count) in &fields {
                     let (hint, held) = match count {
-                        FieldCount::One => ("Any", "one item or None"),
+                        FieldCount::One => ("Any", "one item"),
+                        FieldCount::Optional => ("Any | None", "one item or None"),
                         FieldCount::Many => ("list[Any]", "a list of items"),
                     };
                     parameters.push(format!("{field}: {hint}"));
