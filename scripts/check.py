@@ -12,22 +12,26 @@ import time
 from pathlib import Path
 
 BENCH = "--manifest-path benchmarks/rust/Cargo.toml"
+# The order of the list in AGENTS.md.
 CHECKS = [
     ("Rust formatting", "cargo fmt --check"),
     ("Rust lints", "cargo clippy --all-targets -- -D warnings"),
     ("Rust tests", "cargo test -q"),
-    ("benchmark crate formatting", f"cargo fmt --check {BENCH}"),
-    ("benchmark crate lints", f"cargo clippy {BENCH} --all-targets -- -D warnings"),
     ("Python formatting", "uv run ruff format --check"),
     ("Python lints", "uv run ruff check"),
     ("Python types", "uv run pyright --warnings"),
     ("Python tests", "uv run pytest -q"),
-    ("licence headers", "uv run python scripts/check_licence_headers.py"),
     (
         "documentation",
         "uv run --group docs sphinx-build -W --keep-going -q -b html docs docs/_build/html",
     ),
+    ("licence headers", "uv run python scripts/check_licence_headers.py"),
+    ("benchmark crate formatting", f"cargo fmt --check {BENCH}"),
+    ("benchmark crate lints", f"cargo clippy {BENCH} --all-targets -- -D warnings"),
 ]
+
+# How much of a failed check's output to show, counted from its end, in characters.
+OUTPUT_TAIL_CHARS = 4000
 
 
 def main() -> int:
@@ -42,8 +46,8 @@ def main() -> int:
         seconds = time.perf_counter() - start
         if result.returncode != 0:
             print(f"FAILED {name} ({seconds:.1f} s): {command}")
-            print(result.stdout[-4000:])
-            print(result.stderr[-4000:])
+            print(result.stdout[-OUTPUT_TAIL_CHARS:])
+            print(result.stderr[-OUTPUT_TAIL_CHARS:])
             return 1
         print(f"ok     {name} ({seconds:.1f} s)")
     print(f"all checks passed in {time.perf_counter() - total:.1f} s")
