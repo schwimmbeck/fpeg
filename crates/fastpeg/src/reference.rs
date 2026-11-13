@@ -191,7 +191,9 @@ struct Ctx {
     captures: Captures,
 }
 
-type Captures = BTreeMap<CaptureId, String>;
+/// What each capture name maps to, as the id of an interned text. Equal texts get equal ids, so
+/// contexts compare, hash and copy in constant time however long the texts are.
+type Captures = BTreeMap<CaptureId, u32>;
 
 #[derive(Debug)]
 struct Success {
@@ -247,6 +249,9 @@ struct Interp<'a> {
     /// Results of calls that depend on no outside table entry, keyed with the quiet state.
     memo: HashMap<(CallKey, bool), MemoEntry>,
     memoize: bool,
+    /// The captured texts by id, and the id of each.
+    texts: Vec<String>,
+    text_ids: HashMap<String, u32>,
     /// The smallest depth of a table entry the evaluation in progress consulted.
     dependency: usize,
     farthest: Option<usize>,
@@ -270,6 +275,8 @@ impl<'a> Interp<'a> {
             next_serial: 0,
             memo: HashMap::new(),
             memoize,
+            texts: Vec::new(),
+            text_ids: HashMap::new(),
             dependency: usize::MAX,
             farthest: None,
             expected: BTreeSet::new(),
@@ -449,14 +456,30 @@ impl<'a> Interp<'a> {
         Ok(Interp::call_outcome(best, ctx))
     }
 
-    /// Count a copy of a result as one step per item copied, so that the step limit bounds the
-    /// time copies take too.
-    fn charge(&mut self, result: &CallResult) -> Result<(), Abort> {
-        self.steps += result.as_ref().map_or(0, |(_, items)| Item::count(items));
+    /// Count work beyond a plain step as steps, so that the step limit bounds the time it takes.
+    fn spend(&mut self, steps: u64) -> Result<(), Abort> {
+        self.steps += steps;
         if self.steps > self.limits.max_steps {
             return Err(Abort::Limit(Limit::Steps));
         }
         Ok(())
+    }
+
+    /// Count a copy of a result as one step per item copied.
+    fn charge(&mut self, result: &CallResult) -> Result<(), Abort> {
+        self.spend(result.as_ref().map_or(0, |(_, items)| Item::count(items)))
+    }
+
+    /// The id of a captured text, the same for equal texts.
+    fn intern(&mut self, text: &str) -> u32 {
+        if let Some(&id) = self.text_ids.get(text) {
+            return id;
+        }
+        // Each new text costs its length in steps first, so ids stay far below u32::MAX.
+        let id = self.texts.len() as u32;
+        self.texts.push(text.to_owned());
+        self.text_ids.insert(text.to_owned(), id);
+        id
     }
 
     fn call_outcome(result: CallResult, ctx: &Ctx) -> Outcome {
@@ -736,22 +759,31 @@ impl<'a> Interp<'a> {
                     let start = if *skip { self.skip_end(pos, ctx)? } else { pos };
                     let start = start.min(success.end);
                     let text = self.input.get(start..success.end).unwrap_or_default();
-                    success.captures.insert(*capture, text.to_owned());
+                    self.spend(text.len() as u64)?;
+                    let id = self.intern(text);
+                    success.captures.insert(*capture, id);
                     Ok(Outcome::Ok(success))
                 }
                 failure => Ok(failure),
             },
-            E::Ref { capture } => match ctx.captures.get(capture) {
-                Some(text)
-                    if self
-                        .input
-                        .get(pos..)
-                        .is_some_and(|r| r.starts_with(text.as_str())) =>
-                {
-                    Interp::ok(pos + text.len(), ctx)
+            E::Ref { capture } => {
+                let Some(text) = ctx
+                    .captures
+                    .get(capture)
+                    .map(|&id| &self.texts[id as usize])
+                else {
+                    return Interp::fail();
+                };
+                let length = text.len();
+                let matches = (self.input.get(pos..)).is_some_and(|r| r.starts_with(text.as_str()));
+                // Comparing a long text is work of its length.
+                self.spend(length as u64)?;
+                if matches {
+                    Interp::ok(pos + length, ctx)
+                } else {
+                    Interp::fail()
                 }
-                _ => Interp::fail(),
-            },
+            }
             E::Label { label, expr, skip } => match self.eval(expr, pos, ctx)? {
                 // Any failure, also one after a cut, since a label is no choice point.
                 Outcome::Fail { .. } => {
