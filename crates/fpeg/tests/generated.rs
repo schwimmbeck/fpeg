@@ -60,8 +60,8 @@ fn check_memo(seed: u64) -> Option<String> {
 }
 
 /// What a parse from `start` shows against the item counts of the grammar: no node holds more
-/// items in a field than its kind allows, nor a field its kind lacks, and a start rule said to
-/// leave one visible item leaves one.
+/// items in a field than its kind allows, nor a field its kind lacks, no item is of a kind said
+/// never to be made, and a start rule said to leave one visible item leaves one.
 fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option<String> {
     let Ok(tree) = reference.parse_with(input, start, limits()) else {
         return None;
@@ -77,6 +77,12 @@ fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option
     let kinds = reference.kinds();
     let mut pending = tree.roots();
     while let Some(item) = pending.pop() {
+        if !kinds[item.kind().0 as usize].made {
+            return Some(format!(
+                "from {start} on {input:?}: an item {} of a kind said never to be made",
+                item.kind_name()
+            ));
+        }
         if item.is_token() {
             continue;
         }

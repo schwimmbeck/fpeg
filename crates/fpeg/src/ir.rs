@@ -58,6 +58,8 @@ pub(crate) struct Grammar {
     pub kind_builders: Vec<Option<ValueBuilder>>,
     /// For each kind, whether its items are tokens rather than nodes.
     pub kind_tokens: Vec<bool>,
+    /// For each kind, whether a parse can make items of it.
+    pub kind_made: Vec<bool>,
     /// For each rule that can start a parse, whether it always leaves one visible item.
     pub single_item: HashMap<String, bool>,
 }
@@ -72,6 +74,7 @@ impl Grammar {
                 fields: self.kind_fields.get(id).cloned().unwrap_or_default(),
                 builder: self.kind_builders.get(id).cloned().flatten(),
                 token: self.kind_tokens.get(id).copied().unwrap_or(false),
+                made: self.kind_made.get(id).copied().unwrap_or(false),
             })
             .collect()
     }

@@ -285,6 +285,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         kind_fields: facts.kind_fields,
         kind_builders: r.kind_builders,
         kind_tokens: r.kind_tokens,
+        kind_made: facts.kind_made,
         single_item: facts.single_item,
         names: Arc::new(Names {
             kinds: r.kind_names,
@@ -1516,5 +1517,33 @@ mod tests {
             tree.to_text(input, false),
             "(list ~\"[\" NUM\"1\" ~\",\" (value ~\"true\") ~\"]\")"
         );
+    }
+
+    #[test]
+    fn a_transparent_rule_that_always_leaves_one_item_makes_no_node() {
+        let text = "start: (statement ** \";\")
+                    ?statement: show | NAME
+                    show: \"show\" atom
+                    ?atom: NAME | \"(\" atom \")\" | name=HEX -> hex
+                    ?pair: atom atom?
+                    NAME: [a-z]+
+                    HEX: \"0x\" DIGIT+
+                    DIGIT: [0-9]";
+        let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
+        let parser = Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"));
+        let made = |name: &str| -> Vec<bool> {
+            (parser.kinds().iter())
+                .filter(|kind| kind.name == name)
+                .map(|kind| kind.made)
+                .collect()
+        };
+        assert_eq!(made("statement"), [false]);
+        assert_eq!(made("atom"), [false]);
+        // An alias always makes a node, and one item or two keeps a transparent node sometimes.
+        assert_eq!(made("hex"), [true]);
+        assert_eq!(made("pair"), [true]);
+        // A terminal only other terminals use makes tokens when a parse starts from it.
+        assert_eq!(made("DIGIT"), [true]);
+        assert_eq!(made("<error>"), [false]);
     }
 }

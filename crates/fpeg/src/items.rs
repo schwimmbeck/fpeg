@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ir;
-use crate::tree::{FieldCount, FieldId};
+use crate::tree::{FieldCount, FieldId, KindId};
 
 /// The count that stands for several items.
 const SEVERAL: u8 = 2;
@@ -193,6 +193,8 @@ impl Counter<'_> {
 pub(crate) struct ItemFacts {
     /// For each kind, by kind id, the fields of its nodes with how many items each can hold.
     pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
+    /// For each kind, by kind id, whether a parse can make items of it.
+    pub kind_made: Vec<bool>,
     /// For each rule that can start a parse, whether a parse from it always leaves exactly one
     /// visible item at the top.
     pub single_item: HashMap<String, bool>,
@@ -230,11 +232,17 @@ impl Counts {
         kinds: usize,
     ) -> ItemFacts {
         let mut counter = Counter::new(&self.summaries);
-        let mut fields = vec![BTreeMap::new(); kinds];
+        let mut kind_items = KindItems {
+            fields: vec![BTreeMap::new(); kinds],
+            made: vec![false; kinds],
+        };
         let mut walked = HashSet::new();
-        for rule in rules.iter().flatten() {
-            node_fields(&mut counter, &rule.body, &mut fields, &mut walked);
+        // The entries add the tokens of terminals that only other terminals use.
+        let bodies = rules.iter().flatten().map(|rule| &rule.body);
+        for expr in bodies.chain(entry.values()) {
+            kind_items.add(&mut counter, expr, &mut walked);
         }
+        let KindItems { fields, made } = kind_items;
         let kind_fields = (fields.into_iter())
             .map(|counts: BTreeMap<FieldId, u8>| {
                 (counts.into_iter())
@@ -258,39 +266,65 @@ impl Counts {
             .collect();
         ItemFacts {
             kind_fields,
+            kind_made: made,
             single_item,
         }
     }
 }
 
-/// Add the field counts of every node in the expression to its kind, a shared part once.
-fn node_fields(
-    counter: &mut Counter<'_>,
-    expr: &ir::Expr,
-    fields: &mut [BTreeMap<FieldId, u8>],
-    walked: &mut HashSet<*const ir::Expr>,
-) {
-    use ir::Expr as E;
-    match expr {
-        E::Node { kind, expr: inner } | E::Transparent { kind, expr: inner } => {
-            let items = counter.of(inner);
-            if let Some(counts) = fields.get_mut(kind.0 as usize) {
-                for (field, count) in items.fields {
-                    let held = counts.entry(field).or_insert(0);
-                    *held = (*held).max(count);
+/// What the kinds of a grammar hold, by kind id: the counts of each field, and whether a parse
+/// can make items of the kind.
+struct KindItems {
+    fields: Vec<BTreeMap<FieldId, u8>>,
+    made: Vec<bool>,
+}
+
+impl KindItems {
+    /// Add the tokens and nodes of an expression, a shared part once. A transparent node whose
+    /// every match leaves exactly one visible item never stays: that item takes its place.
+    fn add(
+        &mut self,
+        counter: &mut Counter<'_>,
+        expr: &ir::Expr,
+        walked: &mut HashSet<*const ir::Expr>,
+    ) {
+        use ir::Expr as E;
+        match expr {
+            E::Token {
+                kind, expr: inner, ..
+            } => {
+                self.mark(*kind);
+                self.add(counter, inner, walked);
+            }
+            E::Node { kind, expr: inner } | E::Transparent { kind, expr: inner } => {
+                let items = counter.of(inner);
+                if matches!(expr, E::Node { .. }) || items.visible > 1 || items.empty {
+                    self.mark(*kind);
+                }
+                if let Some(counts) = self.fields.get_mut(kind.0 as usize) {
+                    for (field, count) in items.fields {
+                        let held = counts.entry(field).or_insert(0);
+                        *held = (*held).max(count);
+                    }
+                }
+                self.add(counter, inner, walked);
+            }
+            E::Shared(inner) => {
+                if walked.insert(Arc::as_ptr(inner)) {
+                    self.add(counter, inner, walked);
                 }
             }
-            node_fields(counter, inner, fields, walked);
-        }
-        E::Shared(inner) => {
-            if walked.insert(Arc::as_ptr(inner)) {
-                node_fields(counter, inner, fields, walked);
+            _ => {
+                for child in expr.children() {
+                    self.add(counter, child, walked);
+                }
             }
         }
-        _ => {
-            for child in expr.children() {
-                node_fields(counter, child, fields, walked);
-            }
+    }
+
+    fn mark(&mut self, kind: KindId) {
+        if let Some(made) = self.made.get_mut(kind.0 as usize) {
+            *made = true;
         }
     }
 }

@@ -75,7 +75,7 @@ The tests of the core crate run on the reference interpreter, and the differenti
 |---|---|
 | `tests/semantics/*.txt` | case files: a grammar, inputs, and the expected tree or error for each. Every grammar must also print to text that reads back the same |
 | `tests/acceptance.rs` | every grammar in `crates/fpeg/grammars/` prints back to the same grammar and parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree |
-| `tests/generated.rs` | generated grammars and inputs, made by `tests/common/generator.rs`: nothing panics, every parse ends within the limits, printing reads back, memoization never changes a result, and no node holds more items in a field than the grammar's item counts allow |
+| `tests/generated.rs` | generated grammars and inputs, made by `tests/common/generator.rs`: nothing panics, every parse ends within the limits, printing reads back, memoization never changes a result, and every parse keeps to the grammar's item counts: no node holds more items in a field than they allow, and no item is of a kind they say no parse makes |
 | `tests/differential.rs` | the parsing machine against the reference interpreter on every case file, every acceptance grammar with its samples, and generated grammars: the same tree, or the same error with the same expected set. Grammars the machine does not run yet are skipped, and each test reports how many |
 | `tests/mutated.rs` | the grammars of `crates/fpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
 | `tests/docs.rs` | every `fpeg` block of the documentation outside the diagnostics pages |
