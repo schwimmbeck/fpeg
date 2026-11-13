@@ -24,6 +24,7 @@ The hundreds of a code tell its area.
 | W101 to W103 | alternatives that a choice never reaches |
 | W201, W202 | repetition and recursion that do not do what they seem to |
 | W301, W302 | transparent rules whose tree is not what it seems |
+| W401, W402 | flags and parameters that nothing uses |
 
 ```{toctree}
 :glob:

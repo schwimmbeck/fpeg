@@ -289,3 +289,44 @@ fn a_builder_is_unused_on_an_alternative_that_always_gives_way() {
         assert_eq!(codes(&text), expected, "{text}");
     }
 }
+
+#[test]
+fn a_flag_is_set_somewhere_and_tested_somewhere() {
+    for (text, expected) in [
+        ("start: %on(f, \"a\")\n%flag f\n", vec!["W401"]),
+        ("start: %if(f) \"a\"\n%flag f\n", vec!["W401"]),
+        ("start: \"a\"\n%flag f\n", vec!["W401"]),
+        // Clearing a flag that nothing sets changes nothing.
+        ("start: %off(f, %if(!f) \"a\")\n%flag f\n", vec!["W401"]),
+        // Each flag on its own.
+        ("start: %on(f, %if(f) \"a\")\n%flag f g\n", vec!["W401"]),
+        // Set in one rule and tested in another, or in the ignored text.
+        ("start: %on(f, item)\nitem: %if(f) \"a\"\n%flag f\n", vec![]),
+        (
+            "start: %on(f, \"a\" \"b\")\n%ignore \" \" | %if(f) \"\\n\"\n%flag f\n",
+            vec![],
+        ),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
+}
+
+#[test]
+fn a_rule_uses_each_of_its_parameters() {
+    for (text, expected) in [
+        ("start: pair<\"a\", \"b\">\npair<x, y>: x x\n", vec!["W402"]),
+        ("start: pair<\"a\", \"b\">\npair<x, y>: x y\n", vec![]),
+        // Handing a parameter on is a use.
+        (
+            "start: twice<\"a\">\ntwice<x>: pair<x, x>\npair<x, y>: x y\n",
+            vec![],
+        ),
+        // A rule of the same name as a parameter of another rule is no use of it.
+        (
+            "start: one<\"a\"> x\none<x>: \"b\"\nx: \"c\"\n",
+            vec!["W402"],
+        ),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
+}

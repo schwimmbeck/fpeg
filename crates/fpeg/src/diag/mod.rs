@@ -9,7 +9,7 @@
 //! area: 1 reading the text, 2 names, 3 forms, 4 limits, 5 what the roadmap brings later, 9
 //! bugs of fpeg itself. A code that starts with W is a warning, which [`crate::check`] gives
 //! for a grammar that works: 1 choices, 2 repetition and recursion, 3 the shape
-//! of the tree.
+//! of the tree, 4 what nothing uses.
 
 use std::fmt;
 
@@ -136,11 +136,15 @@ pub enum DiagnosticCode {
     UnsteadyShape,
     /// W302: a builder on an alternative of a transparent rule that never makes a node.
     UnusedBuilder,
+    /// W401: a flag that is never set, or never tested.
+    UnusedFlag,
+    /// W402: a parameter that its rule never uses.
+    UnusedParameter,
 }
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 33] = [
+    pub const ALL: [DiagnosticCode; 35] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -174,6 +178,8 @@ impl DiagnosticCode {
         DiagnosticCode::LeftAndRightRecursion,
         DiagnosticCode::UnsteadyShape,
         DiagnosticCode::UnusedBuilder,
+        DiagnosticCode::UnusedFlag,
+        DiagnosticCode::UnusedParameter,
     ];
 
     /// The code, such as `E201`.
@@ -212,6 +218,8 @@ impl DiagnosticCode {
             DiagnosticCode::LeftAndRightRecursion => "W202",
             DiagnosticCode::UnsteadyShape => "W301",
             DiagnosticCode::UnusedBuilder => "W302",
+            DiagnosticCode::UnusedFlag => "W401",
+            DiagnosticCode::UnusedParameter => "W402",
         }
     }
 

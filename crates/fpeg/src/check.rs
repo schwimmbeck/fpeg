@@ -7,7 +7,7 @@
 //! undecidable in general, so each check is a named case that can be told from the grammar as
 //! written, and what it cannot tell it leaves alone.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span};
@@ -32,6 +32,7 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
         .unwrap_or_default();
     shapes(grammar, &resolved, &counts, &mut found);
     let bodies = bodies(grammar);
+    unused(grammar, &bodies, &mut found);
     let mut checker = Checker {
         word: word_set(grammar),
         boundaries: false,
@@ -118,6 +119,69 @@ fn shapes(grammar: &Grammar, resolved: &ir::Grammar, counts: &Counts, found: &mu
                 span: alternative.expr.span,
             });
         }
+    }
+}
+
+/// The names that expressions refer to, and the flags that they set and test.
+#[derive(Default)]
+struct Uses<'g> {
+    names: HashSet<&'g str>,
+    set: HashSet<&'g str>,
+    tested: HashSet<&'g str>,
+}
+
+impl<'g> Uses<'g> {
+    fn add(&mut self, exprs: &[&'g Expr]) {
+        let mut pending = exprs.to_vec();
+        while let Some(expr) = pending.pop() {
+            match &expr.kind {
+                ExprKind::Reference { name, .. } => self.names.insert(&name.text),
+                ExprKind::FlagOn { flag, .. } => self.set.insert(&flag.text),
+                ExprKind::FlagTest { flag, .. } => self.tested.insert(&flag.text),
+                _ => false,
+            };
+            pending.extend(expr.children());
+        }
+    }
+}
+
+/// Warn about the parameters that their rules never use, and about the flags that are never
+/// set or never tested.
+fn unused(grammar: &Grammar, bodies: &[Body<'_>], found: &mut Vec<Diagnostic>) {
+    let mut uses = Uses::default();
+    for body in bodies {
+        uses.names.clear();
+        uses.add(&body.alternatives);
+        for param in body.params {
+            if !uses.names.contains(param.text.as_str()) {
+                let message = format!("{} never uses its parameter {}", body.name, param.text);
+                found.push(Diagnostic {
+                    code: DiagnosticCode::UnusedParameter,
+                    message,
+                    span: param.span,
+                });
+            }
+        }
+    }
+    // The ignored text is matched with the flags of the place it is skipped at.
+    uses.add(&grammar.ignore.iter().collect::<Vec<_>>());
+    for flag in &grammar.flags {
+        let name = flag.text.as_str();
+        let message = match (uses.set.contains(name), uses.tested.contains(name)) {
+            (true, true) => continue,
+            (true, false) => {
+                format!("the flag {name} is never tested with %if, so setting it changes nothing")
+            }
+            (false, true) => format!(
+                "the flag {name} is never set with %on, so every test of it gives the same answer"
+            ),
+            (false, false) => format!("the flag {name} is never set and never tested"),
+        };
+        found.push(Diagnostic {
+            code: DiagnosticCode::UnusedFlag,
+            message,
+            span: flag.span,
+        });
     }
 }
 
