@@ -1,18 +1,38 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Diagnostic codes: one stable code for every kind of problem a grammar can have.
+//! Diagnostics: what is wrong with a grammar, or worth a look in it, each with a stable code.
 //!
 //! The page `docs/reference/diagnostics/<code>.md` of each code explains it with an input that
-//! triggers it and the fix, and a test holds the pages and the codes together. The hundreds of
-//! a code tell its area: 1 reading the text, 2 names, 3 forms, 4 limits, 5 what the roadmap
-//! brings later, 9 bugs of fpeg itself.
+//! triggers it and the fix, and a test holds the pages and the codes together. A code that
+//! starts with E is an error, which keeps a grammar from being used, and the hundreds tell its
+//! area: 1 reading the text, 2 names, 3 forms, 4 limits, 5 what the roadmap brings later, 9
+//! bugs of fpeg itself. A code that starts with W is a warning, which [`crate::check`] gives
+//! for a grammar that works: 1 choices.
 
 use std::fmt;
 
 use crate::grammar::Span;
 
-/// A problem that makes a grammar unusable.
+/// How serious a diagnostic is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Severity {
+    /// The grammar cannot be used.
+    Error,
+    /// The grammar works, and likely not as its author meant.
+    Warning,
+}
+
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        })
+    }
+}
+
+/// A problem that makes a grammar unusable, or a warning about one that works.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
     /// The kind of problem, whose page in the documentation explains it.
@@ -23,12 +43,20 @@ pub struct Diagnostic {
     pub span: Span,
 }
 
+impl Diagnostic {
+    /// Whether the diagnostic is an error or a warning, which its code says.
+    pub fn severity(&self) -> Severity {
+        self.code.severity()
+    }
+}
+
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (severity, span) = (self.severity(), self.span);
         write!(
             f,
-            "error[{}]: {} at {}..{}",
-            self.code, self.message, self.span.start, self.span.end
+            "{severity}[{}]: {} at {}..{}",
+            self.code, self.message, span.start, span.end
         )
     }
 }
@@ -93,11 +121,13 @@ pub enum DiagnosticCode {
     NotYet,
     /// E901: a bug of fpeg itself.
     Internal,
+    /// W101: an alternative after one that cannot fail.
+    UnreachableAlternative,
 }
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 26] = [
+    pub const ALL: [DiagnosticCode; 27] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -124,6 +154,7 @@ impl DiagnosticCode {
         DiagnosticCode::TooLarge,
         DiagnosticCode::NotYet,
         DiagnosticCode::Internal,
+        DiagnosticCode::UnreachableAlternative,
     ];
 
     /// The code, such as `E201`.
@@ -155,6 +186,15 @@ impl DiagnosticCode {
             DiagnosticCode::TooLarge => "E402",
             DiagnosticCode::NotYet => "E501",
             DiagnosticCode::Internal => "E901",
+            DiagnosticCode::UnreachableAlternative => "W101",
+        }
+    }
+
+    /// Whether diagnostics of the code are errors or warnings.
+    pub fn severity(self) -> Severity {
+        match self.code().starts_with('W') {
+            true => Severity::Warning,
+            false => Severity::Error,
         }
     }
 }

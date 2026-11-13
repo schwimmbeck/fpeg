@@ -4,7 +4,8 @@
 //! Every diagnostic code has its page in `docs/reference/diagnostics/`, and every page there
 //! belongs to a code. A page shows a grammar with the problem, a text block with what
 //! `fpeg check` prints for it, and the grammar fixed. The first grammar must report the
-//! page's code and the text block must hold its messages exactly, while the fix must compile.
+//! page's code and the text block must hold its messages exactly, while the fix must give
+//! neither an error nor a warning.
 //! A page without grammars is one no input can trigger. The page of a code that only the Python
 //! binding reports shows Python instead, which the docs build runs.
 //!
@@ -13,7 +14,7 @@
 
 use std::path::Path;
 
-use fpeg::{Diagnostic, DiagnosticCode, Grammar, LineIndex, Parser};
+use fpeg::{Diagnostic, DiagnosticCode, Grammar, LineIndex};
 
 /// A fenced block of a page: its info string, its body, and the lines it spans.
 struct Block {
@@ -54,7 +55,7 @@ fn blocks(text: &str) -> Vec<Block> {
 fn problems(text: &str) -> Vec<Diagnostic> {
     match Grammar::from_text(text) {
         Err(errors) => errors,
-        Ok(grammar) => Parser::new(&grammar).err().unwrap_or_default(),
+        Ok(grammar) => fpeg::check(&grammar),
     }
 }
 
@@ -63,9 +64,9 @@ fn rendered(text: &str, errors: &[Diagnostic]) -> String {
     let mut out = String::new();
     for error in errors {
         let (line, column) = lines.line_column(text, error.span.start as usize);
-        let message = &error.message;
+        let (severity, message) = (error.severity(), &error.message);
         out.push_str(&format!(
-            "grammar.fpeg:{line}:{column}: error[{}]: {message}\n",
+            "grammar.fpeg:{line}:{column}: {severity}[{}]: {message}\n",
             error.code
         ));
     }

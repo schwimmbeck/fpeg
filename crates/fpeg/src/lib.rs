@@ -16,6 +16,7 @@
 )]
 
 mod analysis;
+mod check;
 mod diag;
 mod grammar;
 mod ir;
@@ -28,7 +29,8 @@ mod resolve;
 mod tree;
 mod vm;
 
-pub use diag::{Diagnostic, DiagnosticCode};
+pub use check::check;
+pub use diag::{Diagnostic, DiagnosticCode, Severity};
 pub use grammar::builder;
 pub use grammar::{
     Alternative, BUILT_IN_BUILDERS, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count,

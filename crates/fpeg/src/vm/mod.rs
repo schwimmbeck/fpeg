@@ -4,7 +4,7 @@
 //! The engine: grammars compiled to programs for the parsing machine, and programs run over
 //! inputs.
 
-mod compile;
+pub(crate) mod compile;
 mod disasm;
 mod machine;
 mod profile;

@@ -79,7 +79,8 @@ The tests of the core crate run on the reference interpreter, and the differenti
 | `tests/differential.rs` | the parsing machine against the reference interpreter on every case file, every acceptance grammar with its samples, and generated grammars: the same tree, or the same error with the same expected set, with the machine remembering what the grammar marks, nothing, and every rule. Grammars the machine does not run yet are skipped, and each test reports how many |
 | `tests/mutated.rs` | the grammars of `crates/fpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
 | `tests/docs.rs` | every `fpeg` block of the documentation outside the diagnostics pages |
-| `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fpeg check` prints, and its fix compiles |
+| `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fpeg check` prints, and its fix gives neither an error nor a warning |
+| `tests/check.rs` | the warnings: each is given where it holds and left out where it does not, and the acceptance grammars give none |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
 | `tests/profile.rs` | the counts of a profile: calls, repeats, failures, growths, the row of the ignored text, and that the rows sum to the steps of the parse |
 | `src/vm/tests.rs` | the code the compiler makes for small grammars, exact character classes, the verifier against broken programs, and what the machine does not run yet |
