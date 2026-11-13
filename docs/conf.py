@@ -14,7 +14,9 @@ author = "Dominik Schwimmbeck"
 copyright = "2026 Dominik Schwimmbeck"
 release = importlib.metadata.version("fpeg")
 
-extensions = ["myst_parser", "run_code_blocks", "fpeg_lexer"]
+extensions = ["myst_parser", "sphinx.ext.autodoc", "run_code_blocks", "fpeg_lexer"]
+# Members in the order the classes define them, which groups them by topic.
+autodoc_member_order = "bysource"
 source_suffix = {".md": "markdown"}
 # Headings down to the third level get anchors that links such as page.md#section can name.
 myst_heading_anchors = 3

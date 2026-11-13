@@ -26,6 +26,7 @@ print(fpeg.__version__)
 - [Grammar language](reference/grammar.md): the syntax of grammars.
 - [Semantics](reference/semantics.md): what a grammar means.
 - [Parse tree](reference/tree.md): nodes, tokens, fields and spans.
+- [Python API](reference/python-api.md): `Grammar` and its errors.
 - [Command line](reference/cli.md): `fpeg check` and `fpeg parse`.
 - [Diagnostics](reference/diagnostics/index.md): every problem a grammar can have, with its code.
 
@@ -36,6 +37,7 @@ roadmap
 reference/grammar
 reference/semantics
 reference/tree
+reference/python-api
 reference/cli
 reference/diagnostics/index
 development

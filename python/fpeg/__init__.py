@@ -3,9 +3,19 @@
 
 """A PEG parsing library with a native engine and a Transformer for parse trees.
 
-The package holds no parser yet.
+A `Grammar` is compiled from text at runtime.
 """
 
-from fpeg._fpeg import __version__
+from fpeg._fpeg import (
+    Diagnostic,
+    Grammar,
+    GrammarError,
+    __version__,
+)
 
-__all__ = ["__version__"]
+__all__ = [
+    "Diagnostic",
+    "Grammar",
+    "GrammarError",
+    "__version__",
+]

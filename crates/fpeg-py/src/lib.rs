@@ -3,15 +3,26 @@
 
 //! The native module `fpeg._fpeg` behind the Python package.
 
+mod errors;
+mod grammar;
+
 use pyo3::pymodule;
 
 /// The native part of the fpeg Python package.
-#[pymodule]
+#[pymodule(gil_used = false)]
 mod _fpeg {
     use pyo3::prelude::*;
 
+    #[pymodule_export]
+    use crate::errors::Diagnostic;
+    #[pymodule_export]
+    use crate::grammar::Grammar;
+
     #[pymodule_init]
     fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
-        module.add("__version__", fpeg::VERSION)
+        let py = module.py();
+        module.add("__version__", fpeg::VERSION)?;
+        module.add("GrammarError", py.get_type::<crate::errors::GrammarError>())?;
+        Ok(())
     }
 }
