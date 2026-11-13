@@ -31,6 +31,21 @@ const SEVERAL: u8 = 2;
 /// memory that grow with the square of the chain, and a grammar beyond this is refused.
 pub(crate) const MAX_NODE_FIELDS: usize = 1_000;
 
+/// The most steps that counting the items of a grammar may take, a step being an expression
+/// counted or a field it passes on. Rules without a node of their own that call each other
+/// pass fields around until the counts stop growing, which can take a pass for every rule of
+/// the cycle, and a grammar beyond this is refused.
+pub(crate) const MAX_COUNT_STEPS: usize = 10_000_000;
+
+/// The limit a grammar exceeded while its items were counted, with the rule being counted.
+#[derive(Debug)]
+pub(crate) enum TooLarge {
+    /// The rule passes on more than [`MAX_NODE_FIELDS`] fields.
+    Fields(usize),
+    /// Counting took more than [`MAX_COUNT_STEPS`] steps.
+    Steps(usize),
+}
+
 /// What one match of an expression adds to the node it lies in, at most.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Items {
@@ -164,6 +179,8 @@ struct Counter<'r> {
     rules: &'r [Items],
     /// The shared parts counted in this pass.
     shared: HashMap<*const ir::Expr, Items>,
+    /// The steps taken, which count against [`MAX_COUNT_STEPS`].
+    steps: usize,
 }
 
 impl Counter<'_> {
@@ -171,12 +188,20 @@ impl Counter<'_> {
         Counter {
             rules,
             shared: HashMap::new(),
+            steps: 0,
         }
     }
 
     /// What a match of the expression adds to the node around it. It recurses as deeply as the
     /// expression nests, which the resolver bounds.
     fn of(&mut self, expr: &ir::Expr) -> Items {
+        let items = self.count(expr);
+        // The expression around this one takes its fields over once.
+        self.steps += 1 + items.fields.len() + items.present.len();
+        items
+    }
+
+    fn count(&mut self, expr: &ir::Expr) -> Items {
         use ir::Expr as E;
         match expr {
             E::Token { hidden: true, .. } => Items::nothing(),
@@ -256,9 +281,8 @@ pub(crate) struct Counts {
 }
 
 impl Counts {
-    /// Count the rules, callees first, or give the first rule found to pass on more than
-    /// [`MAX_NODE_FIELDS`] fields.
-    pub fn new(rules: &[Option<ir::Rule>]) -> Result<Counts, usize> {
+    /// Count the rules, callees first, or tell the limit that the grammar exceeds.
+    pub fn new(rules: &[Option<ir::Rule>]) -> Result<Counts, TooLarge> {
         Ok(Counts {
             summaries: summarize(rules)?,
         })
@@ -395,7 +419,7 @@ impl KindItems {
 
 /// What each rule adds where it is called, rules that call each other counted together until
 /// their counts stop growing. Counts only grow from `never`, so this ends.
-fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, usize> {
+fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, TooLarge> {
     let calls: Vec<Vec<usize>> = rules
         .iter()
         .map(|rule| {
@@ -407,12 +431,14 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, usize> {
         })
         .collect();
     let mut summaries = vec![Items::never(); rules.len()];
+    let mut steps = 0;
     for component in components(&calls) {
         let recursive = component.len() > 1 || calls[component[0]].contains(&component[0]);
         count_until_stable(
             &component,
             rules,
             &mut summaries,
+            &mut steps,
             recursive,
             Items::same_most,
         )?;
@@ -425,30 +451,44 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, usize> {
                 summary.present = filled.map(|(&field, _)| field).collect();
                 summary.unfielded_present = summary.unfielded > 0;
             }
-            count_until_stable(&component, rules, &mut summaries, true, Items::eq)?;
+            count_until_stable(
+                &component,
+                rules,
+                &mut summaries,
+                &mut steps,
+                true,
+                Items::eq,
+            )?;
         }
     }
     Ok(summaries)
 }
 
 /// Count the rules of a component again and again, while `same` finds a count changed, or once
-/// unless `repeat`. Stops at a rule that passes on more than [`MAX_NODE_FIELDS`] fields.
+/// unless `repeat`. Stops at a rule that passes on more than [`MAX_NODE_FIELDS`] fields, or
+/// when `steps` passes [`MAX_COUNT_STEPS`].
 fn count_until_stable(
     component: &[usize],
     rules: &[Option<ir::Rule>],
     summaries: &mut [Items],
+    steps: &mut usize,
     repeat: bool,
     same: fn(&Items, &Items) -> bool,
-) -> Result<(), usize> {
+) -> Result<(), TooLarge> {
     loop {
         let mut changed = false;
         for &rule in component {
             let Some(body) = rules[rule].as_ref().map(|rule| &rule.body) else {
                 continue;
             };
-            let items = Counter::new(summaries).of(body);
+            let mut counter = Counter::new(summaries);
+            let items = counter.of(body);
+            *steps += counter.steps;
             if items.fields.len() > MAX_NODE_FIELDS {
-                return Err(rule);
+                return Err(TooLarge::Fields(rule));
+            }
+            if *steps > MAX_COUNT_STEPS {
+                return Err(TooLarge::Steps(rule));
             }
             changed |= !same(&items, &summaries[rule]);
             summaries[rule] = items;

@@ -14,6 +14,7 @@ use crate::grammar::{
     GrammarError, Level, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
+use crate::items::TooLarge;
 use crate::tree::{FieldId, KindId, Names};
 
 /// Template instances resolving may create before it gives up. Growing arguments meet the depth
@@ -274,14 +275,21 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
     r.check_fields();
     let counts = match crate::items::Counts::new(&r.rules) {
         Ok(counts) => counts,
-        Err(rule) => {
+        Err(too_large) => {
+            let (TooLarge::Fields(rule) | TooLarge::Steps(rule)) = too_large;
             let (name, span) = (r.rules[rule].as_ref()).map_or(("", Span::default()), |rule| {
                 (rule.name.as_str(), rule.span)
             });
-            let message = format!(
-                "the rule {name} passes on more than {} fields to a node",
-                crate::items::MAX_NODE_FIELDS
-            );
+            let message = match too_large {
+                TooLarge::Fields(_) => format!(
+                    "the rule {name} passes on more than {} fields to a node",
+                    crate::items::MAX_NODE_FIELDS
+                ),
+                TooLarge::Steps(_) => format!(
+                    "the fields that the rule {name} passes on take more than {} steps to count",
+                    crate::items::MAX_COUNT_STEPS
+                ),
+            };
             r.error(DiagnosticCode::TooLarge, message, span);
             return Err(r.errors);
         }

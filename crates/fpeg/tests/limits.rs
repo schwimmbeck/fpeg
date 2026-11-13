@@ -243,6 +243,24 @@ fn a_chain_of_rules_that_passes_on_too_many_fields_is_an_error() {
 }
 
 #[test]
+fn rules_that_pass_fields_around_a_long_cycle_are_an_error() {
+    // Each rule calls the next and the one before, so a field moves back one rule per pass and
+    // counting takes a pass per rule over all fields. Without the limit, the time grows with the
+    // cube of the cycle: 1.7 s for these 250 rules, two minutes for 1000.
+    let k = 250;
+    let mut text = String::from("start: _x0\nA: \"a\"\n_x0: f0=A _x1 | A\n");
+    for j in 1..k {
+        text.push_str(&format!("_x{j}: f{j}=A _x{} | _x{}\n", j + 1, j - 1));
+    }
+    text.push_str(&format!("_x{k}: f{k}=A | _x{}\n", k - 1));
+    let errors = grammar_errors(&text);
+    assert!(
+        errors.iter().any(|e| e.contains("steps to count")),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
     // Each activation nests almost as deeply as a rule body may, so matches nest much deeper
     // than rule activations do.
