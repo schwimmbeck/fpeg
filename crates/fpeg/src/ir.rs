@@ -56,6 +56,8 @@ pub(crate) struct Grammar {
     pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
     /// For each kind, the value builder of the alternatives that make it.
     pub kind_builders: Vec<Option<ValueBuilder>>,
+    /// For each kind, whether its items are tokens rather than nodes.
+    pub kind_tokens: Vec<bool>,
     /// For each rule that can start a parse, whether it always leaves one visible item.
     pub single_item: HashMap<String, bool>,
 }
@@ -69,6 +71,7 @@ impl Grammar {
                 display: self.kind_display.get(id).cloned().unwrap_or_default(),
                 fields: self.kind_fields.get(id).cloned().unwrap_or_default(),
                 builder: self.kind_builders.get(id).cloned().flatten(),
+                token: self.kind_tokens.get(id).copied().unwrap_or(false),
             })
             .collect()
     }

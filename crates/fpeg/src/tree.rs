@@ -59,6 +59,9 @@ pub struct Kind {
     pub fields: Vec<(FieldId, FieldCount)>,
     /// The value builder of the alternatives that make it, or of its terminal.
     pub builder: Option<ValueBuilder>,
+    /// Whether its items are tokens. A kind is of tokens or of nodes, never both: the
+    /// tokens of a terminal and the nodes of an alias of the same name have kinds apart.
+    pub token: bool,
 }
 
 /// The names behind kind and field ids, shared by a grammar and its trees.

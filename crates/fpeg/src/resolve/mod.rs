@@ -128,6 +128,7 @@ struct Resolver<'g> {
     kind_names: Vec<String>,
     kind_display: Vec<String>,
     kind_builders: Vec<Option<ValueBuilder>>,
+    kind_tokens: Vec<bool>,
     fields: Interner,
     flags: HashMap<&'g str, FlagId>,
     captures: Interner,
@@ -158,6 +159,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         kind_names: vec!["<error>".into(), "<missing>".into(), "<skipped>".into()],
         kind_display: vec!["error".into(), "missing".into(), "skipped".into()],
         kind_builders: vec![None, None, None],
+        kind_tokens: vec![false, true, true],
         fields: Interner::with(&[""]),
         flags: HashMap::new(),
         captures: Interner::default(),
@@ -285,6 +287,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         entry,
         kind_fields: facts.kind_fields,
         kind_builders: r.kind_builders,
+        kind_tokens: r.kind_tokens,
         single_item: facts.single_item,
         names: Arc::new(Names {
             kinds: r.kind_names,
@@ -593,19 +596,28 @@ impl<'g> Resolver<'g> {
         RuleId((self.rules.len() - 1) as u32)
     }
 
-    /// The kind of the nodes or tokens named `name` that the builder makes values of. Each
-    /// builder gets a kind of its own, so that a tree finds the builder by the kind.
-    fn kind(&mut self, name: &str, display: &str, builder: Option<&ValueBuilder>) -> KindId {
+    /// The kind of the tokens or nodes named `name` that the builder makes values of. Each
+    /// builder gets a kind of its own, so that a tree finds the builder by the kind, and the
+    /// tokens of a terminal and the nodes of an alias of the same name get kinds apart.
+    fn kind(
+        &mut self,
+        name: &str,
+        display: &str,
+        builder: Option<&ValueBuilder>,
+        token: bool,
+    ) -> KindId {
+        // Names hold no NUL, so no key can be another's.
+        let made = if token { "token" } else { "node" };
         let key = match builder {
-            None => name.to_owned(),
-            // Rule names hold no NUL, and anonymous kinds have no builder.
-            Some(builder) => format!("{name}\0{}", builder_text(builder)),
+            None => format!("{name}\0{made}"),
+            Some(builder) => format!("{name}\0{made}\0{}", builder_text(builder)),
         };
         let (id, new) = self.kinds.id(&key);
         if new {
             self.kind_names.push(name.to_owned());
             self.kind_display.push(display.to_owned());
             self.kind_builders.push(builder.cloned());
+            self.kind_tokens.push(token);
         }
         KindId(id)
     }
@@ -926,19 +938,19 @@ impl<'g> Resolver<'g> {
         let expr = Box::new(expr);
         if let Some(alias) = &alternative.alias {
             ir::Expr::Node {
-                kind: self.kind(&alias.text, &alias.text, builder),
+                kind: self.kind(&alias.text, &alias.text, builder, false),
                 expr,
             }
         } else if rule.is_underscored() {
             *expr
         } else if rule.transparent {
             ir::Expr::Transparent {
-                kind: self.kind(&rule.name.text, &rule.name.text, builder),
+                kind: self.kind(&rule.name.text, &rule.name.text, builder, false),
                 expr,
             }
         } else {
             ir::Expr::Node {
-                kind: self.kind(&rule.name.text, &rule.name.text, builder),
+                kind: self.kind(&rule.name.text, &rule.name.text, builder, false),
                 expr,
             }
         }
@@ -1014,7 +1026,12 @@ impl<'g> Resolver<'g> {
                 }
                 match &alternative.alias {
                     Some(alias) => lowered.push(ir::Expr::Node {
-                        kind: self.kind(&alias.text, &alias.text, alternative.builder.as_ref()),
+                        kind: self.kind(
+                            &alias.text,
+                            &alias.text,
+                            alternative.builder.as_ref(),
+                            false,
+                        ),
                         expr: Box::new(expr),
                     }),
                     None => {
@@ -1267,7 +1284,7 @@ impl<'g> Resolver<'g> {
             return atom;
         }
         let name = expr_text(written);
-        let kind = self.kind(&name, &name, None);
+        let kind = self.kind(&name, &name, None, true);
         let mut inner = atom;
         if let ExprKind::Literal {
             text,
@@ -1394,7 +1411,7 @@ impl<'g> Resolver<'g> {
                     }
                     RuleBody::Precedence(_) => None,
                 };
-                let kind = self.kind(&target.name.text, display, builder);
+                let kind = self.kind(&target.name.text, display, builder, true);
                 let token = ir::Expr::Token {
                     kind,
                     hidden: target.is_underscored() && !scope.in_field,
@@ -1458,6 +1475,19 @@ mod tests {
         assert!(size(&resolved) < 1_000, "{}", size(&resolved));
         let reference = Reference::new(&grammar).expect("the grammar resolves");
         assert!(format!("{reference:?}").len() < 100);
+    }
+
+    #[test]
+    fn an_alias_named_like_a_terminal_makes_nodes_of_a_kind_apart() {
+        let text = "start: x NUM\nx: \"a\" -> NUM\nNUM: \"b\"";
+        let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
+        let parser = Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut tokens: Vec<bool> = (parser.kinds().iter())
+            .filter(|kind| kind.name == "NUM")
+            .map(|kind| kind.token)
+            .collect();
+        tokens.sort();
+        assert_eq!(tokens, [false, true]);
     }
 
     #[test]
