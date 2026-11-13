@@ -367,11 +367,12 @@ impl<'py, 'p> Scan<'py, 'p> {
                 Mode::Nothing => vectorcall(&method, &[], &[]),
                 _ => vectorcall(&method, &[self.make_token(node)?.unbind()], &[]),
             };
-            let name = handler.name.bind(self.py).to_string();
-            let result = result.map_err(|e| self.noted(e, &name, node))?;
+            let py = self.py;
+            let name = || handler.name.bind(py).to_string();
+            let result = result.map_err(|e| self.noted(e, &name(), node))?;
             // A method that yields runs while its values are taken.
             return (self.push(index, node.field(), result))
-                .map_err(|e| self.noted(e, &name, node));
+                .map_err(|e| self.noted(e, &name(), node));
         }
         let parsed = self.parsed;
         if let Some(builder) = parsed.grammar.builders.get(kind).and_then(Option::as_ref) {
