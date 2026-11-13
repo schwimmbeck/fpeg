@@ -12,8 +12,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 
 use fastpeg::grammar::builder::*;
-use fastpeg::grammar::{ClassItem, Expr, ExprKind, Grammar, Span};
-use fastpeg::reference::{Limits, ParseErrorKind, Reference};
+use fastpeg::grammar::{ClassItem, Expr, ExprKind, Grammar, Level, RuleBody, Span, Text};
+use fastpeg::reference::{Limits, ParseError, ParseErrorKind, Reference};
+use fastpeg::tree::Tree;
 
 /// Grammars a normal test run tries.
 const DEFAULT_CASES: u64 = 400;
@@ -64,13 +65,6 @@ impl Rng {
     }
 }
 
-fn node(kind: ExprKind) -> Expr {
-    Expr {
-        kind,
-        span: Span::default(),
-    }
-}
-
 /// A sequence or choice of the given parts, flattened the way the text front end reads them.
 fn flat(parts: Vec<Expr>, choice: bool) -> Expr {
     let mut items = Vec::new();
@@ -78,25 +72,46 @@ fn flat(parts: Vec<Expr>, choice: bool) -> Expr {
         match part.kind {
             ExprKind::Sequence(inner) if !choice => items.extend(inner),
             ExprKind::Choice(inner) if choice => items.extend(inner),
-            kind => items.push(node(kind)),
+            kind => items.push(Expr::new(kind)),
         }
     }
     match (items.len(), choice) {
         (1, _) => items.remove(0),
-        (_, false) => node(ExprKind::Sequence(items)),
-        (_, true) => node(ExprKind::Choice(items)),
+        (_, false) => Expr::new(ExprKind::Sequence(items)),
+        (_, true) => Expr::new(ExprKind::Choice(items)),
     }
+}
+
+/// What a reference means where an input is derived: template arguments and precedence levels.
+#[derive(Default)]
+struct Scope<'g> {
+    params: Vec<(&'g str, &'g Expr)>,
+    levels: Option<&'g [Level]>,
 }
 
 struct Generator {
     rng: Rng,
     rules: Vec<String>,
     terminals: Vec<String>,
+    /// Whether the grammar has the template `t<p>`.
+    template: bool,
+    /// The parameters and level names the expression being generated may use.
+    params: Vec<String>,
+    levels: Vec<String>,
+    /// The texts the derivation of the current input captured, latest last.
+    captured: Vec<(String, String)>,
 }
 
 impl Generator {
+    fn terminal_or_literal(&mut self) -> Expr {
+        match self.terminals.is_empty() {
+            true => lit("c"),
+            false => r(self.rng.pick(&self.terminals)),
+        }
+    }
+
     fn atom(&mut self, terminal: bool) -> Expr {
-        match self.rng.below(9) {
+        match self.rng.below(13) {
             0 => lit("a"),
             1 => lit("b"),
             2 => lit("ab"),
@@ -104,10 +119,19 @@ impl Generator {
             4 => not_class([ch('a'), ch('\n')]),
             5 => any(),
             6 => empty(),
-            _ if terminal || self.rng.chance(30) => match self.terminals.is_empty() {
-                true => lit("c"),
-                false => r(self.rng.pick(&self.terminals)),
-            },
+            7 => lit_i("ab"),
+            8 => capture_ref("c"),
+            9 if !self.params.is_empty() => r(self.rng.pick(&self.params)),
+            10 if !self.levels.is_empty() => r(self.rng.pick(&self.levels)),
+            // Closed arguments keep the number of template instances small.
+            11 if self.template && !terminal => {
+                let argument = match self.rng.chance(50) {
+                    true => class([range('a', 'b')]),
+                    false => self.terminal_or_literal(),
+                };
+                r_args("t", [argument])
+            }
+            _ if terminal || self.rng.chance(30) => self.terminal_or_literal(),
             _ => r(self.rng.pick(&self.rules)),
         }
     }
@@ -121,7 +145,7 @@ impl Generator {
         if depth >= MAX_DEPTH || self.rng.chance(35) {
             return self.atom(terminal);
         }
-        let kinds = if terminal { 7 } else { 13 };
+        let kinds = if terminal { 8 } else { 14 };
         match self.rng.below(kinds) {
             0 | 1 => flat(self.parts(depth, terminal), false),
             2 | 3 => flat(self.parts(depth, terminal), true),
@@ -149,16 +173,17 @@ impl Generator {
                 true => and(self.expr(depth + 1, terminal)),
                 false => not(self.expr(depth + 1, terminal)),
             },
-            7 => label_message(self.expr(depth + 1, terminal), "oops"),
-            8 | 9 => {
+            7 => def("c", self.expr(depth + 1, terminal)),
+            8 => label_message(self.expr(depth + 1, false), "oops"),
+            9 | 10 => {
                 let name = if self.rng.chance(50) { "x" } else { "y" };
-                field(name, self.expr(depth + 1, terminal))
+                field(name, self.expr(depth + 1, false))
             }
-            10 => {
+            11 => {
                 let (first, second) = (self.expr(depth + 1, false), self.expr(depth + 1, false));
                 flat(vec![first, cut(), second], false)
             }
-            11 => match self.rng.below(3) {
+            12 => match self.rng.below(3) {
                 0 => on("f", self.expr(depth + 1, false)),
                 1 => off("f", self.expr(depth + 1, false)),
                 _ => flat(vec![if_flag("f"), self.expr(depth + 1, false)], false),
@@ -170,38 +195,102 @@ impl Generator {
         }
     }
 
+    fn alternatives(&mut self) -> Vec<fastpeg::grammar::Alternative> {
+        (0..1 + self.rng.below(3))
+            .map(|_| {
+                let expr = self.expr(0, false);
+                match self.rng.chance(20) {
+                    true => alt(expr).alias("node"),
+                    false => alt(expr),
+                }
+            })
+            .collect()
+    }
+
+    /// The levels of the precedence block `prec`: operators of each kind, and at the bottom
+    /// operands and a bracketed `prec`.
+    fn levels(&mut self) -> Vec<Level> {
+        let names: Vec<String> = (1..=2 + self.rng.below(2))
+            .map(|i| format!("l{i}"))
+            .collect();
+        self.levels = names.clone();
+        let mut levels = Vec::new();
+        for (k, name) in names.iter().enumerate() {
+            let mut alternatives = Vec::new();
+            match names.get(k + 1) {
+                Some(next) => {
+                    for _ in 0..1 + self.rng.below(2) {
+                        let left = seq([field("left", r(name)), lit("a"), field("right", r(next))]);
+                        let right =
+                            seq([field("left", r(next)), lit("b"), field("right", r(name))]);
+                        alternatives.push(match self.rng.below(4) {
+                            0 => alt(left).alias("binary"),
+                            1 => alt(right).alias("binary"),
+                            2 => alt(seq([lit("b"), field("operand", r(name))])).alias("unary"),
+                            _ => alt(self.expr(1, false)).alias("other"),
+                        });
+                    }
+                }
+                None => {
+                    alternatives.push(alt(self.atom(false)));
+                    alternatives.push(alt(seq([lit("b"), r("prec"), lit("a")])));
+                }
+            }
+            levels.push(level(name, alternatives));
+        }
+        self.levels.clear();
+        levels
+    }
+
     fn grammar(&mut self) -> Grammar {
         let mut g = GrammarBuilder::new();
         g.flag("f");
         if self.rng.chance(50) {
             g.ignore(some(class([ch(' ')])));
         }
+        let word = self.rng.chance(30);
+        if word {
+            g.word(class([range('a', 'z')]));
+        }
         for name in self.rules.clone() {
-            let count = 1 + self.rng.below(3);
-            let alternatives = (0..count)
-                .map(|_| {
-                    let expr = self.expr(0, false);
-                    // A choice at the top of an alternative would read back as more alternatives.
-                    let expr = match expr.kind {
-                        ExprKind::Choice(_) => flat(vec![expr, lit("c")], false),
-                        _ => expr,
-                    };
-                    match self.rng.chance(20) {
-                        true => alt(expr).alias("node"),
-                        false => alt(expr),
-                    }
-                })
-                .collect();
+            if name == "prec" {
+                let levels = self.levels();
+                g.precedence(&name, levels);
+                continue;
+            }
+            let alternatives = self.alternatives();
             let rule = g.rule_alternatives(&name, alternatives);
             if !name.starts_with('_') && name != "start" && self.rng.chance(20) {
                 rule.transparent();
             }
+            if self.rng.chance(10) {
+                rule.attribute("lexical");
+            }
+        }
+        if self.template {
+            self.params = vec!["p".to_owned()];
+            let body = self.expr(0, false);
+            self.params.clear();
+            g.rule("t", body).params(["p"]);
         }
         for name in self.terminals.clone() {
             let body = self.expr(0, true);
-            g.rule(&name, body);
+            let rule = g.rule(&name, body);
+            if self.rng.chance(20) {
+                rule.display("thing");
+            }
+            if self.rng.chance(25) {
+                rule.attribute("reserved");
+            }
         }
-        g.build()
+        let mut grammar = g.build();
+        if word && self.rng.chance(50) {
+            grammar.soft_keywords.push(Text {
+                value: "ab".to_owned(),
+                span: Span::default(),
+            });
+        }
+        grammar
     }
 
     fn char(&mut self) -> char {
@@ -219,7 +308,9 @@ impl Generator {
                 }
             }
             choice => {
-                self.derive(grammar, &r("start"), 0, &mut text);
+                self.captured.clear();
+                let start = r("start");
+                self.derive(grammar, &start, &Scope::default(), 0, &mut text);
                 let mut chars: Vec<char> = text.chars().take(MAX_DERIVED_CHARS).collect();
                 if choice == 1 {
                     let at = self.rng.below(chars.len() as u64 + 1) as usize;
@@ -234,13 +325,51 @@ impl Generator {
         text
     }
 
+    /// Follow a precedence block from level `k`, falling through to tighter levels at random.
+    fn derive_level<'g>(
+        &mut self,
+        grammar: &'g Grammar,
+        levels: &'g [Level],
+        mut k: usize,
+        depth: u32,
+        out: &mut String,
+    ) {
+        while k + 1 < levels.len() && self.rng.chance(40) {
+            k += 1;
+        }
+        let alternatives = &levels[k].alternatives;
+        let pick = self.rng.below(alternatives.len() as u64) as usize;
+        let scope = Scope {
+            params: Vec::new(),
+            levels: Some(levels),
+        };
+        self.derive(grammar, &alternatives[pick].expr, &scope, depth, out);
+    }
+
     /// Append text that the expression likely matches, ignoring lookahead and context.
-    fn derive(&mut self, grammar: &Grammar, expr: &Expr, depth: u32, out: &mut String) {
+    fn derive<'g>(
+        &mut self,
+        grammar: &'g Grammar,
+        expr: &'g Expr,
+        scope: &Scope<'g>,
+        depth: u32,
+        out: &mut String,
+    ) {
         if depth > MAX_DERIVE_DEPTH || out.len() > MAX_DERIVED_CHARS {
             return;
         }
         match &expr.kind {
-            ExprKind::Literal { text, .. } => out.push_str(text),
+            ExprKind::Literal {
+                text,
+                case_insensitive,
+            } => {
+                for c in text.chars() {
+                    match *case_insensitive && self.rng.chance(50) {
+                        true => out.push(c.to_ascii_uppercase()),
+                        false => out.push(c),
+                    }
+                }
+            }
             ExprKind::Class(class) => {
                 let fits: Vec<char> = INPUT_CHARS
                     .into_iter()
@@ -251,16 +380,30 @@ impl Generator {
                 }
             }
             ExprKind::Any => out.push(self.char()),
-            ExprKind::Reference { name, .. } => {
-                let rule = grammar
-                    .rules
-                    .iter()
-                    .find(|rule| rule.name.text == name.text);
-                if let Some(rule) = rule
-                    && let fastpeg::grammar::RuleBody::Alternatives(alternatives) = &rule.body
-                {
-                    let pick = self.rng.below(alternatives.len() as u64) as usize;
-                    self.derive(grammar, &alternatives[pick].expr, depth + 1, out);
+            ExprKind::Reference { name, args } => {
+                let rule = grammar.rules.iter().find(|r| r.name.text == name.text);
+                let level = scope
+                    .levels
+                    .and_then(|levels| levels.iter().position(|l| l.name.text == name.text));
+                if let Some(&(_, argument)) = scope.params.iter().find(|(p, _)| *p == name.text) {
+                    self.derive(grammar, argument, &Scope::default(), depth + 1, out);
+                } else if let (Some(levels), Some(k)) = (scope.levels, level) {
+                    self.derive_level(grammar, levels, k, depth + 1, out);
+                } else if let Some(rule) = rule {
+                    match &rule.body {
+                        RuleBody::Alternatives(alternatives) => {
+                            let pick = self.rng.below(alternatives.len() as u64) as usize;
+                            let params = rule.params.iter().map(|p| p.text.as_str());
+                            let inner = Scope {
+                                params: params.zip(args.iter()).collect(),
+                                levels: None,
+                            };
+                            self.derive(grammar, &alternatives[pick].expr, &inner, depth + 1, out);
+                        }
+                        RuleBody::Precedence(levels) => {
+                            self.derive_level(grammar, levels, 0, depth + 1, out);
+                        }
+                    }
                 }
             }
             ExprKind::Sequence(items) => {
@@ -268,17 +411,17 @@ impl Generator {
                     if !grammar.ignore.is_empty() && self.rng.chance(20) {
                         out.push(' ');
                     }
-                    self.derive(grammar, item, depth + 1, out);
+                    self.derive(grammar, item, scope, depth + 1, out);
                 }
             }
             ExprKind::Choice(items) => {
                 let pick = self.rng.below(items.len() as u64) as usize;
-                self.derive(grammar, &items[pick], depth + 1, out);
+                self.derive(grammar, &items[pick], scope, depth + 1, out);
             }
             ExprKind::Repeat { expr, min, max } => {
                 let extra = max.map_or(2, |max| max.saturating_sub(*min).min(2));
                 for _ in 0..*min as u64 + self.rng.below(u64::from(extra) + 1) {
-                    self.derive(grammar, expr, depth + 1, out);
+                    self.derive(grammar, expr, scope, depth + 1, out);
                 }
             }
             ExprKind::Separated {
@@ -289,16 +432,27 @@ impl Generator {
                 let count = u64::from(*at_least_one) + self.rng.below(3);
                 for i in 0..count {
                     if i > 0 {
-                        self.derive(grammar, separator, depth + 1, out);
+                        self.derive(grammar, separator, scope, depth + 1, out);
                     }
-                    self.derive(grammar, item, depth + 1, out);
+                    self.derive(grammar, item, scope, depth + 1, out);
+                }
+            }
+            ExprKind::Def { name, expr } => {
+                let start = out.len();
+                self.derive(grammar, expr, scope, depth + 1, out);
+                self.captured
+                    .push((name.text.clone(), out[start..].to_owned()));
+            }
+            ExprKind::Ref { name } => {
+                if let Some((_, text)) = self.captured.iter().rev().find(|(n, _)| *n == name.text) {
+                    out.push_str(&text.clone());
                 }
             }
             ExprKind::Field { expr, .. }
             | ExprKind::Label { expr, .. }
             | ExprKind::FlagOn { expr, .. }
             | ExprKind::FlagOff { expr, .. }
-            | ExprKind::Indent(expr) => self.derive(grammar, expr, depth + 1, out),
+            | ExprKind::Indent(expr) => self.derive(grammar, expr, scope, depth + 1, out),
             _ => {}
         }
     }
@@ -335,14 +489,17 @@ fn env_number(name: &str, default: u64) -> u64 {
 /// The grammar and inputs of one seed.
 fn generate(seed: u64) -> (Grammar, Vec<String>) {
     let mut rng = Rng(seed);
-    let rule_count = 1 + rng.below(4);
-    let rules = (0..rule_count)
+    let mut rules: Vec<String> = (0..1 + rng.below(4))
         .map(|i| match (i, rng.below(6)) {
             (0, _) => "start".to_owned(),
             (_, 0) => format!("_r{i}"),
             _ => format!("r{i}"),
         })
         .collect();
+    if rng.chance(25) {
+        rules.push("prec".to_owned());
+    }
+    let template = rng.chance(25);
     let terminals = (0..rng.below(3))
         .map(|i| match rng.chance(25) {
             true => format!("_T{i}"),
@@ -353,6 +510,10 @@ fn generate(seed: u64) -> (Grammar, Vec<String>) {
         rng,
         rules,
         terminals,
+        template,
+        params: Vec::new(),
+        levels: Vec::new(),
+        captured: Vec::new(),
     };
     let grammar = generator.grammar();
     let inputs = (0..INPUTS_PER_GRAMMAR)
@@ -396,12 +557,11 @@ fn check_memo(seed: u64) -> Option<String> {
     let (grammar, inputs) = generate(seed);
     let reference = Reference::new(&grammar).ok()?;
     for input in &inputs {
-        let shown =
-            |result: Result<fastpeg::tree::Tree, fastpeg::reference::ParseError>| match result {
-                Ok(tree) => Some(tree.to_text(input, true)),
-                Err(error) if matches!(error.kind, ParseErrorKind::Limit(_)) => None,
-                Err(error) => Some(error.to_string()),
-            };
+        let shown = |result: Result<Tree, ParseError>| match result {
+            Ok(tree) => Some(tree.to_text(input, true)),
+            Err(error) if matches!(error.kind, ParseErrorKind::Limit(_)) => None,
+            Err(error) => Some(error.to_string()),
+        };
         let memoized = shown(reference.parse_with(input, "start", limits()));
         let plain = shown(reference.parse_unmemoized(input, "start", limits()));
         if let (Some(memoized), Some(plain)) = (memoized, plain)
