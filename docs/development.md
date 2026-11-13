@@ -61,10 +61,10 @@ The fuzz targets in `fuzz/` run under [cargo-fuzz](https://github.com/rust-fuzz/
 ```sh
 cargo install cargo-fuzz
 cd fuzz
-cargo +nightly fuzz run differential -- -dict=fpeg.dict -max_total_time=600 corpus/differential ../crates/fastpeg/grammars
+cargo +nightly fuzz run differential corpus/differential ../crates/fastpeg/grammars -- -dict=fpeg.dict -max_total_time=600
 ```
 
-The grammars of the project serve as the first inputs. libFuzzer keeps what it finds in `fuzz/corpus/` and a failing input in `fuzz/artifacts/`, both ignored by git.
+The corpus folders come before `--` and libFuzzer's options after it. The grammars of the project serve as the first inputs. libFuzzer keeps what it finds in `fuzz/corpus/` and a failing input in `fuzz/artifacts/`, both ignored by git.
 
 ## Tests of the core
 
