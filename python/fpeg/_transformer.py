@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import difflib
 import inspect
+import sys
 import types
 from collections.abc import Callable, Iterable
 from typing import Any, ClassVar, TypeVar, cast
@@ -267,9 +268,23 @@ def _function(cls: type, name: str) -> tuple[Callable[..., Any] | None, Any]:
     return function, options
 
 
+if sys.version_info >= (3, 14):
+    import annotationlib
+
+    def _signature(function: Callable[..., Any]) -> inspect.Signature:
+        # The plan needs no annotations, and evaluating them fails on a name that only a
+        # type checker imports.
+        return inspect.signature(function, annotation_format=annotationlib.Format.STRING)
+
+else:
+
+    def _signature(function: Callable[..., Any]) -> inspect.Signature:
+        return inspect.signature(function)
+
+
 def _parameters(cls: type, name: str, function: Callable[..., Any]) -> list[inspect.Parameter]:
     """Return the parameters of a method after `self` or `cls`."""
-    parameters = list(inspect.signature(function).parameters.values())
+    parameters = list(_signature(function).parameters.values())
     if not isinstance(inspect.getattr_static(cls, name), staticmethod):
         parameters = parameters[1:]
     return parameters

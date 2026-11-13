@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 import pickle
+import sys
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import fpeg
 import pytest
+
+if TYPE_CHECKING:
+    from decimal import Decimal
 
 CALLS = fpeg.Grammar(r"""
 start: call ("," call)*
@@ -164,6 +168,15 @@ def test_keyword_only_extras_give_meta_node_and_children_beside_fields() -> None
 
     Extras().transform(parse("x, f(a)"[3:]))
     assert seen == [(0, "call", "f(a)", ["f", "a"])]
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="annotations are lazy from 3.14 on")
+def test_an_annotation_that_only_a_type_checker_can_read_does_not_matter() -> None:
+    class Typed(fpeg.Transformer):
+        def call(self, name: Decimal) -> str:
+            return f"<{name}>"
+
+    assert Typed().transform(parse("f()")).children == ["<f>"]
 
 
 def test_a_signature_that_fits_no_rule_fails_at_the_first_transform_naming_the_fields() -> None:
