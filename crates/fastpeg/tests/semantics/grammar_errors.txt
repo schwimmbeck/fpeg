@@ -9,6 +9,13 @@ start: "b"
 --- grammar
 the rule start is defined twice
 
+=== a rule defined twice is an error also in a grammar with templates
+start: t<"a">
+start: "b"
+t<x>: x
+--- grammar
+the rule start is defined twice
+
 === a template used with the wrong number of arguments is an error
 start: list<N>
 list<item, sep>: item (sep item)*

@@ -395,9 +395,13 @@ impl<'g> Resolver<'g> {
             return id;
         }
         if !args.is_empty() {
-            // Every rule without parameters has its instance from the start.
-            let plain = self.grammar.rules.iter().filter(|r| r.params.is_empty());
-            let templates = self.instances.len() - plain.count();
+            // Every rule without parameters has one instance from the start, also a rule the
+            // grammar defines twice.
+            let plain: HashSet<&str> = (self.grammar.rules.iter())
+                .filter(|r| r.params.is_empty())
+                .map(|r| r.name.text.as_str())
+                .collect();
+            let templates = self.instances.len().saturating_sub(plain.len());
             let body: Vec<&Expr> = match &rule.body {
                 RuleBody::Alternatives(alternatives) => {
                     alternatives.iter().map(|a| &a.expr).collect()
