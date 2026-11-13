@@ -16,6 +16,9 @@ use super::program::{Inst, Program};
 use crate::parse::{END_OF_INPUT, Limit, Limits};
 use crate::tree::{FieldId, KindId, Tree};
 
+/// Bytes of a literal compared in one step, about the work of one instruction.
+const LITERAL_BYTES_PER_STEP: u64 = 8;
+
 /// An item is a token.
 const TOKEN: u8 = 1;
 /// A token is hidden.
@@ -255,11 +258,13 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::Str(index) => {
                     let literal = self.literal(index);
+                    self.steps += literal.len() as u64 / LITERAL_BYTES_PER_STEP;
                     let found = self.rest().as_bytes().starts_with(literal);
                     self.advance(found.then_some(literal.len()))?;
                 }
                 Inst::StrFold(index) => {
                     let literal = self.literal(index);
+                    self.steps += literal.len() as u64 / LITERAL_BYTES_PER_STEP;
                     let rest = self.rest().as_bytes();
                     let found = (rest.get(..literal.len()))
                         .is_some_and(|r| r.eq_ignore_ascii_case(literal));
@@ -267,7 +272,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::Class(index) => {
                     let len = (self.program.classes.get(index as usize))
-                        .and_then(|class| class.matches(self.rest()));
+                        .and_then(|class| class.matches(self.rest(), &mut self.steps));
                     self.advance(len)?;
                 }
                 Inst::Any => {
@@ -456,7 +461,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.pc += 1;
                 }
                 Inst::WordEnd => {
-                    let word = self.program.word.matches(self.rest()).is_some();
+                    let rest = self.rest();
+                    let word = self.program.word.matches(rest, &mut self.steps).is_some();
                     self.test(!word)?;
                 }
                 Inst::Mark => {

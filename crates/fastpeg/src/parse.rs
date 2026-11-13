@@ -10,8 +10,10 @@ pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
 
 /// Steps a parse may take before it stops. A step is an instruction of the parsing machine,
 /// and work beyond one counts too, so that the limit bounds the time a parse takes: closing a
-/// node counts its items, and looking up a reserved word counts its length. About ten seconds
-/// on a desktop, enough for several hundred megabytes of JSON.
+/// node counts its items, comparing a long literal or looking up a reserved word counts its
+/// length, and testing a class beyond ASCII counts its items. About ten seconds on a desktop,
+/// enough for several hundred megabytes of JSON. A parse that fails runs a second time to find
+/// what was expected, which takes as long again.
 pub const DEFAULT_MAX_STEPS: u64 = 4_000_000_000;
 
 /// What a parse that stopped before the end of the input expects, in an expected set.

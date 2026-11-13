@@ -3,10 +3,10 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
-use fastpeg::builder::{GrammarBuilder, def, empty, field, lit, on, r, r_args};
+use fastpeg::builder::{GrammarBuilder, any, choice, def, empty, field, lit, many, on, r, r_args};
 use fastpeg::{
-    DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH, ParseErrorKind,
-    Reference,
+    Class, ClassItem, DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH,
+    ParseErrorKind, Parser, Reference,
 };
 
 /// A stack too small for printing that recursed once per level of a deep tree.
@@ -104,6 +104,38 @@ fn grammar_text_with_failing_separators_reads_in_linear_time() {
     let text = format!("start: {}", "a**(".repeat(40));
     let errors = Grammar::from_text(&text).expect_err("the text does not read");
     assert_eq!(errors[0].code, DiagnosticCode::Syntax, "{errors:?}");
+}
+
+#[test]
+fn long_literals_and_large_classes_count_against_the_machine_s_step_limit() {
+    let limits = Limits {
+        max_steps: 2_000_000,
+        ..Limits::default()
+    };
+    // A literal that fails only at its last byte, tried at every position.
+    let literal = format!("{}b", "a".repeat(9_999));
+    let mut g = GrammarBuilder::new();
+    g.rule("start", many(choice([r("L"), any()])));
+    g.rule("L", lit(&literal));
+    let input = "a".repeat(20_000);
+    // A class of 5,000 code points beyond ASCII, tested against one it does not hold.
+    let items = (0..5_000u32)
+        .filter_map(|i| char::from_u32(0x100 + 2 * i))
+        .map(|c| ClassItem::Range(c, c))
+        .collect();
+    let class = Expr::new(ExprKind::Class(Class {
+        negated: false,
+        items,
+    }));
+    let mut h = GrammarBuilder::new();
+    h.rule("start", many(choice([class, any()])));
+    for (builder, input) in [(g, input), (h, "\u{e9}".repeat(20_000))] {
+        let parser = Parser::new(&builder.build()).expect("the grammar compiles");
+        // A parse that ends shows only the size of its tree.
+        let outcome = parser.parse_with(&input, "start", limits);
+        let outcome = outcome.map(|tree| tree.len()).map_err(|error| error.kind);
+        assert_eq!(outcome, Err(ParseErrorKind::Limit(Limit::Steps)));
+    }
 }
 
 #[test]

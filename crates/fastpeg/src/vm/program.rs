@@ -159,8 +159,9 @@ impl Class {
         }
     }
 
-    /// The length in bytes of the code point that starts `rest`, if the class contains it.
-    pub fn matches(&self, rest: &str) -> Option<usize> {
+    /// The length in bytes of the code point that starts `rest`, if the class contains it. A
+    /// test beyond ASCII that looks through the class's items adds their number to `steps`.
+    pub fn matches(&self, rest: &str, steps: &mut u64) -> Option<usize> {
         let &first = rest.as_bytes().first()?;
         if first.is_ascii() {
             let bit = self.ascii[usize::from(first >> 6)] >> (first & 63) & 1;
@@ -170,7 +171,10 @@ impl Class {
         let contained = match self.beyond {
             Beyond::None => false,
             Beyond::All => true,
-            Beyond::Some => self.set.contains(c),
+            Beyond::Some => {
+                *steps += self.set.items.len() as u64;
+                self.set.contains(c)
+            }
         };
         contained.then_some(c.len_utf8())
     }

@@ -261,7 +261,7 @@ fn a_class_matches_exactly_the_code_points_its_set_contains() {
             };
             let expected = set.contains(c).then_some(c.len_utf8());
             assert_eq!(
-                Class::new(&set).matches(&text),
+                Class::new(&set).matches(&text, &mut 0),
                 expected,
                 "{c:?} in {set:?}"
             );
