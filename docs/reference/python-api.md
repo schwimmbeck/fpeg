@@ -95,9 +95,27 @@ assert fpeg.Token("NAME", "x") == "x"
 
 ## Errors
 
-A parse that does not match raises a `ValueError` that says what the grammar expected there, and so does a parse that reaches a limit. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.
+A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.
+
+```python
+try:
+    grammar.parse("x = 1, y = ")
+except fpeg.ParseError as error:
+    assert (error.line, error.column, error.pos) == (1, 12, 11)
+    assert error.expected == ("NUMBER",)
+    assert str(error) == "line 1, column 12: expected NUMBER"
+
+try:
+    grammar.parse("x = 1, y = 2", max_steps=10)
+except fpeg.LimitError as error:
+    assert error.limit == "steps"
+```
 
 ```{eval-rst}
+.. autoexception:: fpeg.ParseError
+
+.. autoexception:: fpeg.LimitError
+
 .. autoexception:: fpeg.GrammarError
 
 .. autoclass:: fpeg.Diagnostic

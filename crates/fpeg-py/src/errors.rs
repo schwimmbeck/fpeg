@@ -1,14 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! The exception for a grammar with problems, and the diagnostics it carries.
+//! The exceptions of the package and the diagnostics a grammar error carries.
 
-use fpeg::LineIndex;
+use fpeg::{Limit, LineIndex, ParseErrorKind};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use pyo3::{create_exception, intern};
 
+create_exception!(
+    fpeg,
+    ParseError,
+    PyValueError,
+    "The input does not match the grammar."
+);
+create_exception!(
+    fpeg,
+    LimitError,
+    ParseError,
+    "A parse stopped at a limit on its depth, its steps or the size of its input."
+);
 create_exception!(
     fpeg,
     GrammarError,
@@ -93,6 +105,49 @@ pub fn grammar_error(
     };
     match set() {
         Ok(()) => error,
+        Err(failure) => failure,
+    }
+}
+
+/// The exception for a parse that produced no tree, placed in `source`.
+pub fn parse_error(py: Python<'_>, source: &str, error: &fpeg::ParseError) -> PyErr {
+    let position = LineIndex::new(source).position(source, error.position);
+    let message = error.message();
+    let text = format!(
+        "line {}, column {}: {message}",
+        position.line, position.column
+    );
+    let (exception, limit) = match &error.kind {
+        ParseErrorKind::Limit(limit) => {
+            let name = match limit {
+                Limit::Depth => "depth",
+                Limit::Steps => "steps",
+                Limit::InputSize => "input size",
+            };
+            (LimitError::new_err(text), Some(name))
+        }
+        _ => (ParseError::new_err(text), None),
+    };
+    let set = || -> PyResult<()> {
+        let value = exception.value(py);
+        let (expected, label) = match &error.kind {
+            ParseErrorKind::NoMatch { expected } => (expected.clone(), None),
+            ParseErrorKind::Label(label) => (Vec::new(), Some(label.clone())),
+            _ => (Vec::new(), None),
+        };
+        value.setattr(intern!(py, "message"), message)?;
+        value.setattr(intern!(py, "pos"), position.offset)?;
+        value.setattr(intern!(py, "line"), position.line)?;
+        value.setattr(intern!(py, "column"), position.column)?;
+        value.setattr(intern!(py, "expected"), PyTuple::new(py, expected)?)?;
+        value.setattr(intern!(py, "label"), label)?;
+        if let Some(limit) = limit {
+            value.setattr(intern!(py, "limit"), limit)?;
+        }
+        Ok(())
+    };
+    match set() {
+        Ok(()) => exception,
         Err(failure) => failure,
     }
 }

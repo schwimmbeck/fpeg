@@ -72,9 +72,38 @@ def test_a_start_rule_that_may_leave_several_items_is_refused() -> None:
         grammar.parse("aa", "_pair")
 
 
-def test_a_failed_parse_is_a_value_error_saying_what_was_expected() -> None:
-    with pytest.raises(ValueError, match="expected NAME, NUMBER"):
-        fpeg.Grammar(PAIRS).parse("x = ")
+def test_parse_errors_place_the_failure_in_code_points_and_name_what_was_expected() -> None:
+    grammar = fpeg.Grammar(PAIRS)
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("ää = 1, b = ,")
+    error = raised.value
+    assert (error.pos, error.line, error.column) == (12, 1, 13)
+    assert error.expected == ("NAME", "NUMBER")
+    assert error.label is None
+    assert error.message == "expected NAME, NUMBER"
+    assert str(error) == "line 1, column 13: expected NAME, NUMBER"
+    assert isinstance(error, ValueError)
+    assert not isinstance(error, fpeg.LimitError)
+
+
+def test_a_labelled_error_carries_its_label() -> None:
+    grammar = fpeg.Grammar('start: "a" ("b" ^ "a b must follow")')
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("ac")
+    assert raised.value.label == "a b must follow"
+    assert raised.value.expected == ()
+    assert (raised.value.line, raised.value.column) == (1, 2)
+
+
+def test_limits_end_a_parse_with_a_limit_error() -> None:
+    grammar = fpeg.Grammar(PAIRS)
+    with pytest.raises(fpeg.LimitError) as raised:
+        grammar.parse(", ".join(["x = 1"] * 100), max_steps=50)
+    assert raised.value.limit == "steps"
+    nested = fpeg.Grammar('start: "(" start? ")"')
+    with pytest.raises(fpeg.LimitError) as raised:
+        nested.parse("(" * 40 + ")" * 40, max_depth=10)
+    assert raised.value.limit == "depth"
 
 
 def test_an_input_with_a_lone_surrogate_cannot_be_parsed() -> None:

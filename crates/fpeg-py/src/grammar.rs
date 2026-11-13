@@ -14,7 +14,7 @@ use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyString, PyType};
 
-use crate::errors::grammar_error;
+use crate::errors::{grammar_error, parse_error};
 use crate::tree::{Parsed, item};
 
 /// Inputs from this size on are parsed with the thread detached from the interpreter, so that
@@ -125,8 +125,8 @@ impl Grammar {
     }
 
     /// Parse the whole text from the rule `start` and return its one visible item at the top:
-    /// a `Tree` for a node, a `Token` for a token. Raises `ValueError` when the text does not
-    /// match, or when the parse takes more steps or nests deeper than allowed.
+    /// a `Tree` for a node, a `Token` for a token. Raises `ParseError` when the text does not
+    /// match, and `LimitError` when the parse takes more steps or nests deeper than allowed.
     #[pyo3(signature = (text, start = "start", *, max_steps = None, max_depth = None))]
     fn parse(
         &self,
@@ -161,7 +161,7 @@ impl Grammar {
         } else {
             core.parser.parse_with(&source, start, limits)
         };
-        let tree = result.map_err(|error| PyValueError::new_err(error.message()))?;
+        let tree = result.map_err(|error| parse_error(py, &source, &error))?;
         let parsed = Arc::new(Parsed::new(tree, source, Arc::clone(core)));
         let root = (parsed.tree.roots().into_iter())
             .find(|root| !root.is_hidden())

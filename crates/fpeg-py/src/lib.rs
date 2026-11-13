@@ -27,6 +27,8 @@ mod _fpeg {
         let py = module.py();
         module.add("__version__", fpeg::VERSION)?;
         module.add("Token", crate::token::create_type(py)?)?;
+        module.add("ParseError", py.get_type::<crate::errors::ParseError>())?;
+        module.add("LimitError", py.get_type::<crate::errors::LimitError>())?;
         module.add("GrammarError", py.get_type::<crate::errors::GrammarError>())?;
         Ok(())
     }

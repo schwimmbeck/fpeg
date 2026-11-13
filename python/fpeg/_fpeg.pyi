@@ -32,6 +32,21 @@ class GrammarError(ValueError):
 
     diagnostics: tuple[Diagnostic, ...]
 
+class ParseError(ValueError):
+    """The input does not match the grammar."""
+
+    message: str
+    pos: int
+    line: int
+    column: int
+    expected: tuple[str, ...]
+    label: str | None
+
+class LimitError(ParseError):
+    """A parse stopped at a limit on its depth, its steps or the size of its input."""
+
+    limit: str
+
 @final
 class Grammar:
     """A grammar compiled for fpeg's parsing machine."""
