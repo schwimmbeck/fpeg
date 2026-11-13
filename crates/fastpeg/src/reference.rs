@@ -49,7 +49,8 @@ const END_OF_INPUT: &str = "end of input";
 /// How far a parse may go before it stops with [`ParseErrorKind::Limit`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
-    /// The deepest nesting of rule activations.
+    /// The deepest nesting of rule activations. A fixed cap on nested matches, which keeps the
+    /// interpreter within its own stack, stops a parse with the same limit whatever this allows.
     pub max_depth: u32,
     /// The number of evaluation steps, counted as for [`DEFAULT_MAX_STEPS`].
     pub max_steps: u64,
