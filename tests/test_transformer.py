@@ -226,6 +226,18 @@ def test_a_generator_puts_its_values_into_the_parent_in_the_node_s_place() -> No
             return [name, *args]
 
     assert Splice().transform(parse("f(a, [b, [c]], d)")).children == [["f", "a", "b", "c", "d"]]
+
+    # A yielded Discard puts nothing, on a parse and on a tree built in Python.
+    class Some(fpeg.Transformer):
+        def group(self, *items: Any) -> Iterator[Any]:
+            yield from (fpeg.Discard if item == "b" else item for item in items)
+
+        def call(self, children: list[Any]) -> list[Any]:
+            return children
+
+    tree = parse("f(a, [b, c])")
+    assert Some().transform(tree).children == [["f", "a", "c"]]
+    assert Some().transform(pickle.loads(pickle.dumps(tree))).children == [["f", "a", "c"]]
     assert Splice().transform(parse("f([a, b])").children[0].field("args")[0]) == ["a", "b"]
 
 

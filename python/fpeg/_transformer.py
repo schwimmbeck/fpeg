@@ -200,7 +200,8 @@ def _results(result: Any) -> tuple[Any, ...]:
     if result is Discard:
         return ()
     if isinstance(result, types.GeneratorType):
-        return tuple(cast(Iterable[Any], result))
+        # A yielded Discard puts nothing, as a returned one does.
+        return tuple(value for value in cast(Iterable[Any], result) if value is not Discard)
     return (result,)
 
 

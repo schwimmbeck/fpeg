@@ -330,11 +330,15 @@ impl<'py, 'p> Scan<'py, 'p> {
         let generator = unsafe { ffi::PyGen_CheckExact(result.as_ptr()) } != 0;
         if generator {
             for value in result.try_iter()? {
-                self.stack.push(Value {
-                    entry: entry as u32,
-                    field,
-                    object: Some(value?.unbind()),
-                });
+                let value = value?;
+                // A yielded Discard puts nothing, as a returned one does.
+                if !value.is(&self.discard) {
+                    self.stack.push(Value {
+                        entry: entry as u32,
+                        field,
+                        object: Some(value.unbind()),
+                    });
+                }
             }
         } else {
             self.stack.push(Value {
