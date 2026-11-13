@@ -431,5 +431,10 @@ def _public_methods(cls: type) -> set[str]:
     for base in cls.__mro__:
         if base is Transformer or base is object:
             continue
-        methods.update(n for n, v in vars(base).items() if not n.startswith("_") and callable(v))
+        methods.update(n for n, v in vars(base).items() if not n.startswith("_") and _is_method(v))
     return methods
+
+
+def _is_method(attribute: Any) -> bool:
+    # A classmethod object is not callable itself, only once bound.
+    return callable(attribute) or isinstance(attribute, classmethod)

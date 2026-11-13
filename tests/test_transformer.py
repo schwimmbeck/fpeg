@@ -363,6 +363,13 @@ def test_strict_transformers_name_only_rules_and_terminals() -> None:
     ):
         Typo().transform(parse("f()"))
 
+    class Static(fpeg.Transformer, strict=True):
+        @classmethod
+        def kws(cls, children: list[Any]) -> None: ...
+
+    with pytest.raises(TypeError, match=r"Static\.kws names no rule or terminal"):
+        Static().transform(parse("f()"))
+
     class Helper(fpeg.Transformer, strict=True):
         def call(self, name: Any) -> str:
             return self._shout(name)
