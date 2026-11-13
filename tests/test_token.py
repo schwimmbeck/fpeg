@@ -2,9 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 import pickle
+import subprocess
+import sys
 
 import fpeg
 import pytest
+
+# Drops every reference that Python holds to the token type, then makes tokens of it.
+DROP_THE_TYPE = """
+import gc
+import fpeg, fpeg._fpeg, fpeg._transformer
+grammar = fpeg.Grammar('start: NAME+\\nNAME: [a-z]+\\n%ignore " "+')
+del fpeg.Token, fpeg._fpeg.Token, fpeg._transformer.Token
+gc.collect()
+for _ in range(3):
+    tokens = grammar.parse("abc de f").children
+    assert [token.type for token in tokens] == ["NAME"] * 3, tokens
+"""
 
 
 def name_token() -> fpeg.Token:
@@ -75,3 +89,10 @@ def test_a_lone_surrogate_made_in_python_stays_in_value_and_repr() -> None:
     token = fpeg.Token("S", "\ud800")
     assert token.value == "\ud800"
     assert repr(token) == "Token('S', '\\ud800')"
+
+
+def test_the_token_type_lives_when_python_drops_every_reference_to_it() -> None:
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", DROP_THE_TYPE], capture_output=True, text=True, timeout=60
+    )
+    assert result.returncode == 0, result.stderr

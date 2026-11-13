@@ -18,6 +18,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::panic::PanicException;
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyDict, PyString, PyTuple, PyType};
 
 /// The positions of a token: code point offsets from 0, lines and columns from 1, the end
@@ -44,8 +45,11 @@ struct TokenData {
     kind: u32,
 }
 
-/// The type, made once when the module loads and kept for the life of the process.
+/// The type, made once when the module loads and kept for the life of the process, which
+/// `KEPT_TYPE` ensures: Python code may drop every other reference, and a heap type with none
+/// left is freed while the scan still makes tokens of it.
 static TOKEN_TYPE: AtomicPtr<ffi::PyTypeObject> = AtomicPtr::new(null_mut());
+static KEPT_TYPE: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 /// Where [`TokenData`] starts in an instance of the type or of a subclass.
 static DATA_OFFSET: AtomicIsize = AtomicIsize::new(0);
 
@@ -584,6 +588,7 @@ pub fn create_type(py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
         let ty = ffi::PyType_FromSpecWithBases(spec, bases.as_ptr());
         Bound::from_owned_ptr_or_err(py, ty)?.cast_into::<PyType>()?
     };
+    let ty = KEPT_TYPE.get_or_init(py, || ty.unbind()).bind(py).clone();
     TOKEN_TYPE.store(ty.as_type_ptr(), Ordering::Relaxed);
     // Find where the fields start from one instance, whose fields are still zero.
     let sample = new_str_subtype(py, ty.as_type_ptr(), PyString::new(py, "x").into_any())?;
