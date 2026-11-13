@@ -17,7 +17,7 @@ use pyo3::PyTypeInfo;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
-use pyo3::types::PyList;
+use pyo3::types::{PyIterator, PyList, PyTuple};
 
 use crate::grammar::GrammarCore;
 use crate::token::{self, Positions};
@@ -152,6 +152,26 @@ impl Meta {
             shown(self.start_pos),
             shown(self.end_pos),
             if self.empty { "True" } else { "False" },
+        )
+    }
+
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let m = slf.get();
+        let args = (
+            m.line,
+            m.column,
+            m.end_line,
+            m.end_column,
+            m.start_pos,
+            m.end_pos,
+            m.empty,
+        );
+        PyTuple::new(
+            slf.py(),
+            [
+                slf.get_type().into_any(),
+                args.into_pyobject(slf.py())?.into_any(),
+            ],
         )
     }
 }
@@ -457,6 +477,122 @@ impl Tree {
         Ok(out)
     }
 
+    /// Every subtree, children before their parents, each once.
+    fn iter_subtrees<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyIterator>> {
+        let py = slf.py();
+        let mut seen: HashSet<usize> = HashSet::new();
+        let mut out = Vec::new();
+        let mut pending = vec![(slf.clone().into_any(), false)];
+        while let Some((obj, done)) = pending.pop() {
+            if done {
+                out.push(obj);
+                continue;
+            }
+            let Ok(tree) = obj.cast::<Tree>() else {
+                continue;
+            };
+            if !seen.insert(obj.as_ptr().addr()) {
+                continue;
+            }
+            let children = tree.get().children_list(py)?;
+            pending.push((obj.clone(), true));
+            for child in children.iter().rev() {
+                pending.push((child, false));
+            }
+        }
+        PyList::new(py, out)?.try_iter()
+    }
+
+    /// Every subtree, parents before their children.
+    fn iter_subtrees_topdown<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyIterator>> {
+        let py = slf.py();
+        let mut seen: HashSet<usize> = HashSet::new();
+        let mut out = Vec::new();
+        let mut pending = vec![slf.clone().into_any()];
+        while let Some(obj) = pending.pop() {
+            let Ok(tree) = obj.cast::<Tree>() else {
+                continue;
+            };
+            if !seen.insert(obj.as_ptr().addr()) {
+                continue;
+            }
+            let children = tree.get().children_list(py)?;
+            out.push(obj.clone());
+            for child in children.iter().rev() {
+                pending.push(child);
+            }
+        }
+        PyList::new(py, out)?.try_iter()
+    }
+
+    /// The subtrees for which `pred` is true, children before their parents.
+    fn find_pred<'py>(
+        slf: &Bound<'py, Self>,
+        pred: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyIterator>> {
+        let mut out = Vec::new();
+        for subtree in Tree::iter_subtrees(slf)? {
+            let subtree = subtree?;
+            if pred.call1((&subtree,))?.is_truthy()? {
+                out.push(subtree);
+            }
+        }
+        PyList::new(slf.py(), out)?.try_iter()
+    }
+
+    /// The subtrees whose data equals `data`, children before their parents.
+    fn find_data<'py>(
+        slf: &Bound<'py, Self>,
+        data: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyIterator>> {
+        let py = slf.py();
+        let mut out = Vec::new();
+        for subtree in Tree::iter_subtrees(slf)? {
+            let subtree = subtree?;
+            let tree = subtree.cast::<Tree>()?;
+            if tree.get().data_object(py).bind(py).eq(data)? {
+                out.push(subtree);
+            }
+        }
+        PyList::new(py, out)?.try_iter()
+    }
+
+    /// The values below the tree that are no trees and for which `pred` is true, in order.
+    fn scan_values<'py>(
+        slf: &Bound<'py, Self>,
+        pred: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyIterator>> {
+        let py = slf.py();
+        let mut out = Vec::new();
+        let mut path: HashSet<usize> = HashSet::new();
+        let mut pending = vec![Step::Item(slf.clone().into_any(), 0, None)];
+        while let Some(step) = pending.pop() {
+            let obj = match step {
+                Step::Item(obj, ..) => obj,
+                Step::Leave(key) => {
+                    path.remove(&key);
+                    continue;
+                }
+                Step::Text(_) => continue,
+            };
+            let Ok(tree) = obj.cast::<Tree>() else {
+                if pred.call1((&obj,))?.is_truthy()? {
+                    out.push(obj);
+                }
+                continue;
+            };
+            let key = obj.as_ptr().addr();
+            if !path.insert(key) {
+                return Err(cycle());
+            }
+            pending.push(Step::Leave(key));
+            for child in tree.get().children_list(py)?.iter().rev() {
+                pending.push(Step::Item(child, 0, None));
+            }
+        }
+        PyList::new(py, out)?.try_iter()
+    }
+
     /// A tree with the same data and meta and a new list of the same children.
     fn copy(&self, py: Python<'_>) -> PyResult<Tree> {
         self.__copy__(py)
@@ -532,6 +668,70 @@ impl Tree {
             }
         }
         Ok(out)
+    }
+
+    /// Pickle the tree flat, as its items in postorder, so that a deep tree pickles without deep
+    /// recursion.
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let py = slf.py();
+        let shape = PyList::empty(py);
+        let values = PyList::empty(py);
+        let mut path: HashSet<usize> = HashSet::new();
+        let mut pending = vec![(slf.clone().into_any(), false)];
+        while let Some((obj, done)) = pending.pop() {
+            let Ok(tree) = obj.cast::<Tree>() else {
+                shape.append(-1)?;
+                values.append(obj)?;
+                continue;
+            };
+            let key = obj.as_ptr().addr();
+            let children = tree.get().children_list(py)?;
+            if done {
+                path.remove(&key);
+                shape.append(children.len())?;
+                values.append((tree.get().data_object(py), tree.get().meta(py)?))?;
+                continue;
+            }
+            if !path.insert(key) {
+                return Err(cycle());
+            }
+            pending.push((obj.clone(), true));
+            for child in children.iter().rev() {
+                pending.push((child, false));
+            }
+        }
+        let rebuild = py.import("fpeg._fpeg")?.getattr("_rebuild_tree")?;
+        PyTuple::new(py, [rebuild, PyTuple::new(py, [shape, values])?.into_any()])
+    }
+}
+
+/// Rebuild a tree pickled by `Tree.__reduce__`: items in postorder, -1 for a value and the
+/// number of children for a tree.
+#[pyfunction]
+pub fn _rebuild_tree(
+    py: Python<'_>,
+    shape: Vec<isize>,
+    values: Bound<'_, PyList>,
+) -> PyResult<Py<PyAny>> {
+    let mut stack: Vec<Py<PyAny>> = Vec::new();
+    for (count, value) in shape.into_iter().zip(values.iter()) {
+        if count < 0 {
+            stack.push(value.unbind());
+            continue;
+        }
+        let count = count as usize;
+        if count > stack.len() {
+            return Err(PyValueError::new_err("a damaged pickle of a tree"));
+        }
+        let children = PyList::new(py, stack.split_off(stack.len() - count))?;
+        let (data, meta): (Py<PyAny>, Py<PyAny>) = value.extract()?;
+        let tree = Tree::owned(data, children.unbind(), None);
+        let _ = tree.meta.set(meta);
+        stack.push(Py::new(py, tree)?.into_any());
+    }
+    match stack.pop() {
+        Some(tree) if stack.is_empty() => Ok(tree),
+        _ => Err(PyValueError::new_err("a damaged pickle of a tree")),
     }
 }
 

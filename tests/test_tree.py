@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 import copy
+import pickle
 
 import fpeg
 import pytest
@@ -83,6 +84,34 @@ def test_pretty_writes_lark_s_layout_with_fields() -> None:
     assert tree.pretty() == "start\n  call\n    name=f\n    args=a\n    kw=kw\tk\n"
 
 
+def test_subtrees_come_children_first_or_parents_first() -> None:
+    tree = parse("f(a) ! k, g(b)")
+    assert [t.data for t in tree.iter_subtrees()] == ["kw", "call", "call", "start"]
+    assert [t.data for t in tree.iter_subtrees_topdown()] == ["start", "call", "kw", "call"]
+    assert [t.data for t in tree.find_data("kw")] == ["kw"]
+    assert len(list(tree.find_pred(lambda t: t.data == "call"))) == 2
+    assert list(tree.scan_values(lambda v: v != "f")) == ["a", "k", "g", "b"]
+
+
+def test_a_tree_pickles_and_comes_back_equal() -> None:
+    tree = parse("f(a), g(b) ! k")
+    again = pickle.loads(pickle.dumps(tree))
+    assert again == tree
+    assert again.children[0].meta.end_column == 5
+    assert isinstance(again.children[0].children[0], fpeg.Token)
+
+
+def test_deep_trees_print_compare_hash_and_pickle_without_recursion() -> None:
+    deep = fpeg.Tree("leaf", ["x"])
+    for _ in range(5000):
+        deep = fpeg.Tree("node", [deep])
+    other = pickle.loads(pickle.dumps(deep))
+    assert other == deep
+    assert hash(other) == hash(deep)
+    assert repr(deep).count("Tree(") == 5001
+    assert deep.pretty().count("\n") == 5001
+
+
 def test_a_tree_that_contains_itself_is_refused() -> None:
     tree = fpeg.Tree("loop", [])
     tree.children.append(tree)
@@ -98,17 +127,4 @@ def test_a_copy_has_a_new_list_of_the_same_children() -> None:
     assert shallow == tree
     assert shallow.children is not tree.children
     assert shallow.children[0] is tree.children[0]
-
-
-def test_deep_trees_print_compare_and_hash_without_recursion() -> None:
-    def deep() -> fpeg.Tree:
-        tree = fpeg.Tree("leaf", ["x"])
-        for _ in range(5000):
-            tree = fpeg.Tree("node", [tree])
-        return tree
-
-    one, other = deep(), deep()
-    assert other == one
-    assert hash(other) == hash(one)
-    assert repr(one).count("Tree(") == 5001
-    assert one.pretty().count("\n") == 5001
+    assert copy.deepcopy(tree) == tree

@@ -20,7 +20,7 @@ mod _fpeg {
     #[pymodule_export]
     use crate::grammar::Grammar;
     #[pymodule_export]
-    use crate::tree::{Meta, Tree};
+    use crate::tree::{_rebuild_tree, Meta, Tree};
 
     #[pymodule_init]
     fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
