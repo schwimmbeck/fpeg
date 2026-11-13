@@ -423,6 +423,23 @@ fn the_options_decide_which_calls_remember() {
 }
 
 #[test]
+fn the_levels_of_a_precedence_block_are_remembered_unless_it_says_no() {
+    let text = |mark: &str| {
+        format!(
+            "start: expr\n{mark}expr: %precedence {{\n    neg: \"-\" neg -> neg\n    atom: \"1\"\n}}\n"
+        )
+    };
+    let remembered = |mark: &str| {
+        let code = parser(&text(mark)).program.code;
+        let calls = code.iter().filter(|i| matches!(i, Inst::MemoCall(_)));
+        calls.count()
+    };
+    // The calls of `neg` from the block and from itself, the call of `atom` that `neg` falls
+    // through to, and those that start a parse from either level.
+    assert_eq!(["", "@nomemo\n"].map(remembered), [5, 0]);
+}
+
+#[test]
 fn a_remembered_rule_is_matched_once_at_a_position() {
     // Each alternative of `start` matches `item` afresh, so without the mark thirty levels of
     // brackets take 3^30 matches of the innermost one.

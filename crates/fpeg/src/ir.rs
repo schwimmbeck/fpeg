@@ -89,6 +89,8 @@ pub(crate) struct Rule {
     pub span: Span,
     pub body: Expr,
     pub memo: MemoMark,
+    /// Whether the rule is a level of a precedence block.
+    pub level: bool,
 }
 
 /// What a grammar says about remembering the results of a rule.

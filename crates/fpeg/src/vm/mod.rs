@@ -34,7 +34,8 @@ pub struct Options {
 /// answered at once.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Memo {
-    /// The rules the grammar marks `@memo`.
+    /// The levels of precedence blocks and the rules the grammar marks `@memo`, without
+    /// those it marks `@nomemo`.
     #[default]
     Grammar,
     /// No rule.

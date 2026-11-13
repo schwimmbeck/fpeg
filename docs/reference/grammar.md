@@ -110,7 +110,7 @@ Attributes stand on their own lines directly above a rule.
 | `@reserved` | the terminal never matches a reserved word (see [Words and keywords](#words-and-keywords)) | now |
 | `@sync` | error recovery may resume before this rule or terminal | reserved, M8 |
 | `@memo` | remember the results of this rule (see [Remembered results](#remembered-results)) | now |
-| `@nomemo` | never remember the results of this rule | reserved, M4 |
+| `@nomemo` | never remember the results of this rule | now |
 
 An unknown attribute is an error.
 
@@ -124,7 +124,10 @@ start: item "." | item "!" | item
 item: "(" start ")" | "x"
 ```
 
-Remembering never changes what a grammar matches or the tree it gives, only the work a parse takes. It pays for a rule that is tried again and again and takes long to match, and costs a lookup for every call otherwise. A rule cannot be `@memo` and `@nomemo` at once ([E302](diagnostics/E302.md)).
+- Remembering never changes what a grammar matches or the tree it gives, only the work a parse takes. It pays for a rule that is tried again and again and takes long to match, and costs a lookup for every call otherwise.
+- The levels of a [precedence block](#operator-precedence) are remembered without a mark, since each level tries the next one again whenever its own operator does not follow. `@nomemo` on the block turns that off for its levels, and `@memo` on a block changes nothing.
+- No other rule is remembered unless it is marked. On a rule with parameters a mark holds for every use.
+- A rule cannot be `@memo` and `@nomemo` at once ([E302](diagnostics/E302.md)).
 
 ### Parameters
 

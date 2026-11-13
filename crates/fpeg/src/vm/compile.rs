@@ -47,10 +47,12 @@ pub(crate) fn compile(
         rules.push(RuleInfo {
             name: rule.name.clone(),
             pc: c.here(),
-            memo: match options.memo {
-                Memo::Grammar => rule.memo == ir::MemoMark::Memo,
-                Memo::Off => false,
-                Memo::All => true,
+            memo: match (options.memo, rule.memo) {
+                (Memo::Off, _) | (Memo::Grammar, ir::MemoMark::NoMemo) => false,
+                (Memo::All, _) | (Memo::Grammar, ir::MemoMark::Memo) => true,
+                // A level is tried again by the level above it whenever that one's
+                // operator does not follow.
+                (Memo::Grammar, ir::MemoMark::None) => rule.level,
             },
         });
         // A cut ends at the call of its rule.
