@@ -62,3 +62,10 @@ start: r1*
 r1: (start+ | "b" "a") ^ "oops"
 --- "ba"
 error at 2: oops
+
+=== a cycle entered again from another rule sees the entries made since
+start: k "!" | x "?"
+k: x | "k"
+x: k "x" | "b"
+--- "bx?"
+(start (x (k (x ~"b")) ~"x") ~"?")
