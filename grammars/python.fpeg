@@ -109,14 +109,15 @@ case: "case" pattern=patterns ("if" guard=named_expression)? ":" body=block
         | or_pattern
 ?or_pattern: alternatives=closed_pattern ("|" alternatives=closed_pattern)+ -> or_pattern
            | closed_pattern
+// In CPython's order, so that _ is a wildcard before it could start a value or class pattern.
 ?closed_pattern: literal_pattern
-               | class_pattern
-               | value_pattern
-               | wildcard_pattern
                | capture_pattern
+               | wildcard_pattern
+               | value_pattern
                | group_pattern
                | sequence_pattern
                | mapping_pattern
+               | class_pattern
 literal_pattern: value=(complex_number | signed_number | strings | "None" | "True" | "False")
 // The first part of a complex literal is real and the second imaginary.
 complex_number: !(("+" | "-")? IMAGINARY_NUMBER) real=signed_number op=("+" | "-") &IMAGINARY_NUMBER imaginary=NUMBER
@@ -131,7 +132,7 @@ _class_arguments: arguments=(pattern ++ ",") ","? ")"
 keyword_pattern: name=NAME "=" pattern=pattern
 value_pattern: parts=NAME ("." parts=NAME)+ !"("
 wildcard_pattern: "_"
-capture_pattern: name=NAME !("." | "(" | "=")
+capture_pattern: !"_" name=NAME !("." | "(" | "=")
 group_pattern: "(" %on(bracket, pattern=pattern ")")
 sequence_pattern: "[" %on(bracket, (items=(maybe_star_pattern ++ ",") ","?)? "]")
                 | "(" %on(bracket, (items=maybe_star_pattern "," (items=(maybe_star_pattern ++ ",") ","?)?)? ")")
