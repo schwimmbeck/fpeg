@@ -229,11 +229,10 @@ struct LrEntry {
     depth: usize,
 }
 
-/// A remembered call result, and the serials of the table entries at its position that were
-/// active when it was made.
+/// A remembered call result, and the first serial not yet given out when it was made.
 struct MemoEntry {
     result: CallResult,
-    active: Vec<u64>,
+    made: u64,
 }
 
 struct Interp<'a> {
@@ -404,14 +403,10 @@ impl<'a> Interp<'a> {
         // The result consulted none of the entries active when it was made. Matching it again
         // would follow the same path unless it consulted an entry made since, and it can only
         // reach entries at its own position. Those are the top of the stack, since a call
-        // starts no earlier than its caller.
+        // starts no earlier than its caller, and the ones below the topmost are older than it.
+        // So the result holds unless the topmost entry at its position is newer than it.
         if let Some(entry) = self.memo.get(&memo_key)
-            && self
-                .lr_active
-                .iter()
-                .rev()
-                .take_while(|&&(_, at)| at == pos)
-                .all(|(serial, _)| entry.active.contains(serial))
+            && (self.lr_active.last()).is_none_or(|&(serial, at)| at < pos || serial < entry.made)
         {
             let result = entry.result.clone();
             self.charge(&result)?;
@@ -445,14 +440,9 @@ impl<'a> Interp<'a> {
         let best = result?;
         if self.memoize && inner_dependency >= height {
             self.charge(&best)?;
-            let active = self
-                .lr_active
-                .iter()
-                .rev()
-                .take_while(|&&(_, at)| at == pos);
             let entry = MemoEntry {
                 result: best.clone(),
-                active: active.map(|&(serial, _)| serial).collect(),
+                made: self.next_serial,
             };
             self.memo.insert(memo_key, entry);
         }
