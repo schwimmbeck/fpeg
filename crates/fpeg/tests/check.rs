@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use fpeg::builder::{GrammarBuilder, lit, r, seq};
+use fpeg::builder::{GrammarBuilder, lit, many, opt, r, seq};
 use fpeg::{Expr, ExprKind, Grammar, Severity};
 
 /// The codes `check` gives for a grammar text, in the order of their places.
@@ -149,4 +149,77 @@ fn a_choice_between_thousands_of_alternatives_is_checked_in_time() {
     assert!(fpeg::check(&grammar).is_empty());
     let seconds = started.elapsed().as_secs_f64();
     assert!(seconds < LONG_CHOICE_SECONDS, "{seconds:.1} s");
+}
+
+/// Time the check of 30,000 rules may take in a debug build, each of which can match nothing
+/// only by way of the one before it. Working a rule out once takes well under a second. Working
+/// it out again for every rule it calls takes minutes.
+const LONG_CHAIN_SECONDS: f64 = 20.0;
+
+#[test]
+fn a_chain_of_thousands_of_rules_that_match_nothing_is_checked_in_time() {
+    let calls = (0..30_000).map(|i| r(&format!("r{i}")));
+    let mut g = GrammarBuilder::new();
+    g.rule(
+        "start",
+        many(Expr::new(ExprKind::Sequence(calls.collect()))),
+    );
+    g.rule("r0", opt(lit("a")));
+    for i in 1..30_000 {
+        g.rule(&format!("r{i}"), r(&format!("r{}", i - 1)));
+    }
+    let grammar = g.build();
+    let started = Instant::now();
+    let found = fpeg::check(&grammar);
+    let seconds = started.elapsed().as_secs_f64();
+    let codes: Vec<_> = found
+        .iter()
+        .map(|diagnostic| diagnostic.code.code())
+        .collect();
+    assert_eq!(codes, ["W201"]);
+    assert!(seconds < LONG_CHAIN_SECONDS, "{seconds:.1} s");
+}
+
+#[test]
+fn a_repetition_of_what_can_match_nothing_ends_at_an_empty_step() {
+    for (text, expected) in [
+        ("start: (\"a\"?)* \"b\"\n", vec!["W201"]),
+        ("start: (\"a\"? \"b\"*)+ \"c\"\n", vec!["W201"]),
+        ("start: (\"a\"*){2} \"c\"\n", vec!["W201"]),
+        ("start: (\"a\"? ** (\",\"?)) \"c\"\n", vec!["W201"]),
+        // Through rules, where one can match nothing only by way of another.
+        (
+            "start: item* \"c\"\nitem: part\npart: \"a\"?\n",
+            vec!["W201"],
+        ),
+        // Through a precedence block, whose first level steps on to one that can match nothing.
+        (
+            "start: e* \"c\"\ne: %precedence {\n    signed: \"-\" atom -> signed\n    atom: \"1\"?\n}\n",
+            vec!["W201"],
+        ),
+        // A part or a separator that must match makes every step consume.
+        ("start: (\"a\"? \"b\")* \"c\"\n", vec![]),
+        ("start: (\"a\"? ** \",\") \"c\"\n", vec![]),
+        // An optional expression is no repetition.
+        ("start: (\"a\"*)? \"c\"\n", vec![]),
+        // What looks ahead or tests a flag is not known to match nothing.
+        ("start: (!\"b\" \"a\"?)* \"b\"\n", vec![]),
+        ("start: %on(f, (%if(f) \"a\"?)* \"b\")\n%flag f\n", vec![]),
+        // Where it fails, a later alternative that can match nothing does.
+        ("start: (&\"a\" \"a\" | \"b\"?)* \"c\"\n", vec!["W201"]),
+        // No alternative is tried after one that ends the parse where it does not match.
+        ("start: (\"a\" ^ \"an a\" | \"b\"?)* \"c\"\n", vec!["W101"]),
+        (
+            "start: item* \"c\"\nitem: \"a\" ^ \"an a\" | \"b\"?\n",
+            vec!["W101"],
+        ),
+        // A parameter stands for any expression, also under the name of a rule.
+        ("start: many<\"a\"?> \"b\"\nmany<x>: x*\n", vec![]),
+        (
+            "start: many<\"a\"> item \"b\"\nmany<item>: item*\nitem: \"a\"?\n",
+            vec![],
+        ),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
 }

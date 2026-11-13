@@ -8,7 +8,7 @@
 //! starts with E is an error, which keeps a grammar from being used, and the hundreds tell its
 //! area: 1 reading the text, 2 names, 3 forms, 4 limits, 5 what the roadmap brings later, 9
 //! bugs of fpeg itself. A code that starts with W is a warning, which [`crate::check`] gives
-//! for a grammar that works: 1 choices.
+//! for a grammar that works: 1 choices, 2 repetitions.
 
 use std::fmt;
 
@@ -127,11 +127,13 @@ pub enum DiagnosticCode {
     ShadowedLiteral,
     /// W103: an alternative that starts with the whole of an earlier one.
     ShadowedAlternative,
+    /// W201: a repetition whose expression can match nothing.
+    EmptyRepetition,
 }
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 29] = [
+    pub const ALL: [DiagnosticCode; 30] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -161,6 +163,7 @@ impl DiagnosticCode {
         DiagnosticCode::UnreachableAlternative,
         DiagnosticCode::ShadowedLiteral,
         DiagnosticCode::ShadowedAlternative,
+        DiagnosticCode::EmptyRepetition,
     ];
 
     /// The code, such as `E201`.
@@ -195,6 +198,7 @@ impl DiagnosticCode {
             DiagnosticCode::UnreachableAlternative => "W101",
             DiagnosticCode::ShadowedLiteral => "W102",
             DiagnosticCode::ShadowedAlternative => "W103",
+            DiagnosticCode::EmptyRepetition => "W201",
         }
     }
 
