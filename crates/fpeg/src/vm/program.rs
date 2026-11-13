@@ -215,4 +215,6 @@ pub(crate) struct Program {
     pub labels: Vec<String>,
     /// The kind table shown to callers.
     pub kinds: Vec<Kind>,
+    /// For each entry, whether a parse from it always leaves one visible item.
+    pub single_item: HashMap<String, bool>,
 }

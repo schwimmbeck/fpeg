@@ -137,6 +137,14 @@ impl Parser {
         &self.program.kinds
     }
 
+    /// Whether a parse from `start` always leaves exactly one visible item at the top, or
+    /// `None` when `start` cannot start a parse. A rule that makes a node leaves one, and so does
+    /// a transparent rule. A rule `_name` or a level of a precedence block may leave none or
+    /// several.
+    pub fn single_item(&self, start: &str) -> Option<bool> {
+        self.program.single_item.get(start).copied()
+    }
+
     /// The compiled program as text, one instruction per line. Its format may change with any
     /// release. For tests and for debugging the compiler.
     #[cfg(feature = "reference")]

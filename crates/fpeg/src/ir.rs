@@ -54,6 +54,8 @@ pub(crate) struct Grammar {
     pub labels: Vec<Label>,
     /// For each kind, the fields of its nodes with how many items each can hold.
     pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
+    /// For each rule that can start a parse, whether it always leaves one visible item.
+    pub single_item: HashMap<String, bool>,
 }
 
 impl Grammar {

@@ -115,6 +115,7 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
         kind_display: grammar.kind_display.clone(),
         labels,
         kinds: grammar.kinds(),
+        single_item: grammar.single_item.clone(),
     })
 }
 

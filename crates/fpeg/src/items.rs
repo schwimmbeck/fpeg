@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! How many items the matches of a resolved grammar add to the nodes they lie in: for every kind
-//! of node, how many items each of its fields can hold.
+//! of node, how many items each of its fields can hold, and for every rule that can start a
+//! parse, whether it always leaves exactly one visible item at the top.
 //!
 //! Counts are 0, 1 or 2, where 2 stands for several: summed through sequences, the largest
 //! through choices, multiplied through repetitions. A node or a token is one item to the node
@@ -192,10 +193,17 @@ impl Counter<'_> {
 pub(crate) struct ItemFacts {
     /// For each kind, by kind id, the fields of its nodes with how many items each can hold.
     pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
+    /// For each rule that can start a parse, whether a parse from it always leaves exactly one
+    /// visible item at the top.
+    pub single_item: HashMap<String, bool>,
 }
 
 /// Count the items of a grammar's rules, with `kinds` kinds in its kind table.
-pub(crate) fn count(rules: &[ir::Rule], kinds: usize) -> ItemFacts {
+pub(crate) fn count(
+    rules: &[ir::Rule],
+    entry: &HashMap<String, ir::Expr>,
+    kinds: usize,
+) -> ItemFacts {
     let summaries = summarize(rules);
     let mut counter = Counter::new(&summaries);
     let mut fields = vec![BTreeMap::new(); kinds];
@@ -218,7 +226,16 @@ pub(crate) fn count(rules: &[ir::Rule], kinds: usize) -> ItemFacts {
                 .collect()
         })
         .collect();
-    ItemFacts { kind_fields }
+    let single_item = (entry.iter())
+        .map(|(name, expr)| {
+            let items = counter.of(expr);
+            (name.clone(), items.visible <= 1 && !items.empty)
+        })
+        .collect();
+    ItemFacts {
+        kind_fields,
+        single_item,
+    }
 }
 
 /// Add the field counts of every node in the expression to its kind, a shared part once.
@@ -434,5 +451,22 @@ mod tests {
             named("outer"),
             [("k".to_owned(), One), ("w".to_owned(), One)]
         );
+    }
+
+    #[test]
+    fn a_start_rule_leaves_one_item_unless_it_leaves_no_node_of_its_own() {
+        let grammar = Grammar::from_text(
+            "start: A B\n?clear: A | A B\n_pair: A B\n_maybe: A?\nA: \"a\"\n_B: \"b\"\nB: \"b\"",
+        )
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        let parser = Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"));
+        let single = |name| parser.single_item(name);
+        assert_eq!(single("start"), Some(true));
+        assert_eq!(single("clear"), Some(true));
+        assert_eq!(single("A"), Some(true));
+        assert_eq!(single("_pair"), Some(false));
+        assert_eq!(single("_maybe"), Some(false));
+        assert_eq!(single("_B"), Some(false));
+        assert_eq!(single("missing"), None);
     }
 }

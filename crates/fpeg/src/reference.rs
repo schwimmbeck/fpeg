@@ -191,6 +191,12 @@ impl Reference {
         self.grammar.kinds()
     }
 
+    /// Whether a parse from `start` always leaves one visible item, as
+    /// [`crate::Parser::single_item`] has it.
+    pub fn single_item(&self, start: &str) -> Option<bool> {
+        self.grammar.single_item.get(start).copied()
+    }
+
     /// Parse the whole input from the rule `start`, with the default depth and
     /// [`Reference::DEFAULT_MAX_STEPS`] of the interpreter's own steps.
     pub fn parse(&self, input: &str, start: &str) -> Result<Tree, ParseError> {
