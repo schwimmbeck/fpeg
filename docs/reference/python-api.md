@@ -94,6 +94,37 @@ assert fpeg.Token("NAME", "x") == "x"
    :members: update, new_borrow_pos
 ```
 
+## Transformer
+
+A `Transformer` turns a tree into values. A method named like a rule gives the value of its nodes, a method named like a terminal the value of its tokens, and each is called after the children of its node, with their values. What a method gets, its signature says:
+
+| Method | Gets |
+|---|---|
+| `def pair(self, *children)` | the visible children as arguments |
+| `def pair(self, children)` | the list of the visible children, as in Lark |
+| `def pair(self)` | nothing |
+| `def NAME(self, token)` | the token |
+
+```python
+class Pairs(fpeg.Transformer):
+    def pair(self, children):
+        key, value = children
+        return (str(key), int(value))
+
+    def start(self, *pairs):
+        return dict(pairs)
+
+
+assert Pairs().transform(grammar.parse("x = 1, y = 22")) == {"x": 1, "y": 22}
+```
+
+A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles. A signature that fits none of these fails at the first transform.
+
+```{eval-rst}
+.. autoclass:: fpeg.Transformer
+   :members: transform, __default__, __default_token__
+```
+
 ## Errors
 
 A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.

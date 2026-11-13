@@ -15,6 +15,7 @@ use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyString, PyType};
 
 use crate::errors::{grammar_error, parse_error};
+use crate::transform::Plans;
 use crate::tree::{Parsed, item};
 
 /// Inputs from this size on are parsed with the thread detached from the interpreter, so that
@@ -36,6 +37,8 @@ pub struct GrammarCore {
     /// For each kind, the fields of all kinds of its name with the largest count of each, which
     /// is what a node of that name shows by field.
     pub name_fields: Vec<Vec<(FieldId, FieldCount)>>,
+    /// The plans of the transformer classes that met the grammar.
+    pub plans: Plans,
 }
 
 impl GrammarCore {
@@ -76,6 +79,7 @@ impl GrammarCore {
             field_names,
             field_ids,
             name_fields,
+            plans: Plans::default(),
         }
     }
 }

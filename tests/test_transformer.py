@@ -1,0 +1,157 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+from typing import Any
+
+import fpeg
+import pytest
+
+CALLS = fpeg.Grammar(r"""
+start: call ("," call)*
+call: name=NAME "(" args=(arg ** ",") ")" kw=kw?
+?arg: NAME | NUMBER | "[" (arg ** ",") "]" -> group
+kw: "!" NAME
+NAME: [a-z]+
+NUMBER: [0-9]+
+%ignore " "+
+""")
+
+
+def parse(text: str) -> fpeg.Tree:
+    tree = CALLS.parse(text)
+    assert isinstance(tree, fpeg.Tree)
+    return tree
+
+
+def test_one_parameter_that_names_no_field_gets_the_list_of_children() -> None:
+    class Lists(fpeg.Transformer):
+        def call(self, children: list[Any]) -> list[Any]:
+            return children
+
+    assert Lists().transform(parse("f(a, 1)")).children == [["f", "a", "1"]]
+
+
+def test_a_node_takes_exactly_its_children_also_right_after_a_visible_sibling() -> None:
+    adjacent = fpeg.Grammar(r"""
+start: NAME pair pair
+pair: NAME NUMBER
+NAME: [a-z]+
+NUMBER: [0-9]+
+%ignore " "+
+""")
+
+    class Lists(fpeg.Transformer):
+        def start(self, children: list[Any]) -> list[Any]:
+            return children
+
+        def pair(self, children: list[Any]) -> list[Any]:
+            return children
+
+    assert Lists().transform(adjacent.parse("a b 1 c 2")) == ["a", ["b", "1"], ["c", "2"]]
+
+
+def test_a_star_parameter_gets_the_children_as_arguments() -> None:
+    class Inline(fpeg.Transformer):
+        def call(self, *children: Any) -> tuple[Any, ...]:
+            return children
+
+        def start(self, *calls: Any) -> list[Any]:
+            return list(calls)
+
+    assert Inline().transform(parse("f(a), g()")) == [("f", "a"), ("g",)]
+
+
+def test_a_method_without_parameters_is_called_with_nothing() -> None:
+    class Constant(fpeg.Transformer):
+        def kw(self) -> str:
+            return "keyword"
+
+    call = Constant().transform(parse("f() ! k")).children[0]
+    assert call.children == ["f", "keyword"]
+
+
+def test_a_callable_class_attribute_gets_the_list_as_in_lark() -> None:
+    class Attributes(fpeg.Transformer):
+        start = list
+        call = tuple
+
+    assert Attributes().transform(parse("f(a), g()")) == [("f", "a"), ("g",)]
+
+
+def test_terminal_methods_get_their_token_and_any_callable_works() -> None:
+    class Tokens(fpeg.Transformer):
+        NUMBER = int
+
+        def NAME(self, token: fpeg.Token) -> str:
+            return f"{token.type}:{token}"
+
+    call = Tokens().transform(parse("f(7)")).children[0]
+    assert call.children == ["NAME:f", 7]
+
+
+def test_a_signature_that_fits_no_rule_fails_at_the_first_transform() -> None:
+    class Wrong(fpeg.Transformer):
+        def call(self, name: Any, values: Any) -> None: ...
+
+    with pytest.raises(TypeError, match="takes name, values"):
+        Wrong().transform(parse("f()"))
+
+    class Keyword(fpeg.Transformer):
+        def call(self, *, position: Any) -> None: ...
+
+    with pytest.raises(TypeError, match="takes the keyword position"):
+        Keyword().transform(parse("f()"))
+
+
+def test_a_subtree_no_method_reaches_stays_a_view_and_a_changed_one_a_new_tree() -> None:
+    tree = parse("f(a), g(1)")
+    assert fpeg.Transformer().transform(tree) is tree
+
+    class Numbers(fpeg.Transformer):
+        NUMBER = int
+
+    result = Numbers().transform(tree)
+    assert result.children[0] is not tree.children[0]
+    assert result == fpeg.Tree("start", [tree.children[0], fpeg.Tree("call", ["g", 1])])
+    assert result.children[1].meta.start_pos == 6
+
+
+def test_default_methods_apply_when_a_subclass_overrides_them() -> None:
+    class Defaults(fpeg.Transformer):
+        def __default__(self, data: Any, children: list[Any], meta: fpeg.Meta) -> Any:
+            return (data, children)
+
+        def __default_token__(self, token: fpeg.Token) -> str:
+            return token.upper()
+
+    assert Defaults().transform(parse("f(a)")) == ("start", [("call", ["F", "A"])])
+
+
+def test_terminal_methods_wait_without_visit_tokens() -> None:
+    class Upper(fpeg.Transformer):
+        def NAME(self, token: fpeg.Token) -> str:
+            return token.upper()
+
+    tree = parse("f()")
+    assert Upper(visit_tokens=False).transform(tree) is tree
+    assert Upper().transform(tree).children[0].children == ["F"]
+
+
+def test_a_lone_token_and_any_other_value_transform_too() -> None:
+    class Tokens(fpeg.Transformer):
+        NUMBER = int
+
+    number = parse("f(7)").children[0].children[1]
+    assert Tokens().transform(number) == 7
+    assert Tokens().transform("plain") == "plain"
+
+
+def test_deep_trees_transform_without_recursion() -> None:
+    deep = fpeg.Grammar('start: "(" start? ")"')
+    tree = deep.parse("(" * 1500 + ")" * 1500, max_depth=4000)
+
+    class Depth(fpeg.Transformer):
+        def start(self, children: list[Any]) -> int:
+            return 1 + (children[0] if children else 0)
+
+    assert Depth().transform(tree) == 1500

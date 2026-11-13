@@ -152,4 +152,12 @@ class Token(str):
     @classmethod
     def new_borrow_pos(cls, type: str, value: object, borrow_t: Token) -> Token: ...
 
-def _rebuild_tree(shape: list[int], values: list[Any]) -> Tree: ...
+def rebuild_tree(shape: list[int], values: list[Any]) -> Tree: ...
+def scan(
+    transformer: object,
+    view: Tree,
+    make_plan: Callable[
+        [type, list[tuple[str, bool]]],
+        tuple[list[tuple[int, str, int]], bool, bool],
+    ],
+) -> tuple[Any, ...]: ...

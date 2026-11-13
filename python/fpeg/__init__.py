@@ -4,7 +4,8 @@
 """A PEG parsing library with a native engine and a Transformer for parse trees.
 
 A `Grammar` is compiled from text at runtime and parses inputs into trees of `Tree` and
-`Token` items, views of a tree that stays in native memory.
+`Token` items, views of a tree that stays in native memory. A `Transformer` turns them into
+values with one method per rule or terminal.
 """
 
 from fpeg._fpeg import (
@@ -18,6 +19,7 @@ from fpeg._fpeg import (
     Tree,
     __version__,
 )
+from fpeg._transformer import Transformer
 
 __all__ = [
     "Diagnostic",
@@ -27,6 +29,7 @@ __all__ = [
     "Meta",
     "ParseError",
     "Token",
+    "Transformer",
     "Tree",
     "__version__",
 ]

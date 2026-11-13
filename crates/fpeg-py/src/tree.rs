@@ -102,7 +102,8 @@ pub struct Meta {
 }
 
 impl Meta {
-    fn of(parsed: &Parsed, start: u32, end: u32) -> Meta {
+    /// Where a byte span of a parse lies.
+    pub fn of(parsed: &Parsed, start: u32, end: u32) -> Meta {
         let (first, last) = (parsed.position(start), parsed.position(end));
         Meta {
             line: Some(first.line),
@@ -275,6 +276,14 @@ impl Tree {
             fields
         } else {
             vec![None; count]
+        }
+    }
+
+    /// The parse and entry of a view, `None` for a tree built in Python.
+    pub fn parse_entry(&self) -> Option<(&Arc<Parsed>, u32)> {
+        match &self.inner {
+            Inner::View { parsed, index } => Some((parsed, *index)),
+            Inner::Owned { .. } => None,
         }
     }
 
@@ -700,7 +709,7 @@ impl Tree {
                 pending.push((child, false));
             }
         }
-        let rebuild = py.import("fpeg._fpeg")?.getattr("_rebuild_tree")?;
+        let rebuild = py.import("fpeg._fpeg")?.getattr("rebuild_tree")?;
         PyTuple::new(py, [rebuild, PyTuple::new(py, [shape, values])?.into_any()])
     }
 }
@@ -708,7 +717,7 @@ impl Tree {
 /// Rebuild a tree pickled by `Tree.__reduce__`: items in postorder, -1 for a value and the
 /// number of children for a tree.
 #[pyfunction]
-pub fn _rebuild_tree(
+pub fn rebuild_tree(
     py: Python<'_>,
     shape: Vec<isize>,
     values: Bound<'_, PyList>,
