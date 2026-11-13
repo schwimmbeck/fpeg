@@ -8,8 +8,9 @@
 // and comprehension clauses and starred items take any expression where Python takes one of
 // a tighter level.
 
-// In a replacement field, outside any bracket in it, a colon starts the format.
-%flag bracket replacement
+// In a replacement field, outside any bracket in it, a colon starts the format. Format specs
+// count how deeply they nest within one f-string or t-string.
+%flag bracket replacement spec nested_spec
 %word [\p{XID_Continue}]
 %keywords soft "match" "case" "_" "type" "lazy"
 %ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK | %if(bracket) _LINE_BREAK
@@ -276,15 +277,18 @@ fstring<raw, plain>: prefix=raw (
         | _f_body<"\"", NEVER, F_ESCAPE> | _f_body<"'", NEVER, F_ESCAPE>)
 
 @lexical
-_f_body<quote, line_break, escape>: quote %off(bracket, parts=(F_TEXT<quote, line_break, escape> | replacement_field)*) quote
+_f_body<quote, line_break, escape>: quote %off(bracket, %off(spec, %off(nested_spec, parts=(F_TEXT<quote, line_break, escape> | replacement_field)*))) quote
 
 replacement_field: "{" %on(bracket, value=%on(replacement, yield_expression | star_expressions) debug="="? conversion=conversion? format=format_spec? "}")
 
 @lexical
 conversion: "!" name=CONVERSION
 
+// A replacement field may stand in two nested format specs at most.
 @lexical
-format_spec: ":" %off(bracket, parts=(F_SPEC_TEXT | replacement_field)*)
+format_spec: ":" %off(bracket, %if(nested_spec) parts=F_SPEC_TEXT*
+                             | %if(spec) %on(nested_spec, parts=(F_SPEC_TEXT | replacement_field)*)
+                             | %on(spec, parts=(F_SPEC_TEXT | replacement_field)*))
 
 F_TEXT<quote, line_break, escape>: (!quote ([^{}\\\r\n] | line_break | "{{" | "}}" | escape))+
 F_SPEC_TEXT: ([^{}\\\r\n] | "\\" ![{}] .)+
