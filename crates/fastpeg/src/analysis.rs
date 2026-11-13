@@ -191,26 +191,30 @@ impl Graph {
         need.into_iter().map(|n| n == 0).collect()
     }
 
-    /// The children a node starts at its own start: all of them, or for a sequence those up to
-    /// the first that cannot succeed without consuming input.
-    fn left_children<'a>(&'a self, node: u32, nullable: &[bool]) -> &'a [u32] {
-        let children = self.children(node);
-        match self.nodes[node as usize].order {
-            Order::Start => children,
-            Order::Sequence => {
-                let end = children
-                    .iter()
-                    .position(|&c| !nullable[c as usize])
-                    .map_or(children.len(), |i| i + 1);
-                &children[..end]
-            }
-        }
+    /// How many children each node starts at its own start: all of them, or for a sequence
+    /// those up to the first that cannot succeed without consuming input. Counted once, since
+    /// the search for cycles comes back to a node once per child.
+    fn left_counts(&self, nullable: &[bool]) -> Vec<u32> {
+        (0..self.nodes.len() as u32)
+            .map(|node| {
+                let children = self.children(node);
+                let count = match self.nodes[node as usize].order {
+                    Order::Start => children.len(),
+                    Order::Sequence => children
+                        .iter()
+                        .position(|&c| !nullable[c as usize])
+                        .map_or(children.len(), |i| i + 1),
+                };
+                count as u32
+            })
+            .collect()
     }
 
     /// Which nodes lie on a cycle of left children, found with Tarjan's algorithm on an
     /// explicit stack, since chains of rules can be as long as the grammar.
     fn cyclic(&self, nullable: &[bool]) -> Vec<bool> {
         const UNSEEN: u32 = u32::MAX;
+        let left_counts = self.left_counts(nullable);
         let count = self.nodes.len();
         let mut index = vec![UNSEEN; count];
         let mut low = vec![0; count];
@@ -231,8 +235,8 @@ impl Graph {
             on_stack[root as usize] = true;
             visiting.push((root, 0));
             while let Some(&mut (node, ref mut next)) = visiting.last_mut() {
-                let children = self.left_children(node, nullable);
-                if let Some(&child) = children.get(*next) {
+                let left = &self.children(node)[..left_counts[node as usize] as usize];
+                if let Some(&child) = left.get(*next) {
                     *next += 1;
                     if child == node {
                         cyclic[node as usize] = true;

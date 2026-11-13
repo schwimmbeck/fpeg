@@ -8,8 +8,8 @@ use super::Parser;
 use super::machine::Machine;
 use super::program::{Class, Inst, Program};
 use super::verify::verify;
-use crate::builder::{GrammarBuilder, lit, r, sep_many};
-use crate::grammar::{ClassItem, Grammar, MAX_EXPRESSION_DEPTH, Property};
+use crate::builder::{GrammarBuilder, lit, opt, r, sep_many};
+use crate::grammar::{ClassItem, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Property};
 use crate::ir::CharSet;
 use crate::parse::Limits;
 
@@ -380,6 +380,23 @@ fn nested_separated_repetitions_compile_to_code_linear_in_their_depth() {
     let input = "a,a";
     assert!(parser.parse(input, "start").is_ok());
 }
+
+#[test]
+fn a_long_sequence_of_parts_that_may_be_empty_compiles_in_linear_time() {
+    // The search for left recursion comes back to the sequence once per part, and finding its
+    // left children afresh each time made the search quadratic in the number of parts.
+    let parts: Vec<Expr> = (0..100_000).map(|_| opt(lit("a"))).collect();
+    let mut g = GrammarBuilder::new();
+    g.rule("start", Expr::new(ExprKind::Sequence(parts)));
+    let started = std::time::Instant::now();
+    assert!(Parser::new(&g.build()).is_ok());
+    let seconds = started.elapsed().as_secs_f64();
+    assert!(seconds < LINEAR_COMPILE_SECONDS, "{seconds:.1} s");
+}
+
+/// Time the long sequence may take to compile in a debug build. Linear, it takes well under a
+/// second, quadratic about half a minute.
+const LINEAR_COMPILE_SECONDS: f64 = 10.0;
 
 #[test]
 fn the_deepest_grammar_compiles_on_a_small_stack() {
