@@ -423,8 +423,10 @@ def test_a_transformer_class_goes_when_it_is_no_longer_used() -> None:
         def call(self, children: list[Any]) -> int:
             return len(children)
 
+    # A tree built in Python, and a parse of a grammar that outlives the class.
     tree = fpeg.Tree("start", [fpeg.Tree("call", ["a"])])
     assert Once().transform(tree) == fpeg.Tree("start", [1])
+    assert Once().transform(parse("f(a)")).children == [2]
     gone = weakref.ref(Once)
     del Once
     gc.collect()

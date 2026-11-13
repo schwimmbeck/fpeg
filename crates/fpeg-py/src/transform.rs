@@ -17,7 +17,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
-use pyo3::types::{PyList, PyString, PyTuple, PyType};
+use pyo3::types::{PyList, PyString, PyTuple, PyType, PyWeakrefReference};
 use pyo3::{PyTypeInfo, intern};
 
 use crate::builders;
@@ -84,26 +84,34 @@ pub struct Plan {
     default_token: bool,
 }
 
-/// The plans of a grammar, one per transformer class, kept as long as the grammar.
+/// The plans of a grammar, one per transformer class. The classes are held weakly, so that a
+/// class made for one task goes when it is no longer used, and its plan with the next insert.
 #[derive(Default)]
-pub struct Plans(Mutex<Vec<(Py<PyType>, Arc<Plan>)>>);
+pub struct Plans(Mutex<Vec<(Py<PyWeakrefReference>, Arc<Plan>)>>);
+
+/// Whether a weak reference still points at `class`.
+fn points_at(known: &Py<PyWeakrefReference>, class: &Bound<'_, PyType>) -> bool {
+    (known.bind(class.py()).upgrade()).is_some_and(|known| known.is(class))
+}
 
 impl Plans {
     fn find(&self, class: &Bound<'_, PyType>) -> Option<Arc<Plan>> {
         let plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         (plans.iter())
-            .find(|(known, _)| known.is(class))
+            .find(|(known, _)| points_at(known, class))
             .map(|(_, plan)| Arc::clone(plan))
     }
 
-    fn insert(&self, class: &Bound<'_, PyType>, plan: Arc<Plan>) -> Arc<Plan> {
+    fn insert(&self, class: &Bound<'_, PyType>, plan: Arc<Plan>) -> PyResult<Arc<Plan>> {
+        let weak = PyWeakrefReference::new(class)?.unbind();
         let mut plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         // Another thread may have made the same plan meanwhile, and then its plan is kept.
-        if let Some((_, known)) = plans.iter().find(|(known, _)| known.is(class)) {
-            return Arc::clone(known);
+        if let Some((_, known)) = plans.iter().find(|(known, _)| points_at(known, class)) {
+            return Ok(Arc::clone(known));
         }
-        plans.push((class.clone().unbind(), Arc::clone(&plan)));
-        plan
+        plans.retain(|(known, _)| known.bind(class.py()).upgrade().is_some());
+        plans.push((weak, Arc::clone(&plan)));
+        Ok(plan)
     }
 }
 
@@ -171,7 +179,7 @@ fn plan_for(
         default_node,
         default_token,
     });
-    Ok(core.plans.insert(class, plan))
+    core.plans.insert(class, plan)
 }
 
 /// `Discard`: returned by a method, it removes the node or token from its parent.
