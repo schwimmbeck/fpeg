@@ -142,6 +142,20 @@ start: "a"
 --- grammar
 %import is not supported yet
 
+=== extending, recovery and a word set that is no class are errors, and builders print back
+%extends "base"
+%import common (WS, INT) as c
+%word "a"
+%recover missing: (!";" .)*
+start: "a" => Point(x, y=*, z=None, w="s", n=1.5)
+    | "b" => text
+    | "c" => 42
+    | "d" => True
+--- grammar
+%extends is not supported yet
+%recover is not supported yet
+%word needs a character class
+
 === a repetition maximum below its minimum is an error
 start: "a"{3,2}
 --- grammar

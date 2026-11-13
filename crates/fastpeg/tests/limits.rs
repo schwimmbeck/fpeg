@@ -3,7 +3,7 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
-use fastpeg::grammar::builder::{GrammarBuilder, def, empty, lit};
+use fastpeg::grammar::builder::{GrammarBuilder, def, empty, field, lit, r, r_args};
 use fastpeg::grammar::{Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH};
 use fastpeg::reference::{Limit, Limits, ParseErrorKind, Reference};
 
@@ -41,12 +41,20 @@ fn nesting_deeper_than_the_depth_limit_is_an_error_not_a_stack_overflow() {
 }
 
 #[test]
-fn the_step_limit_stops_a_parse() {
+fn the_step_limit_stops_a_parse_also_inside_a_lookahead() {
     let limits = Limits {
         max_steps: 1_000,
         ..Limits::default()
     };
     let error = nesting()
+        .parse_with(&nested(500), "start", limits)
+        .expect_err("too many steps");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
+    // A limit is no failure that a lookahead turns into success or failure.
+    let looking = Grammar::from_text("start: !nest nest\nnest: \"(\" nest \")\" | \"x\"\n")
+        .expect("the grammar reads");
+    let error = Reference::new(&looking)
+        .expect("the grammar resolves")
         .parse_with(&nested(500), "start", limits)
         .expect_err("too many steps");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
@@ -127,19 +135,33 @@ fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
 }
 
 #[test]
-fn more_flags_or_capture_names_than_ids_are_errors() {
+fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
     let count = usize::from(u16::MAX) + 2;
     let mut flags = GrammarBuilder::new();
     for i in 0..count {
         flags.flag(&format!("f{i}"));
     }
     flags.rule("start", lit("a"));
+    let mut fields = GrammarBuilder::new();
+    let named = (0..count)
+        .map(|i| field(&format!("x{i}"), lit("a")))
+        .collect();
+    fields.rule("start", Expr::new(ExprKind::Sequence(named)));
     let mut captures = GrammarBuilder::new();
     let defs = (0..count).map(|i| def(&format!("c{i}"), empty())).collect();
     captures.rule("start", Expr::new(ExprKind::Sequence(defs)));
+    // Small instances, so that their number and not their size is too large.
+    let mut instances = GrammarBuilder::new();
+    let uses = (0..1_001)
+        .map(|i| r_args("t", [lit(&format!("a{i}"))]))
+        .collect();
+    instances.rule("start", Expr::new(ExprKind::Choice(uses)));
+    instances.rule("t", r("x")).params(["x"]);
     for (builder, message) in [
         (flags, "too many flags"),
+        (fields, "too many field names"),
         (captures, "too many capture names"),
+        (instances, "too many instances"),
     ] {
         let errors = Reference::new(&builder.build()).expect_err("too many ids");
         assert!(
