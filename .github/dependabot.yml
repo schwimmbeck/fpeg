@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Monthly updates, one pull request per ecosystem: the actions pinned by commit, the crates of
+# the workspace and of the benchmark package, and the Python lock file.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      crates:
+        patterns: ["*"]
+  - package-ecosystem: cargo
+    directory: /benchmarks/rust
+    schedule:
+      interval: monthly
+    groups:
+      benchmark-crates:
+        patterns: ["*"]
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
