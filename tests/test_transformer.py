@@ -307,6 +307,16 @@ def test_terminal_methods_wait_without_visit_tokens() -> None:
     assert Upper(visit_tokens=False).transform(tree) is tree
     assert Upper().transform(tree).children[0].children == ["F"]
 
+    # Neither does the default, as in Lark, on a parse, a tree built in Python or a token alone.
+    class Default(fpeg.Transformer):
+        def __default_token__(self, token: fpeg.Token) -> str:
+            return "default"
+
+    copy = pickle.loads(pickle.dumps(tree))
+    token = tree.children[0].children[0]
+    for item in (tree, copy, token):
+        assert Default(visit_tokens=False).transform(item) == item
+
 
 def test_an_error_in_a_method_keeps_its_type_and_gets_a_note_with_the_place() -> None:
     class Failing(fpeg.Transformer):

@@ -141,7 +141,7 @@ class Transformer:
         built = _noted(lambda: _fpeg.token_value(token), f"in the builder of {name}, for a token")
         if built is not _NO_VALUE:
             return _results(built)
-        if _overrides(cls, "__default_token__"):
+        if getattr(self, "__visit_tokens__", True) and _overrides(cls, "__default_token__"):
             return _results(self.__default_token__(token))
         return (token,)
 

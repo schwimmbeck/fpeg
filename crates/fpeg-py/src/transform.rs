@@ -381,7 +381,7 @@ impl<'py, 'p> Scan<'py, 'p> {
             return (self.push(index, node.field(), result))
                 .map_err(|e| self.noted_builder(e, builder.name(), node));
         }
-        if self.plan.default_token {
+        if self.visit_tokens && self.plan.default_token {
             let token = self.make_token(node)?;
             let result = (self.transformer)
                 .call_method1(intern!(self.py, "__default_token__"), (token,))
