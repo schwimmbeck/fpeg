@@ -35,6 +35,18 @@ except fpeg.GrammarError as error:
     assert str(problem) == "<grammar>:1:8: error[E201]: unknown rule pair"
 ```
 
+`check(text)` returns the same diagnostics as a list and raises nothing. For a grammar without errors it returns the warnings: forms that work and are likely not meant, which `Grammar` takes without a word. The `severity` of a diagnostic tells the two apart.
+
+```python
+(found,) = fpeg.check('start: "a"? | "b"')
+assert (found.severity, found.code) == ("warning", "W101")
+print(found)
+```
+
+```output
+<grammar>:1:15: warning[W101]: this alternative is never tried, since the one before it cannot fail
+```
+
 `parse` returns the one visible item at the top of the tree: a `Tree` for a node, or a `Token` for a token, which a transparent start rule gives when its one child is a token. A start rule that may leave no visible item or several, such as a rule `_name`, is refused before parsing, as an unknown one is.
 
 ```python
@@ -48,6 +60,8 @@ A grammar is immutable, so one grammar serves any number of parses from any thre
 ```{eval-rst}
 .. autoclass:: fpeg.Grammar
    :members:
+
+.. autofunction:: fpeg.check
 ```
 
 ## Tree

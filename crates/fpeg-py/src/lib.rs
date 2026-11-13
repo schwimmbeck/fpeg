@@ -20,7 +20,7 @@ mod _fpeg {
     #[pymodule_export]
     use crate::errors::Diagnostic;
     #[pymodule_export]
-    use crate::grammar::Grammar;
+    use crate::grammar::{Grammar, check};
     #[pymodule_export]
     use crate::transform::{DiscardType, is_view, scan, token_value};
     #[pymodule_export]

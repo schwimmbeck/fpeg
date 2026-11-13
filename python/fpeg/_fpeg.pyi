@@ -5,7 +5,7 @@
 
 from collections.abc import Callable, Iterator, Mapping
 from os import PathLike
-from typing import Any, final
+from typing import Any, Literal, final
 
 from typing_extensions import disjoint_base
 
@@ -23,6 +23,7 @@ __all__ = [
     "Token",
     "Tree",
     "__version__",
+    "check",
     "is_view",
     "rebuild_tree",
     "scan",
@@ -31,7 +32,7 @@ __all__ = [
 
 @final
 class Diagnostic:
-    """A problem of a grammar: its stable code, what exactly is wrong, and where."""
+    """An error or a warning about a grammar: its stable code, what exactly is wrong, and where."""
 
     def __new__(
         cls,
@@ -57,6 +58,11 @@ class Diagnostic:
     def end_column(self) -> int: ...
     @property
     def path(self) -> str | None: ...
+    @property
+    def severity(self) -> Literal["error", "warning"]: ...
+
+def check(text: str) -> list[Diagnostic]:
+    """Check a grammar given as text and return what is found, in the order of the text."""
 
 class GrammarError(ValueError):
     """A grammar has problems that keep it from compiling."""

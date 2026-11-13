@@ -46,6 +46,22 @@ def test_a_grammar_error_pickles_with_its_diagnostics() -> None:
     assert str(pickle.loads(pickle.dumps(made))) == "g.fpeg:2:3: error[E201]: unknown rule x"
 
 
+def test_check_returns_the_errors_of_a_grammar_instead_of_raising() -> None:
+    assert [(found.code, found.severity) for found in fpeg.check("start: missing")] == [
+        ("E201", "error")
+    ]
+    assert [found.code for found in fpeg.check("start: (")] == ["E101"]
+    assert fpeg.check(PAIRS) == []
+
+
+def test_check_returns_the_warnings_of_a_grammar_that_compiles() -> None:
+    text = 'start: "a"? | "b"'
+    (found,) = fpeg.check(text)
+    assert (found.code, found.severity, found.line, found.column) == ("W101", "warning", 1, 15)
+    assert str(found).startswith("<grammar>:1:15: warning[W101]: this alternative is never tried")
+    assert isinstance(fpeg.Grammar(text).parse("a"), fpeg.Tree)
+
+
 def test_open_reads_a_file_with_a_byte_order_mark_and_names_it_in_messages(
     tmp_path: Path,
 ) -> None:

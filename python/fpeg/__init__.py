@@ -19,6 +19,7 @@ from fpeg._fpeg import (
     Token,
     Tree,
     __version__,
+    check,
 )
 from fpeg._transformer import Transformer, v_args
 
@@ -34,5 +35,6 @@ __all__ = [
     "Transformer",
     "Tree",
     "__version__",
+    "check",
     "v_args",
 ]

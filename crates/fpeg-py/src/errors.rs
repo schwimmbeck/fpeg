@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! The exceptions of the package and the diagnostics a grammar error carries.
+//! The exceptions of the package, and the diagnostics that a grammar error carries and a
+//! check returns.
 
-use fpeg::{Limit, LineIndex, ParseErrorKind};
+use fpeg::{Limit, LineIndex, ParseErrorKind, Severity};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
@@ -31,7 +32,7 @@ create_exception!(
 /// The path that messages show for a grammar given as text.
 const TEXT_PATH: &str = "<grammar>";
 
-/// A problem of a grammar: its stable code, what exactly is wrong, and where.
+/// An error or a warning about a grammar: its stable code, what exactly is wrong, and where.
 #[pyclass(frozen, module = "fpeg", get_all)]
 pub struct Diagnostic {
     /// The stable code, such as `E201`, whose page in the documentation explains it.
@@ -49,11 +50,23 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    /// The severity that the code tells, as the core has it.
+    fn severity_of(&self) -> Severity {
+        match self.code.starts_with('W') {
+            true => Severity::Warning,
+            false => Severity::Error,
+        }
+    }
+
     fn rendered(&self) -> String {
         let path = self.path.as_deref().unwrap_or(TEXT_PATH);
         format!(
-            "{path}:{}:{}: error[{}]: {}",
-            self.line, self.column, self.code, self.message
+            "{path}:{}:{}: {}[{}]: {}",
+            self.line,
+            self.column,
+            self.severity_of(),
+            self.code,
+            self.message
         )
     }
 }
@@ -82,6 +95,13 @@ impl Diagnostic {
         }
     }
 
+    /// `"error"` for a problem that keeps the grammar from compiling, `"warning"` for a form
+    /// that works and is likely not meant.
+    #[getter]
+    fn severity(&self) -> String {
+        self.severity_of().to_string()
+    }
+
     fn __str__(&self) -> String {
         self.rendered()
     }
@@ -106,6 +126,26 @@ impl Diagnostic {
     }
 }
 
+/// The diagnostics of the core, placed in `text`.
+pub fn diagnostics(text: &str, path: Option<&str>, found: &[fpeg::Diagnostic]) -> Vec<Diagnostic> {
+    let lines = LineIndex::new(text);
+    (found.iter())
+        .map(|found| {
+            let start = lines.position(text, found.span.start as usize);
+            let end = lines.position(text, found.span.end as usize);
+            Diagnostic {
+                code: found.code.to_string(),
+                message: found.message.clone(),
+                line: start.line,
+                column: start.column,
+                end_line: end.line,
+                end_column: end.column,
+                path: path.map(str::to_owned),
+            }
+        })
+        .collect()
+}
+
 /// The exception for the problems of a grammar, placed in `text`.
 pub fn grammar_error(
     py: Python<'_>,
@@ -113,21 +153,7 @@ pub fn grammar_error(
     path: Option<&str>,
     errors: &[fpeg::Diagnostic],
 ) -> PyErr {
-    let lines = LineIndex::new(text);
-    let mut diagnostics = Vec::new();
-    for error in errors {
-        let start = lines.position(text, error.span.start as usize);
-        let end = lines.position(text, error.span.end as usize);
-        diagnostics.push(Diagnostic {
-            code: error.code.to_string(),
-            message: error.message.clone(),
-            line: start.line,
-            column: start.column,
-            end_line: end.line,
-            end_column: end.column,
-            path: path.map(str::to_owned),
-        });
-    }
+    let diagnostics = diagnostics(text, path, errors);
     let message = (diagnostics.iter())
         .map(Diagnostic::rendered)
         .collect::<Vec<_>>()

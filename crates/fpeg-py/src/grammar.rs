@@ -17,7 +17,7 @@ use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyString, PyType};
 
 use crate::builders::{self, Builder};
-use crate::errors::{grammar_error, parse_error};
+use crate::errors::{Diagnostic, diagnostics, grammar_error, parse_error};
 use crate::transform::Plans;
 use crate::tree::{Parsed, item};
 
@@ -185,6 +185,20 @@ impl Grammar {
         drop(grammars);
         Ok(Grammar { core })
     }
+}
+
+/// Check a grammar given as text and return what is found, in the order of the text.
+///
+/// For a grammar with errors these are the errors that `Grammar(text)` raises. For any other
+/// they are its warnings, about forms that work and are likely not meant. The functions that
+/// its value builders call are not asked for, and not looked at.
+#[pyfunction]
+pub fn check(text: &str) -> Vec<Diagnostic> {
+    let found = match fpeg::Grammar::from_text(text) {
+        Ok(grammar) => fpeg::check(&grammar),
+        Err(errors) => errors,
+    };
+    diagnostics(text, None, &found)
 }
 
 /// The functions given with a grammar, by name: a mapping of str to callables.
