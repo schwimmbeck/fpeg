@@ -17,6 +17,7 @@ tree = grammar.parse("x = 1, y = 22")
 assert tree.data == "start"
 pair = tree.children[1]
 assert pair.children == ["y", "22"]
+assert (pair.meta.line, pair.meta.column, pair.meta.end_column) == (1, 8, 14)
 ```
 
 ## Grammar
@@ -49,7 +50,7 @@ A grammar is immutable, so one grammar serves any number of parses from any thre
 
 ## Tree
 
-A `Tree` is a node: `data` is the name of its rule or alias, and `children` its visible items. Hidden tokens, such as the `=` above, stay in the native tree but not among the children.
+A `Tree` is a node: `data` is the name of its rule or alias, `children` its visible items, and `meta` where it spans. Hidden tokens, such as the `=` above, stay in the native tree but not among the children.
 
 ```python
 calls = fpeg.Grammar(r"""
@@ -62,10 +63,13 @@ assert call.children == ["f", "a", "b"]
 assert call.text == "f(a, b)"
 ```
 
-`Tree(data, children)` builds a tree in Python, as in Lark.
+`Tree(data, children, meta=None)` builds a tree in Python, as in Lark.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Tree
+   :members:
+
+.. autoclass:: fpeg.Meta
    :members:
 ```
 

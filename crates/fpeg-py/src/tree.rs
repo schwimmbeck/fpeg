@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! `Tree`: views of the nodes of a parse, and trees built in Python.
+//! `Tree` and `Meta`: views of the nodes of a parse, and trees built in Python.
 //!
 //! A view holds the parse and an entry index, so making one costs about as much as a string, and
 //! its children are made when asked for and then kept. A tree built in Python, as Lark builds
@@ -82,6 +82,77 @@ pub fn item(py: Python<'_>, parsed: &Arc<Parsed>, index: usize) -> PyResult<Py<P
     }
 }
 
+/// Where a node of a parse spans, as `Tree.meta` gives it.
+#[pyclass(frozen, module = "fpeg", get_all)]
+pub struct Meta {
+    /// The line and column where the node starts, from 1, the column in code points.
+    line: Option<usize>,
+    column: Option<usize>,
+    /// The line and column where it ends, the column after its last character.
+    end_line: Option<usize>,
+    end_column: Option<usize>,
+    /// The code points before its start and before its end.
+    start_pos: Option<usize>,
+    end_pos: Option<usize>,
+    /// Whether the node holds no text.
+    empty: bool,
+}
+
+impl Meta {
+    fn of(parsed: &Parsed, start: u32, end: u32) -> Meta {
+        let (first, last) = (parsed.position(start), parsed.position(end));
+        Meta {
+            line: Some(first.line),
+            column: Some(first.column),
+            end_line: Some(last.line),
+            end_column: Some(last.column),
+            start_pos: Some(first.offset),
+            end_pos: Some(last.offset),
+            empty: start == end,
+        }
+    }
+}
+
+#[pymethods]
+impl Meta {
+    #[new]
+    #[pyo3(signature = (line = None, column = None, end_line = None, end_column = None, start_pos = None, end_pos = None, empty = true))]
+    fn new(
+        line: Option<usize>,
+        column: Option<usize>,
+        end_line: Option<usize>,
+        end_column: Option<usize>,
+        start_pos: Option<usize>,
+        end_pos: Option<usize>,
+        empty: bool,
+    ) -> Meta {
+        Meta {
+            line,
+            column,
+            end_line,
+            end_column,
+            start_pos,
+            end_pos,
+            empty,
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        let shown =
+            |value: Option<usize>| value.map_or_else(|| "None".to_owned(), |v| v.to_string());
+        format!(
+            "Meta(line={}, column={}, end_line={}, end_column={}, start_pos={}, end_pos={}, empty={})",
+            shown(self.line),
+            shown(self.column),
+            shown(self.end_line),
+            shown(self.end_column),
+            shown(self.start_pos),
+            shown(self.end_pos),
+            if self.empty { "True" } else { "False" },
+        )
+    }
+}
+
 enum Inner {
     /// A node of a parse, by its entry.
     View { parsed: Arc<Parsed>, index: u32 },
@@ -93,14 +164,15 @@ enum Inner {
     },
 }
 
-/// A node of a parse tree, as Lark's `Tree`: `data` and `children`.
+/// A node of a parse tree, as Lark's `Tree`: `data`, `children` and `meta`.
 ///
 /// A tree from a parse is a view of the native tree, and its children are made when asked for.
-/// `Tree(data, children)` builds one in Python.
+/// `Tree(data, children, meta=None)` builds one in Python.
 #[pyclass(frozen, module = "fpeg", subclass)]
 pub struct Tree {
     inner: Inner,
     children: OnceLock<Py<PyList>>,
+    meta: OnceLock<Py<PyAny>>,
 }
 
 impl Tree {
@@ -108,6 +180,7 @@ impl Tree {
         Tree {
             inner: Inner::View { parsed, index },
             children: OnceLock::new(),
+            meta: OnceLock::new(),
         }
     }
 
@@ -120,6 +193,7 @@ impl Tree {
         Tree {
             inner: Inner::Owned { data, origin },
             children: OnceLock::from(children),
+            meta: OnceLock::new(),
         }
     }
 
@@ -172,14 +246,24 @@ impl Tree {
 #[pymethods]
 impl Tree {
     #[new]
-    fn new(py: Python<'_>, data: Py<PyAny>, children: Bound<'_, PyAny>) -> PyResult<Tree> {
+    #[pyo3(signature = (data, children, meta = None))]
+    fn new(
+        py: Python<'_>,
+        data: Py<PyAny>,
+        children: Bound<'_, PyAny>,
+        meta: Option<Py<PyAny>>,
+    ) -> PyResult<Tree> {
         let children = match children.cast_into::<PyList>() {
             Ok(list) => list,
             Err(error) => PyList::type_object(py)
                 .call1((error.into_inner(),))?
                 .cast_into::<PyList>()?,
         };
-        Ok(Tree::owned(data, children.unbind(), None))
+        let tree = Tree::owned(data, children.unbind(), None);
+        if let Some(meta) = meta {
+            let _ = tree.meta.set(meta);
+        }
+        Ok(tree)
     }
 
     /// The node's kind: the name of its rule or alias.
@@ -192,6 +276,29 @@ impl Tree {
     #[getter]
     fn children<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
         self.children_list(py)
+    }
+
+    /// Where the node spans: Lark's line, column, end_line, end_column, start_pos and end_pos.
+    #[getter]
+    fn meta(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        if let Some(meta) = self.meta.get() {
+            return Ok(meta.clone_ref(py));
+        }
+        let meta = match self.origin() {
+            Some((parsed, index)) => {
+                let (start, end) = parsed
+                    .tree
+                    .node(index as usize)
+                    .map_or((0, 0), |n| n.span());
+                Meta::of(parsed, start, end)
+            }
+            None => Meta::new(None, None, None, None, None, None, true),
+        };
+        let _ = self.meta.set(Py::new(py, meta)?.into_any());
+        Ok(self
+            .meta
+            .get()
+            .map_or_else(|| py.None(), |m| m.clone_ref(py)))
     }
 
     /// The text of the node in its input, or `None` for a tree built in Python.
