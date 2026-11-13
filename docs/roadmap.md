@@ -2,7 +2,7 @@
 
 fastpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 and M1 are done. Work continues with M2.
+M0, M1 and M2 are done. Work continues with M3.
 
 ## M0 Foundations
 
@@ -19,7 +19,8 @@ The Rust workspace with the core, the command line and the Python binding as emp
 - The core language compiled to bytecode for the parsing machine: the classic PEG operators, separators, rules and terminals with automatic skipping of ignored text, and the shaping of the tree.
 - The compact, lossless parse tree with exact spans.
 - Limits on time and depth, and error reports with position and expected input.
-- `fastpeg parse` and a first `fastpeg check`.
+- `fastpeg parse` and a first `fastpeg check`, with a stable code for every problem a grammar can have.
+- Left recursion, cuts, indentation and captures wait for the milestones that bring them to the engine.
 
 ## M3 Python binding
 

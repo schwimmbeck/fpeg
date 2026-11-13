@@ -67,7 +67,7 @@ The goal for speed is to be the fastest PEG parser that can be used from Python 
 
 ## Status
 
-Early development. The foundations are done, and so is the written specification of the grammar language, with a reference interpreter that defines what every grammar means. Next come the core engine and the Python binding. See the [roadmap](docs/roadmap.md).
+Early development. The written specification of the grammar language is done, with a reference interpreter that defines what every grammar means, and so is the first version of the core engine: it parses grammars without left recursion, cuts, indentation and captures so far, from Rust and from the command line. Next comes the Python binding. See the [roadmap](docs/roadmap.md).
 
 ## License
 
