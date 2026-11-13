@@ -97,13 +97,13 @@ except: "except" !"*" (types=expression "as" name=NAME | types=expressions)? ":"
 except_star: "except" "*" (types=expression "as" name=NAME | types=expressions) ":" body=block
 
 match: "match" subject=subject ":" _NEWLINE %indent(cases=(%same case)+)
-?subject: items=star_named_expression "," (items=star_named_expression ** ",") ","? -> tuple_expression
+?subject: items=star_named_expression "," (items=(star_named_expression ++ ",") ","?)? -> tuple_expression
         | named_expression
 case: "case" pattern=patterns ("if" guard=named_expression)? ":" body=block
 
 // Patterns
 
-?patterns: items=maybe_star_pattern "," (items=maybe_star_pattern ** ",") ","? -> sequence_pattern
+?patterns: items=maybe_star_pattern "," (items=(maybe_star_pattern ++ ",") ","?)? -> sequence_pattern
          | pattern
 ?pattern: pattern=or_pattern "as" !"_" target=NAME -> as_pattern
         | or_pattern
@@ -133,11 +133,11 @@ value_pattern: parts=NAME ("." parts=NAME)+ !"("
 wildcard_pattern: "_"
 capture_pattern: name=NAME !("." | "(" | "=")
 group_pattern: "(" %on(bracket, pattern=pattern ")")
-sequence_pattern: "[" %on(bracket, items=(maybe_star_pattern ** ",") ","? "]")
-                | "(" %on(bracket, (items=maybe_star_pattern "," (items=maybe_star_pattern ** ",") ","?)? ")")
+sequence_pattern: "[" %on(bracket, (items=(maybe_star_pattern ++ ",") ","?)? "]")
+                | "(" %on(bracket, (items=maybe_star_pattern "," (items=(maybe_star_pattern ++ ",") ","?)?)? ")")
 ?maybe_star_pattern: "*" target=NAME -> star_pattern
                    | pattern
-mapping_pattern: "{" %on(bracket, (items=(key_pattern ++ ",") ("," items=double_star_pattern)? | items=double_star_pattern)? ","? "}")
+mapping_pattern: "{" %on(bracket, ((items=(key_pattern ++ ",") ("," items=double_star_pattern)? | items=double_star_pattern) ","?)? "}")
 key_pattern: key=(literal_pattern | value_pattern) ":" pattern=pattern
 double_star_pattern: "**" !"_" target=NAME
 pattern_name: parts=(NAME ++ ".")
@@ -184,7 +184,7 @@ keyword: name=NAME "=" !"=" value=expression
 
 // Expressions
 
-?star_expressions: items=star_expression "," (items=star_expression ** ",") ","? -> tuple_expression
+?star_expressions: items=star_expression "," (items=(star_expression ++ ",") ","?)? -> tuple_expression
                  | star_expression
 ?star_expression: "*" value=expression -> starred
                 | expression
@@ -192,7 +192,7 @@ keyword: name=NAME "=" !"=" value=expression
                       | named_expression
 ?named_expression: target=NAME ":=" value=expression -> named_expression
                  | expression !":="
-?expressions: items=expression "," (items=expression ** ",") ","? -> tuple_expression
+?expressions: items=expression "," (items=(expression ++ ",") ","?)? -> tuple_expression
             | expression
 yield_expression: "yield" "from" value=expression -> yield_from
                 | "yield" value=star_expressions? -> yield
@@ -243,12 +243,12 @@ expression: %precedence {
      | set_comprehension
      | "..." -> ellipsis
 
-tuple: "(" %on(bracket, %off(replacement, (items=star_named_expression "," (items=star_named_expression ** ",") ","?)? ")"))
+tuple: "(" %on(bracket, %off(replacement, (items=star_named_expression "," (items=(star_named_expression ++ ",") ","?)?)? ")"))
 group: "(" %on(bracket, %off(replacement, value=(yield_expression | named_expression) ")"))
 generator_expression: "(" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension ")"))
-list: "[" %on(bracket, %off(replacement, items=(star_named_expression ** ",") ","? "]"))
+list: "[" %on(bracket, %off(replacement, (items=(star_named_expression ++ ",") ","?)? "]"))
 list_comprehension: "[" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension "]"))
-dict: "{" %on(bracket, %off(replacement, items=(dict_item ** ",") ","? "}"))
+dict: "{" %on(bracket, %off(replacement, (items=(dict_item ++ ",") ","?)? "}"))
 ?dict_item: "**" value=expression -> double_starred
           | key=expression ":" value=expression -> pair
 set: "{" %on(bracket, %off(replacement, items=(star_named_expression ++ ",") ","? "}"))
@@ -263,7 +263,7 @@ slices: items=(slice ++ ",") ","?
       | "*" value=expression -> starred
       | named_expression
 
-?star_targets: items=star_target "," (items=star_target ** ",") ","? -> tuple_expression
+?star_targets: items=star_target "," (items=(star_target ++ ",") ","?)? -> tuple_expression
              | star_target
 ?star_target: "*" !"*" value=star_target -> starred
             | primary
