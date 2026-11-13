@@ -88,6 +88,11 @@ def test_the_children_of_a_view_read_as_a_list_and_refuse_changes() -> None:
     shallow = copy.copy(call)
     shallow.children.append("x")
     assert shallow.children == ["f", "a", "b", "x"]
+    # The children themselves copy and pickle as a plain list.
+    copies = [copy.copy(children), copy.deepcopy(children), pickle.loads(pickle.dumps(children))]
+    for again in copies:
+        assert type(again) is list
+        assert again == ["f", "a", "b"]
 
 
 def test_meta_and_token_positions_count_code_points() -> None:

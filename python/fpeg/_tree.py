@@ -20,6 +20,10 @@ class Children(list[Any]):
 
     __slots__ = ()
 
+    def __reduce__(self) -> tuple[type[list[Any]], tuple[list[Any]]]:
+        """Copy and pickle as a plain list, since copying and unpickling fill a list by append."""
+        return (list, (list(self),))
+
     def append(self, value: Any, /) -> NoReturn:
         """Refuse the change."""
         raise TypeError(MESSAGE)
