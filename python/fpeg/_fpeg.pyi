@@ -7,7 +7,27 @@ from collections.abc import Callable, Iterator, Mapping
 from os import PathLike
 from typing import Any, final
 
+from typing_extensions import disjoint_base
+
 __version__: str
+__all__ = [
+    "NO_VALUE",
+    "Diagnostic",
+    "Discard",
+    "DiscardType",
+    "Grammar",
+    "GrammarError",
+    "LimitError",
+    "Meta",
+    "ParseError",
+    "Token",
+    "Tree",
+    "__version__",
+    "is_view",
+    "rebuild_tree",
+    "scan",
+    "token_value",
+]
 
 @final
 class Diagnostic:
@@ -52,9 +72,9 @@ class LimitError(ParseError):
 class Grammar:
     """A grammar compiled for fpeg's parsing machine."""
 
-    def __init__(
-        self, text: str, *, functions: Mapping[str, Callable[..., Any]] | None = None
-    ) -> None: ...
+    def __new__(
+        cls, text: str, *, functions: Mapping[str, Callable[..., Any]] | None = None
+    ) -> Grammar: ...
     @classmethod
     def open(
         cls,
@@ -76,8 +96,8 @@ class Grammar:
 class Meta:
     """Where a node of a parse spans."""
 
-    def __init__(
-        self,
+    def __new__(
+        cls,
         line: int | None = None,
         column: int | None = None,
         end_line: int | None = None,
@@ -85,7 +105,7 @@ class Meta:
         start_pos: int | None = None,
         end_pos: int | None = None,
         empty: bool = True,
-    ) -> None: ...
+    ) -> Meta: ...
     @property
     def line(self) -> int | None: ...
     @property
@@ -101,10 +121,11 @@ class Meta:
     @property
     def empty(self) -> bool: ...
 
+@disjoint_base
 class Tree:
     """A node of a parse tree: `data`, `children` and `meta`, as Lark's `Tree`."""
 
-    def __init__(self, data: str, children: list[Any], meta: Meta | None = None) -> None: ...
+    def __new__(cls, data: str, children: list[Any], meta: Meta | None = None) -> Tree: ...
     @property
     def data(self) -> str: ...
     @property
@@ -122,10 +143,11 @@ class Tree:
     def scan_values(self, pred: Callable[[Any], bool]) -> Iterator[Any]: ...
     def copy(self) -> Tree: ...
     def __copy__(self) -> Tree: ...
-    def __eq__(self, other: object) -> bool: ...
-    def __ne__(self, other: object) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
     def __hash__(self) -> int: ...
 
+@disjoint_base
 class Token(str):
     """A token of a parse: a str with the name of its kind and its positions."""
 

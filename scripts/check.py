@@ -22,6 +22,7 @@ CHECKS = [
     ("Python formatting", "uv run ruff format --check"),
     ("Python lints", "uv run ruff check"),
     ("Python types", "uv run pyright --warnings"),
+    ("Python stubs", "uv run python -m mypy.stubtest fpeg._fpeg"),
     ("Python tests", "uv run pytest -q"),
     (
         "documentation",

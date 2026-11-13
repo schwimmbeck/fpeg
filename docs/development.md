@@ -31,6 +31,7 @@ Every change passes these checks before it is committed. Continuous integration 
 | Python formatting | `uv run ruff format --check` |
 | Python lints | `uv run ruff check` |
 | Python types | `uv run pyright --warnings` |
+| Python stubs | `uv run python -m mypy.stubtest fpeg._fpeg` |
 | Python tests | `uv run pytest` |
 | Documentation | `uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html` |
 | Licence headers | `uv run python scripts/check_licence_headers.py` |
