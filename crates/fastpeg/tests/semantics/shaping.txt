@@ -79,6 +79,16 @@ W: [a-z]
 --- "1,2;a|b"
 (start (list N"1" ~"," N"2") ~";" (list W"a" ~"|" W"b"))
 
+=== an argument that takes in a parameter keeps every form around it
+%flag f
+start: %on(f, outer<%if(!f) "a", "c">)
+outer<p, q>: inner<%off(f, p) | "b"> inner<inner<&q %def(n, q) %ref(n) ^ "oops">> inner<(!"b" x=q) ** ",">
+inner<r>: r
+--- "accc,c"
+(start (outer (inner ~"a") (inner (inner ~"c" ~"c")) (inner x="c" ~"," x="c")))
+--- "acc"
+(start (outer (inner ~"a") (inner (inner ~"c" ~"c")) (inner)))
+
 === error messages use display names
 start: NUM
 NUM "number": [0-9]+

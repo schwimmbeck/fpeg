@@ -127,18 +127,34 @@ impl Generator {
             // that takes in the parameter grows with every instance until a limit stops it.
             11 if self.template && !terminal => {
                 let growing = !self.params.is_empty() && self.rng.chance(30);
-                let argument = match (growing, self.rng.below(4)) {
-                    (true, 0) => flat(vec![r("p"), lit("a")], false),
-                    (true, 1) => on("f", r("p")),
-                    (true, 2) => label_message(opt(r("p")), "oops"),
-                    (true, _) => field("x", r("p")),
-                    (false, 0 | 1) => class([range('a', 'b')]),
-                    (false, _) => self.terminal_or_literal(),
+                let argument = match growing {
+                    true => self.growing(),
+                    false if self.rng.chance(50) => class([range('a', 'b')]),
+                    false => self.terminal_or_literal(),
                 };
                 r_args("t", [argument])
             }
             _ if terminal || self.rng.chance(30) => self.terminal_or_literal(),
             _ => r(self.rng.pick(&self.rules)),
+        }
+    }
+
+    /// An argument that takes in the parameter, in each of the forms substituting it has to copy.
+    fn growing(&mut self) -> Expr {
+        let p = r("p");
+        match self.rng.below(12) {
+            0 => flat(vec![p, lit("a")], false),
+            1 => flat(vec![p, lit("b")], true),
+            2 => on("f", p),
+            3 => off("f", p),
+            4 => label_message(opt(p), "oops"),
+            5 => field("x", p),
+            6 => sep_many(p, lit("b")),
+            7 => flat(vec![and(lit("a")), p], false),
+            8 => flat(vec![not(lit("b")), p], false),
+            9 => indent(p),
+            10 => def("c", p),
+            _ => r_args("t", [p]),
         }
     }
 
