@@ -104,6 +104,21 @@ impl Item {
         matches!(self, Item::Token { hidden: true, .. })
     }
 
+    /// How many items `items` holds at any depth, counted without recursion.
+    pub(crate) fn count(items: &[Item]) -> u64 {
+        let mut pending = vec![items];
+        let mut count = 0;
+        while let Some(items) = pending.pop() {
+            count += items.len() as u64;
+            for item in items {
+                if let Item::Node { children, .. } = item {
+                    pending.push(children);
+                }
+            }
+        }
+        count
+    }
+
     /// The span of a node over `children`: from the first token to the last, at any depth,
     /// or empty at `at` when there is no token.
     pub(crate) fn span_of(children: &[Item], at: u32) -> (u32, u32) {

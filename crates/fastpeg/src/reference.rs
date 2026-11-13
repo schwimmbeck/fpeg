@@ -25,8 +25,10 @@ use crate::tree::{FieldId, Item, KindId, Tree};
 /// Rule activations that may be nested before a parse stops.
 pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
 
-/// Evaluation steps a parse may take before it stops.
-pub const DEFAULT_MAX_STEPS: u64 = 50_000_000;
+/// Evaluation steps a parse may take before it stops. Copying a remembered result counts one
+/// step per item copied, so the limit bounds the time a parse takes. About ten seconds, enough
+/// for a megabyte of Python.
+pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
 const STACK_BYTES: usize = 256 * 1024 * 1024;
@@ -47,7 +49,7 @@ const END_OF_INPUT: &str = "end of input";
 pub struct Limits {
     /// The deepest nesting of rule activations.
     pub max_depth: u32,
-    /// The number of evaluation steps.
+    /// The number of evaluation steps, where copying a remembered result counts one per item.
     pub max_steps: u64,
 }
 
@@ -394,7 +396,9 @@ impl<'a> Interp<'a> {
         if let Some(entry) = self.lr.get_mut(&key) {
             entry.used = true;
             self.dependency = self.dependency.min(entry.depth);
-            return Ok(Interp::call_outcome(entry.result.clone(), ctx));
+            let result = entry.result.clone();
+            self.charge(&result)?;
+            return Ok(Interp::call_outcome(result, ctx));
         }
         let memo_key = (key.clone(), self.quiet > 0);
         // The result consulted none of the entries active when it was made. Matching it again
@@ -409,7 +413,9 @@ impl<'a> Interp<'a> {
                 .take_while(|&&(_, at)| at == pos)
                 .all(|(serial, _)| entry.active.contains(serial))
         {
-            return Ok(Interp::call_outcome(entry.result.clone(), ctx));
+            let result = entry.result.clone();
+            self.charge(&result)?;
+            return Ok(Interp::call_outcome(result, ctx));
         }
         if self.depth >= self.limits.max_depth {
             return Err(Abort::Limit(Limit::Depth));
@@ -438,6 +444,7 @@ impl<'a> Interp<'a> {
         self.dependency = outer_dependency.min(inner_dependency);
         let best = result?;
         if self.memoize && inner_dependency >= height {
+            self.charge(&best)?;
             let active = self
                 .lr_active
                 .iter()
@@ -450,6 +457,16 @@ impl<'a> Interp<'a> {
             self.memo.insert(memo_key, entry);
         }
         Ok(Interp::call_outcome(best, ctx))
+    }
+
+    /// Count a copy of a result as one step per item copied, so that the step limit bounds the
+    /// time copies take too.
+    fn charge(&mut self, result: &CallResult) -> Result<(), Abort> {
+        self.steps += result.as_ref().map_or(0, |(_, items)| Item::count(items));
+        if self.steps > self.limits.max_steps {
+            return Err(Abort::Limit(Limit::Steps));
+        }
+        Ok(())
     }
 
     fn call_outcome(result: CallResult, ctx: &Ctx) -> Outcome {
@@ -478,12 +495,13 @@ impl<'a> Interp<'a> {
             return Ok(None);
         };
         let mut best = (first.end, first.items);
-        while let Some(entry) = self.lr.get_mut(key) {
-            if !entry.used {
-                break;
+        while self.lr.get(key).is_some_and(|entry| entry.used) {
+            let seed = Some(best.clone());
+            self.charge(&seed)?;
+            if let Some(entry) = self.lr.get_mut(key) {
+                entry.result = seed;
+                entry.used = false;
             }
-            entry.result = Some(best.clone());
-            entry.used = false;
             match self.eval(body, pos, ctx)? {
                 Outcome::Ok(next) if next.end > best.0 => best = (next.end, next.items),
                 _ => break,

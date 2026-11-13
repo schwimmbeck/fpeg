@@ -53,6 +53,23 @@ fn the_step_limit_stops_a_parse() {
 }
 
 #[test]
+fn copying_results_counts_against_the_step_limit() {
+    // Left recursion copies its growing result in every step, quadratic in the input length.
+    let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
+        .expect("the grammar reads");
+    let input = format!("1{}", "+1".repeat(3_000));
+    let limits = Limits {
+        max_steps: 1_000_000,
+        ..Limits::default()
+    };
+    let error = Reference::new(&grammar)
+        .expect("the grammar resolves")
+        .parse_with(&input, "start", limits)
+        .expect_err("too much copying");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
+}
+
+#[test]
 fn grammars_that_nest_too_deeply_are_errors_not_stack_overflows() {
     let suffixes = format!("start: \"a\"{}\n", "?".repeat(5_000));
     let groups = |depth| {
