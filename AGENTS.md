@@ -126,6 +126,9 @@ Run the checks for everything you touched before calling work done. The Rust ver
 
 - Commit subjects use `<module or file>: <message>`, for example `vm: add the span instruction` or `AGENTS.md: add commit rules`. The message is lowercase and imperative, without a trailing period, at most 72 characters. A body is optional and says why, not what.
 - Split work into logical commits that each build and pass the checks on their own. Commit after each verified chunk of work.
+- Keep a commit small enough to review in one sitting: about 400 changed lines or fewer, tests and docs included. A larger feature lands as a series of steps, each one behaviour with its own tests and docs, such as a type before the code that uses it, one calling convention after another, or the core before the binding. Recorded data and moved code may be larger, and the body says so.
+- A step leaves no dead code and no stub or page ahead of the code: the checks treat warnings as errors and hold the stubs and the docs to the module. A helper that only the next step uses belongs to that step.
+- A commit that grew too large is split, and a change that belongs to an older commit is amended into it, each new commit checked on its own. Pushed commits may be rewritten so too when the maintainer agrees, and go out with `git push --force-with-lease`.
 - Never add `Co-Authored-By`, "Generated with", session links or any other attribution or tool line to commits or pull requests.
 - Pushing waits for the maintainer. Ask before every release tag.
 - Stage by explicit path and read the staged list before committing. Never commit build output, caches, generated pages, `PLAN.md`, `research/` or anything private. Recorded benchmark results are data and are committed.
