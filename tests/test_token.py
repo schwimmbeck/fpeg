@@ -90,6 +90,13 @@ def test_a_lone_surrogate_made_in_python_stays_in_value_and_repr() -> None:
     assert token.value == "\ud800"
     assert repr(token) == "Token('S', '\\ud800')"
 
+    class Odd:
+        def __repr__(self) -> str:
+            return "\udc80"
+
+    odd = fpeg.Token(Odd(), "x")  # type: ignore[arg-type] # a type no str, which Python allows
+    assert repr(odd) == "Token(\udc80, 'x')"
+
 
 def test_the_token_type_lives_when_python_drops_every_reference_to_it() -> None:
     result = subprocess.run(

@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicIsize, AtomicPtr, Ordering};
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
+use pyo3::intern;
 use pyo3::panic::PanicException;
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
@@ -317,12 +318,11 @@ unsafe extern "C" fn token_repr(obj: *mut ffi::PyObject) -> *mut ffi::PyObject {
     trap(|py| {
         // SAFETY: CPython calls tp_repr with a live token.
         let obj = unsafe { Bound::from_borrowed_ptr(py, obj) };
-        let repr = format!(
-            "Token({}, {})",
-            kind_name_of(&obj).repr()?,
-            plain(&obj)?.repr()?
-        );
-        Ok(PyString::new(py, &repr).into_ptr())
+        // Formatted in Python, which keeps a lone surrogate and raises MemoryError for a token
+        // too large to show, as a tree's repr does.
+        let parts = (kind_name_of(&obj).repr()?, plain(&obj)?.repr()?);
+        let repr = intern!(py, "Token({}, {})").call_method1(intern!(py, "format"), parts)?;
+        Ok(repr.into_ptr())
     })
 }
 
