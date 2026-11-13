@@ -274,6 +274,111 @@ impl Grammar {
         }
     }
 
+    /// The Python source of a starting transformer for the grammar: a method for every rule and
+    /// terminal, the parameters of a node's method named after its fields, with type hints from
+    /// how many items each field holds, and `strict=True`, so that a misspelled method fails.
+    #[pyo3(signature = (name = "Transformer"))]
+    fn transformer_template(&self, py: Python<'_>, name: &str) -> PyResult<String> {
+        let keywords: Vec<String> = py.import("keyword")?.getattr("kwlist")?.extract()?;
+        let is_identifier = |text: &str| -> PyResult<bool> {
+            PyString::new(py, text)
+                .call_method0("isidentifier")?
+                .extract()
+        };
+        let core = &self.core;
+        let kinds = core.parser.kinds();
+        let mut out = format!(
+            "from typing import Any\n\nimport fpeg\n\n\nclass {name}(fpeg.Transformer, strict=True):\n    \"\"\"Values for the nodes and tokens of the grammar.\"\"\"\n"
+        );
+        let mut seen = std::collections::HashSet::new();
+        for (id, kind) in kinds.iter().enumerate() {
+            let kind_name = kind.name.as_str();
+            // Rules `_name` make no node, and hidden terminals no visible token.
+            if kind_name.starts_with('_') || !is_identifier(kind_name)? || !seen.insert(kind_name) {
+                continue;
+            }
+            out.push('\n');
+            if keywords.iter().any(|k| k == kind_name) || kind_name == "transform" {
+                out.push_str(&format!(
+                    "    # {kind_name} cannot be a method of the class: Python reserves the name.\n"
+                ));
+                continue;
+            }
+            let mut builders: Vec<String> = (kinds.iter())
+                .filter(|k| k.name == kind_name)
+                .filter_map(|k| k.builder.as_ref().map(|builder| format!("=> {builder}")))
+                .collect();
+            builders.dedup();
+            // A summary line, then a line for each field and for a builder the method replaces.
+            let mut lines: Vec<String> = Vec::new();
+            let fields: Vec<(String, FieldCount)> = (core.name_fields[id].iter())
+                .map(|&(field, count)| {
+                    let field_name = core.field_names[usize::from(field.0)].bind(py).to_string();
+                    (field_name, count)
+                })
+                .collect();
+            let fields_fit = fields.iter().all(|(field, _)| !keywords.contains(field));
+            let signature = if kind.token {
+                lines.push(format!("Return the value of a token {kind_name}."));
+                "self, token: fpeg.Token".to_owned()
+            } else if fields.is_empty() || !fields_fit {
+                lines.push(format!(
+                    "Return the value of a node {kind_name} from its children."
+                ));
+                "self, *children: Any".to_owned()
+            } else {
+                lines.push(format!("Return the value of a node {kind_name}."));
+                lines.push(String::new());
+                let mut parameters = vec!["self".to_owned()];
+                for (field, count) in &fields {
+                    let (hint, held) = match count {
+                        FieldCount::One => ("Any", "one item or None"),
+                        FieldCount::Many => ("list[Any]", "a list of items"),
+                    };
+                    parameters.push(format!("{field}: {hint}"));
+                    lines.push(format!("{field} holds {held}."));
+                }
+                parameters.join(", ")
+            };
+            if !builders.is_empty() {
+                if lines.len() == 1 {
+                    lines.push(String::new());
+                }
+                let (what, verb) = if builders.len() == 1 {
+                    ("builder", "applies")
+                } else {
+                    ("builders", "apply")
+                };
+                lines.push(format!(
+                    "Without this method the grammar's {what} {} {verb}.",
+                    builders.join(", ")
+                ));
+            }
+            let doc = if lines.len() == 1 {
+                format!("        \"\"\"{}\"\"\"\n", lines[0])
+            } else {
+                let body: Vec<String> = (lines.iter().skip(1))
+                    .map(|line| {
+                        if line.is_empty() {
+                            String::new()
+                        } else {
+                            format!("        {line}")
+                        }
+                    })
+                    .collect();
+                format!(
+                    "        \"\"\"{}\n{}\n        \"\"\"\n",
+                    lines[0],
+                    body.join("\n")
+                )
+            };
+            out.push_str(&format!(
+                "    def {kind_name}({signature}) -> Any:\n{doc}        ...\n"
+            ));
+        }
+        Ok(out)
+    }
+
     fn __repr__(&self) -> String {
         format!("<fpeg.Grammar with {} kinds>", self.core.kind_names.len())
     }

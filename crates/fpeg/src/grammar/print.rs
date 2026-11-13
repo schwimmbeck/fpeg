@@ -367,6 +367,13 @@ pub(crate) fn builder_text(builder: &ValueBuilder) -> String {
     BuilderText(builder).to_string()
 }
 
+/// A builder as written after `=>`.
+impl Display for ValueBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        BuilderText(self).fmt(f)
+    }
+}
+
 struct BuilderText<'a>(&'a ValueBuilder);
 
 impl Display for BuilderText<'_> {

@@ -166,6 +166,14 @@ except ValueError as error:
     assert error.__notes__ == ["fpeg: in Failing.pair, for the node pair at line 1, column 1"]
 ```
 
+`grammar.transformer_template(name)` writes a starting transformer for a grammar: a method for every rule and terminal, the parameters of a node's method named after its fields with type hints from how many items each holds, the builders a method replaces, and `strict=True`.
+
+```python
+template = grammar.transformer_template("Pairs")
+assert "    def pair(self, key: Any, value: Any) -> Any:" in template
+assert "        key holds one item or None." in template
+```
+
 `fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children. A tree built in Python transforms too, by its `data`, without fields.
 
 ```{eval-rst}

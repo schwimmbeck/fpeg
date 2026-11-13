@@ -308,6 +308,18 @@ def test_a_method_may_transform_a_subtree_itself() -> None:
     assert Nested().transform(parse("f(a, b)")) == [("f", 3)]
 
 
+def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
+    source = CALLS.transformer_template("Calls")
+    assert "    def call(self, name: Any, args: list[Any], kw: Any) -> Any:" in source
+    assert "        args holds a list of items." in source
+    assert "    def NUMBER(self, token: fpeg.Token) -> Any:" in source
+    namespace: dict[str, Any] = {}
+    exec(compile(source, "<template>", "exec"), namespace)
+    assert namespace["Calls"]().transform(parse("f(a, [1]) ! k")) is None
+    keyword = fpeg.Grammar('start: if\nif: "x"').transformer_template()
+    assert "    # if cannot be a method of the class: Python reserves the name." in keyword
+
+
 def test_deep_trees_transform_without_recursion() -> None:
     deep = fpeg.Grammar('start: "(" start? ")"')
     tree = deep.parse("(" * 1500 + ")" * 1500, max_depth=4000)
