@@ -305,6 +305,7 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 - On a terminal a builder applies to every token of it, so the terminal's alternatives give one builder. A token has no children and no fields, so `list`, `tuple`, `dict`, `*` and fields do not fit there ([E309](diagnostics/E309.md)).
 - A field a builder names must be one its alternative can hold, written in it or given by a rule it calls that makes no node of its own ([E207](diagnostics/E207.md)).
 - The built-in builders take no arguments, a keyword is given once, and positional arguments come before keywords ([E310](diagnostics/E310.md)).
+- Every function the builders call is given with the grammar when it is loaded ([E208](diagnostics/E208.md)).
 
 ## Modules
 

@@ -196,6 +196,32 @@ value = fpeg.Transformer().transform(json.parse('{"a": [1.5, true, null, "\\u00e
 assert value == {"a": [1.5, True, None, "\u00e9"]}
 ```
 
+A builder may call a function of your own, given with the grammar in `functions`. Every function the builders call must be given, which loading the grammar checks ([E208](diagnostics/E208.md)).
+
+```python
+from dataclasses import dataclass
+
+
+@dataclass
+class Assign:
+    name: str
+    value: int
+
+
+assignments = fpeg.Grammar(
+    r"""
+start: (assign ** ";") => list
+assign: name=NAME "=" value=NUMBER => Assign(name, value)
+NAME: [a-z]+ => text
+NUMBER: [0-9]+ => int
+%ignore " "+
+""",
+    functions={"Assign": Assign},
+)
+result = fpeg.Transformer().transform(assignments.parse("x = 1; y = 2"))
+assert result == [Assign("x", 1), Assign("y", 2)]
+```
+
 ## Errors
 
 A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.

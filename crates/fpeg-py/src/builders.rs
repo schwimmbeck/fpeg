@@ -8,9 +8,11 @@
 //! anything else, so their values are Python's: Rust parses decimal floats correctly rounded, as
 //! CPython does. `unquote` decodes JSON's escapes as `json.loads` does, lone surrogates included.
 
-use fpeg::{Constant, FieldId, ValueBuilder};
+use std::collections::HashMap;
+
+use fpeg::{BuilderValue, Constant, FieldCount, FieldId, ValueBuilder};
 use pyo3::PyTypeInfo;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
@@ -18,7 +20,8 @@ use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
 /// Digits an `i64` holds whatever they are, so that a number this long parses without overflow.
 const I64_SAFE_DIGITS: usize = 18;
 
-/// A built-in builder or a constant, resolved for the binding.
+/// A builder resolved for the binding: built-ins by what they do, functions as the objects
+/// given with the grammar, fields by id.
 pub enum Builder {
     Int,
     Float,
@@ -28,6 +31,28 @@ pub enum Builder {
     Tuple,
     Dict,
     Constant(Py<PyAny>),
+    /// A function used bare: called with a token's text or a node's list of children.
+    Bare {
+        name: String,
+        function: Py<PyAny>,
+    },
+    /// A function called with arguments.
+    Call {
+        name: String,
+        function: Py<PyAny>,
+        args: Vec<Arg>,
+    },
+}
+
+pub struct Arg {
+    keyword: Option<Py<PyString>>,
+    value: ArgValue,
+}
+
+enum ArgValue {
+    Field(FieldId, FieldCount),
+    Constant(Py<PyAny>),
+    Children,
 }
 
 impl Builder {
@@ -42,7 +67,19 @@ impl Builder {
             Builder::Tuple => "tuple",
             Builder::Dict => "dict",
             Builder::Constant(_) => "constant",
+            Builder::Bare { name, .. } | Builder::Call { name, .. } => name,
         }
+    }
+}
+
+/// The name of the function a builder calls, if it calls one.
+pub fn function_name(builder: &ValueBuilder) -> Option<&fpeg::Name> {
+    match builder {
+        ValueBuilder::Name(name) if !fpeg::BUILT_IN_BUILDERS.contains(&name.text.as_str()) => {
+            Some(name)
+        }
+        ValueBuilder::Call { name, .. } => Some(name),
+        ValueBuilder::Name(_) | ValueBuilder::Constant(_) => None,
     }
 }
 
@@ -60,9 +97,20 @@ fn constant(py: Python<'_>, value: &Constant) -> PyResult<Py<PyAny>> {
     })
 }
 
-/// Resolve a builder. A name that is no built-in names a function, which the grammar cannot be
-/// given yet.
-pub fn resolve(py: Python<'_>, builder: &ValueBuilder) -> PyResult<Builder> {
+/// Resolve the builder of a kind whose fields are `fields`. The caller has checked that every
+/// function it calls is among `functions`.
+pub fn resolve(
+    py: Python<'_>,
+    builder: &ValueBuilder,
+    fields: &[(FieldId, FieldCount)],
+    field_ids: &HashMap<String, FieldId>,
+    functions: &HashMap<String, Py<PyAny>>,
+) -> PyResult<Builder> {
+    let function = |name: &fpeg::Name| {
+        (functions.get(&name.text))
+            .map(|function| function.clone_ref(py))
+            .ok_or_else(|| PyValueError::new_err(format!("no function {} was given", name.text)))
+    };
     Ok(match builder {
         ValueBuilder::Constant(value) => Builder::Constant(constant(py, value)?),
         ValueBuilder::Name(name) => match name.text.as_str() {
@@ -73,16 +121,39 @@ pub fn resolve(py: Python<'_>, builder: &ValueBuilder) -> PyResult<Builder> {
             "list" => Builder::List,
             "tuple" => Builder::Tuple,
             "dict" => Builder::Dict,
-            other => return Err(function_builder(other)),
+            _ => Builder::Bare {
+                name: name.text.clone(),
+                function: function(name)?,
+            },
         },
-        ValueBuilder::Call { name, .. } => return Err(function_builder(&name.text)),
+        ValueBuilder::Call { name, args } => {
+            let mut resolved = Vec::new();
+            for arg in args {
+                let keyword =
+                    (arg.key.as_ref()).map(|key| PyString::intern(py, &key.text).unbind());
+                let value = match &arg.value {
+                    BuilderValue::All => ArgValue::Children,
+                    BuilderValue::Constant(value) => ArgValue::Constant(constant(py, value)?),
+                    BuilderValue::Field(field) => {
+                        let id = field_ids.get(&field.text).copied();
+                        let known = id.and_then(|id| fields.iter().find(|&&(f, _)| f == id));
+                        match known {
+                            Some(&(id, count)) => ArgValue::Field(id, count),
+                            // The resolver checked the field, so only a field no node of the
+                            // kind can hold is missing, and it is always absent.
+                            None => ArgValue::Constant(py.None()),
+                        }
+                    }
+                };
+                resolved.push(Arg { keyword, value });
+            }
+            Builder::Call {
+                name: name.text.clone(),
+                function: function(name)?,
+                args: resolved,
+            }
+        }
     })
-}
-
-fn function_builder(name: &str) -> PyErr {
-    PyValueError::new_err(format!(
-        "the builder calls the function {name}, and no functions are given"
-    ))
 }
 
 /// An int of a text, as Python's `int` reads it, without Python for a plain decimal number.
@@ -211,6 +282,8 @@ pub fn token_value<'py>(
         Builder::Text => Ok(PyString::new(py, text).into_any()),
         Builder::Unquote => unquote(py, text),
         Builder::Constant(value) => Ok(value.bind(py).clone()),
+        Builder::Bare { function, .. } => function.bind(py).call1((text,)),
+        Builder::Call { function, args, .. } => call(py, function.bind(py), args, &[], &[]),
         // The resolver refuses these on terminals, which have no children.
         Builder::List => Ok(PyList::empty(py).into_any()),
         Builder::Tuple => Ok(PyTuple::empty(py).into_any()),
@@ -225,6 +298,7 @@ pub fn node_value<'py>(
     builder: &Builder,
     text: &str,
     children: &[(FieldId, Py<PyAny>)],
+    field_names: &[Py<PyString>],
 ) -> PyResult<Bound<'py, PyAny>> {
     let values = || children.iter().map(|(_, value)| value.clone_ref(py));
     match builder {
@@ -248,5 +322,59 @@ pub fn node_value<'py>(
             }
             Ok(dict.into_any())
         }
+        Builder::Bare { function, .. } => function.bind(py).call1((PyList::new(py, values())?,)),
+        Builder::Call { function, args, .. } => {
+            call(py, function.bind(py), args, children, field_names)
+        }
     }
+}
+
+/// Call a builder's function with its arguments: fields of the node by their count, constants,
+/// and the list of all children for `*`.
+fn call<'py>(
+    py: Python<'py>,
+    function: &Bound<'py, PyAny>,
+    args: &[Arg],
+    children: &[(FieldId, Py<PyAny>)],
+    field_names: &[Py<PyString>],
+) -> PyResult<Bound<'py, PyAny>> {
+    let positional = PyList::empty(py);
+    let keywords = PyDict::new(py);
+    for arg in args {
+        let value: Py<PyAny> = match &arg.value {
+            ArgValue::Constant(value) => value.clone_ref(py),
+            ArgValue::Children => {
+                let values = children.iter().map(|(_, value)| value.clone_ref(py));
+                PyList::new(py, values)?.into_any().unbind()
+            }
+            ArgValue::Field(field, count) => {
+                let mut items = (children.iter())
+                    .filter(|(f, _)| f == field)
+                    .map(|(_, value)| value.clone_ref(py));
+                match count {
+                    FieldCount::Many => PyList::new(py, items)?.into_any().unbind(),
+                    FieldCount::One => {
+                        let first = items.next();
+                        let more = items.count();
+                        if more > 0 {
+                            let name = field_names.get(usize::from(field.0));
+                            let message = format!(
+                                "the field {} holds one item, and its children gave {} values",
+                                name.map_or_else(String::new, |n| n.bind(py).to_string()),
+                                more + 1
+                            );
+                            return Err(PyTypeError::new_err(message));
+                        }
+                        first.unwrap_or_else(|| py.None())
+                    }
+                }
+            }
+        };
+        match &arg.keyword {
+            Some(keyword) => keywords.set_item(keyword.bind(py), value)?,
+            None => positional.append(value)?,
+        }
+    }
+    let keywords = (!keywords.is_empty()).then_some(keywords);
+    function.call(PyTuple::new(py, positional)?, keywords.as_ref())
 }

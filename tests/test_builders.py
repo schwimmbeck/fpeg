@@ -4,6 +4,7 @@
 import gc
 import random
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import fpeg
@@ -97,6 +98,47 @@ class Point:
     y: Any
     label: str
     rest: list[Any]
+
+
+def test_a_function_gets_fields_constants_keywords_and_all_children() -> None:
+    grammar = fpeg.Grammar(
+        r"""
+start: x=INT "," y=INT? tag=TAG* => Point(x, y, label="p", rest=*)
+INT: [0-9]+ => int
+TAG: "#" [a-z]+
+%ignore " "+
+""",
+        functions={"Point": Point},
+    )
+    point = values(grammar, "1, 2 #a #b")
+    assert point == Point(1, 2, "p", [1, 2, "#a", "#b"])
+    assert values(grammar, "1,").y is None
+
+
+def test_a_bare_function_gets_a_token_s_text_or_a_node_s_children() -> None:
+    grammar = fpeg.Grammar(
+        r"""
+start: (NUMBER ** ",") => frozenset
+NUMBER: [0-9]+ "." [0-9]+ => Decimal
+%ignore " "+
+""",
+        functions={"Decimal": Decimal, "frozenset": frozenset},
+    )
+    assert values(grammar, "1.10, 2.5") == frozenset({Decimal("1.10"), Decimal("2.5")})
+
+
+def test_functions_the_builders_call_must_be_given_and_callable() -> None:
+    text = 'start: "a" => Make\nother: "b" => Make(1)'
+    with pytest.raises(fpeg.GrammarError) as raised:
+        fpeg.Grammar(text)
+    assert [(d.code, d.line, d.column) for d in raised.value.diagnostics] == [
+        ("E208", 1, 15),
+        ("E208", 2, 15),
+    ]
+    not_callable: dict[str, Any] = {"Make": 3}
+    with pytest.raises(TypeError, match="Make given with the grammar is not callable"):
+        fpeg.Grammar(text, functions=not_callable)
+    assert isinstance(fpeg.Grammar(text, functions={"Make": dict}), fpeg.Grammar)
 
 
 def test_a_method_comes_before_a_builder_and_a_builder_before_default() -> None:

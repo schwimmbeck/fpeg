@@ -399,8 +399,9 @@ impl<'py, 'p> Scan<'py, 'p> {
                 values.push((field, self.object(child)?));
             }
             let (start, end) = node.span();
+            let names = &parsed.grammar.field_names;
             let text = parsed.text(start, end);
-            let result = builders::node_value(self.py, builder, text, &values)
+            let result = builders::node_value(self.py, builder, text, &values, names)
                 .map_err(|e| self.noted_builder(e, builder.name(), node))?;
             return self.push(index, node.field(), result);
         }

@@ -8,8 +8,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 
-use fpeg::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, FieldCount, FieldId, Limits, Parser};
-use pyo3::exceptions::{PyRuntimeError, PyUnicodeDecodeError, PyValueError};
+use fpeg::{
+    DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, DiagnosticCode, FieldCount, FieldId, Limits, Parser,
+};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyUnicodeDecodeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyString, PyType};
@@ -62,7 +64,11 @@ impl Drop for GrammarCore {
 }
 
 impl GrammarCore {
-    fn new(py: Python<'_>, parser: Parser) -> PyResult<GrammarCore> {
+    fn new(
+        py: Python<'_>,
+        parser: Parser,
+        functions: &HashMap<String, Py<PyAny>>,
+    ) -> PyResult<GrammarCore> {
         let kinds = parser.kinds();
         let kind_names = (kinds.iter())
             .map(|kind| PyString::intern(py, &kind.name).unbind())
@@ -95,7 +101,13 @@ impl GrammarCore {
         let mut resolved = Vec::new();
         for kind in kinds {
             resolved.push(match &kind.builder {
-                Some(builder) => Some(builders::resolve(py, builder)?),
+                Some(builder) => Some(builders::resolve(
+                    py,
+                    builder,
+                    &kind.fields,
+                    &field_ids,
+                    functions,
+                )?),
                 None => None,
             });
         }
@@ -121,12 +133,39 @@ pub struct Grammar {
 }
 
 impl Grammar {
-    fn compile(py: Python<'_>, text: &str, path: Option<&str>) -> PyResult<Grammar> {
+    fn compile(
+        py: Python<'_>,
+        text: &str,
+        path: Option<&str>,
+        functions: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Grammar> {
         let grammar = fpeg::Grammar::from_text(text)
             .map_err(|errors| grammar_error(py, text, path, &errors))?;
         let parser =
             Parser::new(&grammar).map_err(|errors| grammar_error(py, text, path, &errors))?;
-        let core = Arc::new(GrammarCore::new(py, parser)?);
+        let functions = given_functions(functions)?;
+        let mut missing: Vec<fpeg::GrammarError> = Vec::new();
+        for kind in parser.kinds() {
+            let name = kind.builder.as_ref().and_then(builders::function_name);
+            if let Some(name) = name.filter(|name| !functions.contains_key(&name.text)) {
+                let error = fpeg::GrammarError {
+                    code: DiagnosticCode::BuilderFunction,
+                    message: format!(
+                        "the builder calls {}, which is not among the functions given",
+                        name.text
+                    ),
+                    span: name.span,
+                };
+                if !missing.contains(&error) {
+                    missing.push(error);
+                }
+            }
+        }
+        if !missing.is_empty() {
+            missing.sort_by_key(|error| error.span.start);
+            return Err(grammar_error(py, text, path, &missing));
+        }
+        let core = Arc::new(GrammarCore::new(py, parser, &functions)?);
         let mut grammars = GRAMMARS.lock().unwrap_or_else(PoisonError::into_inner);
         grammars.insert(core.serial, Arc::downgrade(&core));
         drop(grammars);
@@ -134,17 +173,44 @@ impl Grammar {
     }
 }
 
+/// The functions given with a grammar, by name: a mapping of str to callables.
+fn given_functions(functions: Option<&Bound<'_, PyAny>>) -> PyResult<HashMap<String, Py<PyAny>>> {
+    let mut given = HashMap::new();
+    let Some(functions) = functions.filter(|f| !f.is_none()) else {
+        return Ok(given);
+    };
+    for item in functions.call_method0("items")?.try_iter()? {
+        let (name, function): (String, Bound<'_, PyAny>) = item?.extract()?;
+        if !function.is_callable() {
+            let message = format!("the function {name} given with the grammar is not callable");
+            return Err(PyTypeError::new_err(message));
+        }
+        given.insert(name, function.unbind());
+    }
+    Ok(given)
+}
+
 #[pymethods]
 impl Grammar {
     /// Compile a grammar given as text, or raise `GrammarError` with its problems.
+    ///
+    /// `functions` maps the names of the functions that the grammar's value builders call
+    /// to the callables, every one of them given.
     #[new]
-    fn new(py: Python<'_>, text: &str) -> PyResult<Grammar> {
-        Grammar::compile(py, text, None)
+    #[pyo3(signature = (text, *, functions = None))]
+    fn new(py: Python<'_>, text: &str, functions: Option<&Bound<'_, PyAny>>) -> PyResult<Grammar> {
+        Grammar::compile(py, text, None, functions)
     }
 
     /// Read a grammar file, UTF-8 with or without a byte order mark, and compile it.
     #[classmethod]
-    fn open(_cls: &Bound<'_, PyType>, py: Python<'_>, path: PathBuf) -> PyResult<Grammar> {
+    #[pyo3(signature = (path, *, functions = None))]
+    fn open(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: PathBuf,
+        functions: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Grammar> {
         let bytes = std::fs::read(&path)?;
         let text = match std::str::from_utf8(&bytes) {
             Ok(text) => text,
@@ -155,7 +221,7 @@ impl Grammar {
             }
         };
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        Grammar::compile(py, text, Some(&path.display().to_string()))
+        Grammar::compile(py, text, Some(&path.display().to_string()), functions)
     }
 
     /// Parse the whole text from the rule `start` and return its one visible item at the top:

@@ -36,6 +36,9 @@ pub enum DiagnosticCode {
     Arguments,
     /// E207: a field that a value builder names and its alternative cannot hold.
     BuilderField,
+    /// E208: a function that a value builder calls and the functions given with the grammar
+    /// lack. The Python binding reports it, since only it is given functions.
+    BuilderFunction,
     /// E301: a terminal or the skip expression that uses a syntactic rule.
     RuleInTerminal,
     /// E302: a form that does not fit the kind of its rule.
@@ -68,7 +71,7 @@ pub enum DiagnosticCode {
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 25] = [
+    pub const ALL: [DiagnosticCode; 26] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -80,6 +83,7 @@ impl DiagnosticCode {
         DiagnosticCode::Name,
         DiagnosticCode::Arguments,
         DiagnosticCode::BuilderField,
+        DiagnosticCode::BuilderFunction,
         DiagnosticCode::RuleInTerminal,
         DiagnosticCode::RuleForm,
         DiagnosticCode::Precedence,
@@ -110,6 +114,7 @@ impl DiagnosticCode {
             DiagnosticCode::Name => "E205",
             DiagnosticCode::Arguments => "E206",
             DiagnosticCode::BuilderField => "E207",
+            DiagnosticCode::BuilderFunction => "E208",
             DiagnosticCode::RuleInTerminal => "E301",
             DiagnosticCode::RuleForm => "E302",
             DiagnosticCode::Precedence => "E303",

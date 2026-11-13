@@ -3,7 +3,7 @@
 
 """Type stubs for the native module."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from os import PathLike
 from typing import Any, final
 
@@ -52,9 +52,16 @@ class LimitError(ParseError):
 class Grammar:
     """A grammar compiled for fpeg's parsing machine."""
 
-    def __init__(self, text: str) -> None: ...
+    def __init__(
+        self, text: str, *, functions: Mapping[str, Callable[..., Any]] | None = None
+    ) -> None: ...
     @classmethod
-    def open(cls, path: str | PathLike[str]) -> Grammar: ...
+    def open(
+        cls,
+        path: str | PathLike[str],
+        *,
+        functions: Mapping[str, Callable[..., Any]] | None = None,
+    ) -> Grammar: ...
     def parse(
         self,
         text: str,
