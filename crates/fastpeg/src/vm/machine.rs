@@ -4,9 +4,10 @@
 //! The parsing machine: runs a program over an input and lays out the tree it built.
 //!
 //! The machine keeps one stack of entries on the heap, so a deep grammar never touches the
-//! caller's stack. Items of nodes being built wait on a stack of their own, which a failure
-//! truncates. A closed node moves its items to the arena, which a failure leaves alone: what it
-//! no longer reaches is garbage until the parse ends, bounded by the step limit.
+//! caller's stack. Items of nodes being built wait on a stack of their own, and a closed node
+//! moves its items to the arena. The entry that catches a failure truncates both to where they
+//! stood when it was pushed, since before memoization nothing else refers to what was made
+//! since, so a parse holds no more nodes than its alternatives in progress make.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -47,32 +48,36 @@ struct Node {
     count: u32,
 }
 
-/// An entry of the machine's stack. `items` is the height of the item stack when the entry was
-/// pushed. See [`Inst`] for what pushes and pops each.
+/// What an entry that catches a failure gives back: the position, the height of the item
+/// stack and the length of the arena when it was pushed.
+#[derive(Clone, Copy, Debug)]
+struct Saved {
+    pos: u32,
+    items: u32,
+    nodes: u32,
+}
+
+/// An entry of the machine's stack. See [`Inst`] for what pushes and pops each.
 #[derive(Clone, Copy, Debug)]
 enum Entry {
     Choice {
         alt: u32,
-        pos: u32,
-        items: u32,
+        saved: Saved,
     },
     Label {
         alt: u32,
-        pos: u32,
-        items: u32,
+        saved: Saved,
     },
     Predicate {
         alt: u32,
-        pos: u32,
-        items: u32,
+        saved: Saved,
         /// The quiet count before the lookahead started.
         quiet: u32,
     },
     Repetition {
         end: u32,
         /// Where the current step started.
-        pos: u32,
-        items: u32,
+        saved: Saved,
         /// Steps still needed to reach the minimum.
         need: u32,
         /// Steps still allowed, `u32::MAX` without a maximum.
@@ -181,6 +186,12 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.farthest
     }
 
+    /// How many nodes the arena holds.
+    #[cfg(test)]
+    pub fn arena_len(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// In diagnose mode, what failed at the position, as an expected set shows it, sorted.
     pub fn expected(&self) -> Vec<String> {
         let Some((_, expected)) = &self.diagnose else {
@@ -263,19 +274,19 @@ impl<'p, 'i> Machine<'p, 'i> {
                     let len = self.rest().chars().next().map(char::len_utf8);
                     self.advance(len)?;
                 }
-                Inst::Choice(alt) => {
-                    self.push(|pos, items| Entry::Choice { alt, pos, items });
-                }
-                Inst::LabelChoice(alt) => {
-                    self.push(|pos, items| Entry::Label { alt, pos, items });
-                }
+                Inst::Choice(alt) => self.push(Entry::Choice {
+                    alt,
+                    saved: self.saved(),
+                }),
+                Inst::LabelChoice(alt) => self.push(Entry::Label {
+                    alt,
+                    saved: self.saved(),
+                }),
                 Inst::PredChoice(alt) => {
-                    let quiet = self.quiet;
-                    self.push(|pos, items| Entry::Predicate {
+                    self.push(Entry::Predicate {
                         alt,
-                        pos,
-                        items,
-                        quiet,
+                        saved: self.saved(),
+                        quiet: self.quiet,
                     });
                     self.quiet += 1;
                 }
@@ -284,9 +295,12 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.pc = target;
                 }
                 Inst::LoopCommit(target) => match self.stack.last_mut() {
-                    Some(Entry::Choice { pos, items, .. }) if self.pos > *pos => {
-                        *pos = self.pos;
-                        *items = self.items.len() as u32;
+                    Some(Entry::Choice { saved, .. }) if self.pos > saved.pos => {
+                        *saved = Saved {
+                            pos: self.pos,
+                            items: self.items.len() as u32,
+                            nodes: self.nodes.len() as u32,
+                        };
                         self.pc = target;
                     }
                     _ => {
@@ -298,22 +312,17 @@ impl<'p, 'i> Machine<'p, 'i> {
                     let (need, left) = (self.program.bounds.get(bounds as usize))
                         .copied()
                         .unwrap_or((0, 1));
-                    self.push(|pos, items| Entry::Repetition {
+                    self.push(Entry::Repetition {
                         end,
-                        pos,
-                        items,
+                        saved: self.saved(),
                         need,
                         left,
                     });
                 }
                 Inst::RepNext(target) => match self.stack.last_mut() {
                     Some(Entry::Repetition {
-                        pos,
-                        items,
-                        need,
-                        left,
-                        ..
-                    }) if self.pos > *pos => {
+                        saved, need, left, ..
+                    }) if self.pos > saved.pos => {
                         *need = need.saturating_sub(1);
                         if *left != u32::MAX {
                             *left -= 1;
@@ -322,8 +331,11 @@ impl<'p, 'i> Machine<'p, 'i> {
                             self.stack.pop();
                             self.pc += 1;
                         } else {
-                            *pos = self.pos;
-                            *items = self.items.len() as u32;
+                            *saved = Saved {
+                                pos: self.pos,
+                                items: self.items.len() as u32,
+                                nodes: self.nodes.len() as u32,
+                            };
                             self.pc = target;
                         }
                     }
@@ -334,12 +346,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     }
                 },
                 Inst::BackCommit(target) => {
-                    if let Some(Entry::Predicate {
-                        pos, items, quiet, ..
-                    }) = self.stack.pop()
-                    {
-                        self.pos = pos;
-                        self.items.truncate(items as usize);
+                    if let Some(Entry::Predicate { saved, quiet, .. }) = self.stack.pop() {
+                        self.restore(saved);
                         self.quiet = quiet;
                     }
                     self.pc = target;
@@ -414,7 +422,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                     }
                     self.pc += 1;
                 }
-                Inst::Open => self.push(|pos, items| Entry::Open { pos, items }),
+                Inst::Open => self.push(Entry::Open {
+                    pos: self.pos,
+                    items: self.items.len() as u32,
+                }),
                 Inst::CloseNode(kind) => {
                     if let Some(Entry::Open { pos, items }) = self.stack.pop() {
                         self.close_node(kind, pos, items as usize)?;
@@ -495,10 +506,29 @@ impl<'p, 'i> Machine<'p, 'i> {
             .map_or(&[], |literal| literal)
     }
 
-    /// Push an entry made from the position and the height of the item stack, and go on.
-    fn push(&mut self, entry: impl FnOnce(u32, u32) -> Entry) {
-        self.stack.push(entry(self.pos, self.items.len() as u32));
+    /// Push an entry and go on.
+    fn push(&mut self, entry: Entry) {
+        self.stack.push(entry);
         self.pc += 1;
+    }
+
+    /// What an entry pushed now gives back when it catches a failure.
+    fn saved(&self) -> Saved {
+        Saved {
+            pos: self.pos,
+            items: self.items.len() as u32,
+            nodes: self.nodes.len() as u32,
+        }
+    }
+
+    /// Go back to what an entry saved. The nodes made since lie at the end of the arena, and
+    /// their children at the end of the children, so both are cut back.
+    fn restore(&mut self, saved: Saved) {
+        self.pos = saved.pos;
+        self.items.truncate(saved.items as usize);
+        self.nodes.truncate(saved.nodes as usize);
+        let children = self.nodes.last().map_or(0, |node| node.first + node.count);
+        self.children.truncate(children as usize);
     }
 
     /// Unwind the stack to the newest entry that catches a failure and resume there, or stop
@@ -506,23 +536,17 @@ impl<'p, 'i> Machine<'p, 'i> {
     fn fail(&mut self) -> Result<(), Stop> {
         while let Some(entry) = self.stack.pop() {
             let caught = match entry {
-                Entry::Choice { alt, pos, items } | Entry::Label { alt, pos, items } => {
-                    Some((alt, pos, items, None))
+                Entry::Choice { alt, saved } | Entry::Label { alt, saved } => {
+                    Some((alt, saved, None))
                 }
-                Entry::Predicate {
-                    alt,
-                    pos,
-                    items,
-                    quiet,
-                } => Some((alt, pos, items, Some(quiet))),
+                Entry::Predicate { alt, saved, quiet } => Some((alt, saved, Some(quiet))),
                 // A repetition that made enough steps succeeds with them.
                 Entry::Repetition {
                     end,
-                    pos,
-                    items,
+                    saved,
                     need: 0,
                     ..
-                } => Some((end, pos, items, None)),
+                } => Some((end, saved, None)),
                 Entry::Repetition { .. } | Entry::Sub { .. } | Entry::Open { .. } => None,
                 Entry::Mark { .. } => None,
                 Entry::Call { .. } => {
@@ -534,10 +558,9 @@ impl<'p, 'i> Machine<'p, 'i> {
                     None
                 }
             };
-            if let Some((alt, pos, items, quiet)) = caught {
+            if let Some((alt, saved, quiet)) = caught {
                 self.end_failed_token(Some(self.stack.len()));
-                self.pos = pos;
-                self.items.truncate(items as usize);
+                self.restore(saved);
                 if let Some(quiet) = quiet {
                     self.quiet = quiet;
                 }
@@ -569,20 +592,14 @@ impl<'p, 'i> Machine<'p, 'i> {
         let position = self.pos;
         while let Some(entry) = self.stack.pop() {
             match entry {
-                Entry::Predicate {
-                    alt,
-                    pos,
-                    items,
-                    quiet,
-                } => {
+                Entry::Predicate { alt, saved, quiet } => {
                     if self
                         .token
                         .is_some_and(|token| (self.stack.len() as u32) < token.height)
                     {
                         self.token = None;
                     }
-                    self.pos = pos;
-                    self.items.truncate(items as usize);
+                    self.restore(saved);
                     self.quiet = quiet;
                     self.pc = alt;
                     return Ok(());

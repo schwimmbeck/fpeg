@@ -5,11 +5,13 @@
 //! returns is compared with the reference interpreter in the crate's differential tests.
 
 use super::Parser;
+use super::machine::Machine;
 use super::program::{Class, Inst, Program};
 use super::verify::verify;
 use crate::builder::{GrammarBuilder, lit, r, sep_many};
 use crate::grammar::{ClassItem, Grammar, MAX_EXPRESSION_DEPTH, Property};
 use crate::ir::CharSet;
+use crate::parse::Limits;
 
 fn parser(text: &str) -> Parser {
     let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
@@ -22,6 +24,23 @@ fn errors(text: &str) -> Vec<String> {
         Ok(_) => Vec::new(),
         Err(errors) => errors.into_iter().map(|e| e.message).collect(),
     }
+}
+
+#[test]
+fn a_failed_alternative_gives_back_the_nodes_it_made() {
+    // The first alternative builds the whole nested tree and then fails, at every level.
+    let parser = parser("start: s\ns: \"(\" s \")\" \"x\" | \"(\" s \")\" | \"a\"\n");
+    let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
+    let mut machine = Machine::new(&parser.program, &input, Limits::default(), None);
+    assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
+    let tree = machine.tree();
+    // Keeping them would hold the nodes of every one of the 2^12 failed attempts.
+    assert!(
+        machine.arena_len() <= tree.len(),
+        "{} nodes in the arena for a tree of {}",
+        machine.arena_len(),
+        tree.len()
+    );
 }
 
 #[test]
