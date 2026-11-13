@@ -10,7 +10,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | `bench_json.py` | JSON: `json.loads`, Lark and pe on a generated 2.5 MB file |
 | `bench_python.py` | Python source: CPython, tree-sitter, LibCST and Lark on one real source file |
 | `bench_ord.py` | the first real application: its Lark pipeline from source text to a Python `ast` |
-| `rust/` | JSON in Rust with criterion: pest generated, pest_vm and serde_json |
+| `rust/` | JSON in Rust with criterion: fastpeg's parsing machine, pest generated, pest_vm and serde_json |
 | `results/<date>-<platform>/` | recorded runs, committed as data |
 
 `corpora/` and `.cache/` are local and ignored by git.

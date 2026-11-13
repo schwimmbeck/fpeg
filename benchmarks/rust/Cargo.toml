@@ -4,7 +4,7 @@
 # Kept out of the workspace, so the library's checks and lock file carry no baseline parsers.
 [package]
 name = "fastpeg-benchmarks"
-description = "Rust baselines for the fastpeg benchmark suite"
+description = "fastpeg and its Rust baselines for the benchmark suite"
 publish = false
 version = "0.0.0"
 edition = "2024"
@@ -17,6 +17,7 @@ authors = ["Dominik Schwimmbeck"]
 bench = false
 
 [dependencies]
+fastpeg = { path = "../../crates/fastpeg" }
 pest = "2.9.6"
 pest_derive = "2.9.6"
 pest_meta = "2.9.6"

@@ -73,7 +73,7 @@ The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for ligh
 
 ## Benchmarks
 
-The benchmark suites measure other parsers today, and fastpeg as soon as it parses. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
+The Rust suite measures fastpeg's parsing machine beside other Rust parsers, and the Python suites measure other parsers until the Python binding exists. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
 
 ```sh
 uv run --group bench python benchmarks/run.py
