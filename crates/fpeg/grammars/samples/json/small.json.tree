@@ -1,0 +1,1 @@
+(object ~"{" (member key=STRING"\"name\"" ~":" value=STRING"\"fpeg\"") ~"," (member key=STRING"\"tags\"" ~":" value=(array ~"[" STRING"\"peg\"" ~"," STRING"\"rust\"" ~"]")) ~"," (member key=STRING"\"stars\"" ~":" value=NUMBER"0") ~"," (member key=STRING"\"ok\"" ~":" value=(value ~"true")) ~"," (member key=STRING"\"none\"" ~":" value=(value ~"null")) ~"}")

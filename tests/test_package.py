@@ -3,8 +3,8 @@
 
 from importlib.metadata import version
 
-import fastpeg
+import fpeg
 
 
 def test_native_module_reports_the_installed_package_version() -> None:
-    assert fastpeg.__version__ == version("fastpeg")
+    assert fpeg.__version__ == version("fpeg")

@@ -16,7 +16,7 @@ WORKER_PROCESSES = 6
 VALUES_PER_PROCESS = 3
 
 # The key under which a benchmark names its input, so the summary can report throughput.
-INPUT_METADATA_KEY = "fastpeg_input"
+INPUT_METADATA_KEY = "fpeg_input"
 
 
 def runner() -> pyperf.Runner:

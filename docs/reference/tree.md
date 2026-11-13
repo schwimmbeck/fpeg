@@ -12,7 +12,7 @@ NUMBER: [0-9]+
 %ignore " "+
 ```
 
-For the input `x = 1, y = 2` this grammar gives the tree that `fastpeg parse` prints as
+For the input `x = 1, y = 2` this grammar gives the tree that `fpeg parse` prints as
 
 ```text
 start

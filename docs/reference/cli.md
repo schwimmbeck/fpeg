@@ -1,11 +1,11 @@
 # Command line
 
-The `fastpeg` command checks grammars and parses inputs with them. It reads grammars and inputs as UTF-8 text.
+The `fpeg` command checks grammars and parses inputs with them. It reads grammars and inputs as UTF-8 text.
 
-## fastpeg check
+## fpeg check
 
 ```text
-fastpeg check GRAMMAR...
+fpeg check GRAMMAR...
 ```
 
 Reads, resolves and compiles each grammar file and prints its problems, one per line:
@@ -16,10 +16,10 @@ grammar.fpeg:1:8: error[E201]: unknown rule item
 
 A line holds the file, the line and the column of the problem, both counted from 1 and the column in code points, then the [diagnostic code](diagnostics/index.md) and the message. A grammar without problems prints nothing. The exit status is 0 when no grammar has a problem and 1 otherwise, so a build can run the command as a check.
 
-## fastpeg parse
+## fpeg parse
 
 ```text
-fastpeg parse [--start RULE] [--spans] [--json] GRAMMAR [INPUT]
+fpeg parse [--start RULE] [--spans] [--json] GRAMMAR [INPUT]
 ```
 
 Parses the file INPUT, or standard input when INPUT is missing or `-`, from the rule `start` or the rule `--start` names, and prints its [tree](tree.md). With this grammar in `sums.fpeg`
@@ -53,4 +53,4 @@ An input that does not parse prints where the parse failed and what the grammar 
 input.txt:1:4: error: expected N
 ```
 
-The exit status is 0 when the input parses, 1 when the grammar has problems, which `parse` prints as `check` does, or the input does not parse, and 2 for a command line `fastpeg` cannot understand.
+The exit status is 0 when the input parses, 1 when the grammar has problems, which `parse` prints as `check` does, or the input does not parse, and 2 for a command line `fpeg` cannot understand.

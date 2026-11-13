@@ -1,18 +1,18 @@
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/_static/logo-dark.svg">
-    <img alt="fastpeg" src="docs/_static/logo-light.svg" width="300">
+    <img alt="fpeg" src="docs/_static/logo-light.svg" width="300">
   </picture>
 </h1>
 
-[![CI](https://github.com/schwimmbeck/fastpeg/actions/workflows/ci.yml/badge.svg)](https://github.com/schwimmbeck/fastpeg/actions/workflows/ci.yml)
+[![CI](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml/badge.svg)](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml)
 [![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue)](#license)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-blue)](Cargo.toml)
 
 A general-purpose PEG parsing library with a native engine and a `Transformer` that turns parse trees into your own objects.
 
-> fastpeg is at an early stage and cannot be used yet. This page describes what is being built.
+> fpeg is at an early stage and cannot be used yet. This page describes what is being built.
 
 ## The idea
 
@@ -24,9 +24,9 @@ A sketch of where this is going. The grammar syntax and the API will still chang
 
 ```python
 import operator
-import fastpeg
+import fpeg
 
-grammar = fastpeg.Grammar(r"""
+grammar = fpeg.Grammar(r"""
     ?start: expr
 
     expr: %precedence {
@@ -42,7 +42,7 @@ grammar = fastpeg.Grammar(r"""
 OPERATORS = {"+": operator.add, "-": operator.sub, "*": operator.mul, "/": operator.truediv}
 
 
-class Calculate(fastpeg.Transformer):
+class Calculate(fpeg.Transformer):
     def binary(self, left, op, right):
         return OPERATORS[op](left, right)
 
@@ -73,4 +73,4 @@ Early development. The written specification of the grammar language is done, wi
 
 Licensed under either of the [MIT licence](LICENSE-MIT) or the [Apache License, Version 2.0](LICENSE-APACHE), at your option.
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in fastpeg by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in fpeg by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

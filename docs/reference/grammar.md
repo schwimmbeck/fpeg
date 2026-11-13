@@ -1,6 +1,6 @@
 # Grammar language
 
-This page is the normative reference for the syntax of fastpeg grammars, draft 0. What a grammar means is defined on the [semantics](semantics.md) page. Where this page and the code disagree, one of them has a bug.
+This page is the normative reference for the syntax of fpeg grammars, draft 0. What a grammar means is defined on the [semantics](semantics.md) page. Where this page and the code disagree, one of them has a bug.
 
 Some constructs are part of the language from the start but take effect in a later milestone. Their status is marked where they are described.
 

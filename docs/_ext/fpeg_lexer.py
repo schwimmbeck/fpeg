@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""A Pygments lexer for fastpeg grammars, so that grammar blocks in the docs are highlighted."""
+"""A Pygments lexer for fpeg grammars, so that grammar blocks in the docs are highlighted."""
 
 from typing import Any, ClassVar
 
@@ -22,7 +22,7 @@ from sphinx.application import Sphinx
 class FpegLexer(RegexLexer):
     """Highlight rules, terminals, literals, classes, directives and operators."""
 
-    name = "fastpeg"
+    name = "fpeg"
     aliases = ("fpeg",)
     filenames = ("*.fpeg",)
 

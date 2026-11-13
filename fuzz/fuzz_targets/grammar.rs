@@ -6,7 +6,7 @@
 
 #![no_main]
 
-use fastpeg::{Grammar, Limits, Parser};
+use fpeg::{Grammar, Limits, Parser};
 use libfuzzer_sys::fuzz_target;
 
 /// Steps a parse may take, so that a grammar with exponential time ends quickly.

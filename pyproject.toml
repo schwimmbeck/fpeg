@@ -6,7 +6,7 @@ requires = ["maturin>=1.16,<2"]
 build-backend = "maturin"
 
 [project]
-name = "fastpeg"
+name = "fpeg"
 description = "A PEG parsing library with a native engine and a Transformer for parse trees"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
@@ -26,7 +26,7 @@ classifiers = [
 dynamic = ["version"]
 
 [project.urls]
-Repository = "https://github.com/schwimmbeck/fastpeg"
+Repository = "https://github.com/schwimmbeck/fpeg"
 
 [dependency-groups]
 dev = [
@@ -47,9 +47,9 @@ bench = [
 ]
 
 [tool.maturin]
-manifest-path = "crates/fastpeg-py/Cargo.toml"
+manifest-path = "crates/fpeg-py/Cargo.toml"
 python-source = "python"
-module-name = "fastpeg._fastpeg"
+module-name = "fpeg._fpeg"
 
 [tool.uv]
 # One uv range for development and CI, where setup-uv installs the highest version in it, so
@@ -69,7 +69,7 @@ docs = { requires-python = ">=3.13" }
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["research", "crates/fastpeg/grammars/samples"]
+extend-exclude = ["research", "crates/fpeg/grammars/samples"]
 
 [tool.ruff.lint]
 select = ["B", "D", "E", "F", "I", "RUF", "SIM", "UP", "W"]

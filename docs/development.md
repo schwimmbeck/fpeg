@@ -1,6 +1,6 @@
 # Development
 
-How to build fastpeg from a checkout and run the checks. The working rules for contributors, people and agents alike, are in `AGENTS.md` in the repository root.
+How to build fpeg from a checkout and run the checks. The working rules for contributors, people and agents alike, are in `AGENTS.md` in the repository root.
 
 ## Requirements
 
@@ -11,8 +11,8 @@ How to build fastpeg from a checkout and run the checks. The working rules for c
 ## Setup
 
 ```sh
-git clone https://github.com/schwimmbeck/fastpeg
-cd fastpeg
+git clone https://github.com/schwimmbeck/fpeg
+cd fpeg
 uv sync
 ```
 
@@ -61,7 +61,7 @@ The fuzz targets in `fuzz/` run under [cargo-fuzz](https://github.com/rust-fuzz/
 ```sh
 cargo install cargo-fuzz
 cd fuzz
-cargo +nightly fuzz run differential corpus/differential ../crates/fastpeg/grammars -- -dict=fpeg.dict -max_total_time=600
+cargo +nightly fuzz run differential corpus/differential ../crates/fpeg/grammars -- -dict=fpeg.dict -max_total_time=600
 ```
 
 The corpus folders come before `--` and libFuzzer's options after it. The grammars of the project serve as the first inputs. libFuzzer keeps what it finds in `fuzz/corpus/` and a failing input in `fuzz/artifacts/`, both ignored by git.
@@ -73,16 +73,16 @@ The tests of the core crate run on the reference interpreter, and the differenti
 | Test | What it checks |
 |---|---|
 | `tests/semantics/*.txt` | case files: a grammar, inputs, and the expected tree or error for each. Every grammar must also print to text that reads back the same |
-| `tests/acceptance.rs` | every grammar in `crates/fastpeg/grammars/` prints back to the same grammar and parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree |
+| `tests/acceptance.rs` | every grammar in `crates/fpeg/grammars/` prints back to the same grammar and parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree |
 | `tests/generated.rs` | generated grammars and inputs, made by `tests/common/generator.rs`: nothing panics, every parse ends within the limits, printing reads back, and memoization never changes a result |
 | `tests/differential.rs` | the parsing machine against the reference interpreter on every case file, every acceptance grammar with its samples, and generated grammars: the same tree, or the same error with the same expected set. Grammars the machine does not run yet are skipped, and each test reports how many |
-| `tests/mutated.rs` | the grammars of `crates/fastpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
+| `tests/mutated.rs` | the grammars of `crates/fpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
 | `tests/docs.rs` | every `fpeg` block of the documentation outside the diagnostics pages |
-| `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fastpeg check` prints, and its fix compiles |
+| `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fpeg check` prints, and its fix compiles |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
 | `src/vm/tests.rs` | the code the compiler makes for small grammars, exact character classes, the verifier against broken programs, and what the machine does not run yet |
 
-`FASTPEG_BLESS=1 cargo test` rewrites the expected results of the case files, the `.tree` files and the messages on the diagnostics pages, which are then reviewed before a commit. `FASTPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FASTPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FASTPEG_MUTANTS` and `FASTPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
+`FPEG_BLESS=1 cargo test` rewrites the expected results of the case files, the `.tree` files and the messages on the diagnostics pages, which are then reviewed before a commit. `FPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FPEG_MUTANTS` and `FPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
 
 ## Documentation
 
@@ -92,7 +92,7 @@ The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for ligh
 
 ## Benchmarks
 
-The Rust suite measures fastpeg's parsing machine beside other Rust parsers, and the Python suites measure other parsers until the Python binding exists. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
+The Rust suite measures fpeg's parsing machine beside other Rust parsers, and the Python suites measure other parsers until the Python binding exists. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
 
 ```sh
 uv run --group bench python benchmarks/run.py
@@ -113,10 +113,10 @@ A full run takes several minutes. Close other programs while it runs, and record
 ## Layout
 
 ```text
-crates/fastpeg/       core: grammar front end, analysis, compiler, parsing machine, tree
-crates/fastpeg-cli/   the fastpeg command
-crates/fastpeg-py/    the native module of the Python package, built with maturin
-python/fastpeg/       the Python package and its type stubs
+crates/fpeg/          core: grammar front end, analysis, compiler, parsing machine, tree
+crates/fpeg-cli/      the fpeg command
+crates/fpeg-py/       the native module of the Python package, built with maturin
+python/fpeg/          the Python package and its type stubs
 tests/                Python tests and tests that span crates
 benchmarks/           benchmark harness, baseline suites, recorded results
 docs/                 this documentation

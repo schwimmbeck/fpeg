@@ -4,8 +4,8 @@
 # Fuzz targets for cargo-fuzz, which needs a nightly toolchain. Kept out of the workspace, so the
 # library's checks build without libFuzzer.
 [package]
-name = "fastpeg-fuzz"
-description = "Fuzz targets of fastpeg"
+name = "fpeg-fuzz"
+description = "Fuzz targets of fpeg"
 publish = false
 version = "0.0.0"
 edition = "2024"
@@ -16,7 +16,7 @@ authors = ["Dominik Schwimmbeck"]
 cargo-fuzz = true
 
 [dependencies]
-fastpeg = { path = "../crates/fastpeg", features = ["reference"] }
+fpeg = { path = "../crates/fpeg", features = ["reference"] }
 libfuzzer-sys = "0.4.10"
 
 [[bin]]

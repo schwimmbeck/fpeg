@@ -53,7 +53,7 @@ EXEMPT_NAMES = {
     "py.typed",
 }
 # Sample inputs of the acceptance grammars are data in many formats, not source files.
-EXEMPT_DIRECTORIES = ("crates/fastpeg/grammars/samples/",)
+EXEMPT_DIRECTORIES = ("crates/fpeg/grammars/samples/",)
 
 
 def header_problem(path: Path, comment: str) -> str | None:

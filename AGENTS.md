@@ -1,4 +1,4 @@
-# fastpeg
+# fpeg
 
 Working guide for people and AI agents in this repository. Update it when the structure or the rules change.
 
@@ -8,7 +8,7 @@ This file is public. Keep it free of personal or private information. The mainta
 
 ## Product
 
-fastpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
+fpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
 
 - A grammar is plain text, loaded at runtime. No code generation and no build step for the user.
 - The core is Rust. It compiles a grammar to bytecode for a parsing machine and builds a compact, lossless parse tree with exact source spans.
@@ -36,14 +36,14 @@ Each one settles an argument that would otherwise come up again and again.
 A directory marked with a milestone appears with it.
 
 ```text
-crates/fastpeg/       core: grammar front end, analysis, compiler, parsing machine, tree. No Python types
+crates/fpeg/          core: grammar front end, analysis, compiler, parsing machine, tree. No Python types
   grammars/           grammars shipped with the library and the acceptance grammars, samples in samples/
-crates/fastpeg-cli/   the fastpeg command: check, parse, profile
-crates/fastpeg-py/    PyO3 binding, built with maturin
-python/fastpeg/       Python package: Transformer, tree and token views, type stubs
+crates/fpeg-cli/      the fpeg command: check, parse, profile
+crates/fpeg-py/       PyO3 binding, built with maturin
+python/fpeg/          Python package: Transformer, tree and token views, type stubs
 examples/             runnable examples, each one used by the docs (M3)
 benchmarks/           benchmark harness, corpus fetchers, recorded results
-benchmarks/rust/      Rust baselines, a package outside the workspace
+benchmarks/rust/      fpeg's Rust benchmarks and baselines, a package outside the workspace
 docs/                 user documentation, one Markdown file per page
 tests/                Python tests, and oracle and corpus tests that span crates
 fuzz/                 fuzz targets for cargo-fuzz, a package outside the workspace
@@ -114,7 +114,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
 
 ## Docs
 
-- `README.md` is for users only and stays short: what fastpeg is, a first example, how to install, a link to the documentation. No build steps and no internals.
+- `README.md` is for users only and stays short: what fpeg is, a first example, how to install, a link to the documentation. No build steps and no internals.
 - User documentation lives in `docs/`, one Markdown file per page. A page changes in the same commit as the behaviour it describes, never afterwards.
 - Every code example in the docs runs in CI. The docs build runs the Python blocks, and `cargo test` reads every grammar block and resolves those with a `start` rule. Shell commands and plain text are not examples. An example that cannot run is a bug.
 - Every diagnostic has a stable code, and its page shows an input that triggers it and the fix.

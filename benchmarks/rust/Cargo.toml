@@ -3,8 +3,8 @@
 
 # Kept out of the workspace, so the library's checks and lock file carry no baseline parsers.
 [package]
-name = "fastpeg-benchmarks"
-description = "fastpeg and its Rust baselines for the benchmark suite"
+name = "fpeg-benchmarks"
+description = "fpeg and its Rust baselines for the benchmark suite"
 publish = false
 version = "0.0.0"
 edition = "2024"
@@ -17,7 +17,7 @@ authors = ["Dominik Schwimmbeck"]
 bench = false
 
 [dependencies]
-fastpeg = { path = "../../crates/fastpeg" }
+fpeg = { path = "../../crates/fpeg" }
 pest = "2.9.6"
 pest_derive = "2.9.6"
 pest_meta = "2.9.6"

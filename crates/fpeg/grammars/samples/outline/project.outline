@@ -1,0 +1,14 @@
+# A project outline.
+project: fpeg
+milestones:
+  m0: foundations
+  m1: language
+    spec: drafts
+    reference: interpreter
+
+    # blank and comment lines do not count
+    grammars:
+      json: done
+      python: hard
+  m2: engine
+license: MIT

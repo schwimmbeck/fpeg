@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 [workspace]
-members = ["crates/fastpeg", "crates/fastpeg-cli", "crates/fastpeg-py"]
+members = ["crates/fpeg", "crates/fpeg-cli", "crates/fpeg-py"]
 exclude = ["benchmarks/rust", "fuzz"]
 resolver = "3"
 
@@ -12,10 +12,10 @@ edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 authors = ["Dominik Schwimmbeck"]
-repository = "https://github.com/schwimmbeck/fastpeg"
+repository = "https://github.com/schwimmbeck/fpeg"
 
 [workspace.dependencies]
-fastpeg = { path = "crates/fastpeg", version = "0.0.0" }
+fpeg = { path = "crates/fpeg", version = "0.0.0" }
 
 [workspace.lints.rust]
 missing_docs = "warn"

@@ -7,7 +7,7 @@
 
 #![no_main]
 
-use fastpeg::{Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, Tree};
+use fpeg::{Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, Tree};
 use libfuzzer_sys::fuzz_target;
 
 /// Steps a parse may take on the reference interpreter, so that slow grammars end quickly.

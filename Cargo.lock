@@ -3,25 +3,25 @@
 version = 4
 
 [[package]]
-name = "fastpeg"
+name = "fpeg"
 version = "0.0.0"
 dependencies = [
- "fastpeg",
+ "fpeg",
  "unicode-ident",
 ]
 
 [[package]]
-name = "fastpeg-cli"
+name = "fpeg-cli"
 version = "0.0.0"
 dependencies = [
- "fastpeg",
+ "fpeg",
 ]
 
 [[package]]
-name = "fastpeg-py"
+name = "fpeg-py"
 version = "0.0.0"
 dependencies = [
- "fastpeg",
+ "fpeg",
  "pyo3",
 ]
 

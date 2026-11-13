@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! fastpeg and its Rust baselines for the benchmark suite. The benchmarks are in `benches/`.
+//! fpeg and its Rust baselines for the benchmark suite. The benchmarks are in `benches/`.
 
 pub use generated::{JsonParser, Rule};
 
-/// The JSON grammar of fastpeg's acceptance grammars.
-pub const FASTPEG_JSON_GRAMMAR: &str = include_str!("../../../crates/fastpeg/grammars/json.fpeg");
+/// The JSON grammar of fpeg's acceptance grammars.
+pub const FPEG_JSON_GRAMMAR: &str = include_str!("../../../crates/fpeg/grammars/json.fpeg");
 
 /// The text of the pest JSON grammar, for the runtime interpreter pest_vm.
 pub const JSON_GRAMMAR: &str = include_str!("json.pest");

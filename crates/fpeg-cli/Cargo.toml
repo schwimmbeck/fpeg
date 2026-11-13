@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[package]
+name = "fpeg-cli"
+description = "The fpeg command: check, parse and profile grammars"
+readme = "../../README.md"
+keywords = ["parser", "peg", "grammar", "cli"]
+categories = ["parsing", "command-line-utilities"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "fpeg"
+path = "src/main.rs"
+
+[dependencies]
+fpeg.workspace = true
+
+[lints]
+workspace = true

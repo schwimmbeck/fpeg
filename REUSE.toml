@@ -14,10 +14,10 @@ path = [
     ".gitattributes",
     ".gitignore",
     ".python-version",
-    "python/fastpeg/py.typed",
+    "python/fpeg/py.typed",
     "benchmarks/results/**",
-    "crates/fastpeg/grammars/samples/**",
-    "crates/fastpeg/tests/semantics/*.txt",
+    "crates/fpeg/grammars/samples/**",
+    "crates/fpeg/tests/semantics/*.txt",
 ]
 SPDX-FileCopyrightText = "2026 Dominik Schwimmbeck"
 SPDX-License-Identifier = "MIT OR Apache-2.0"

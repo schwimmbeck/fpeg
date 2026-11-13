@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[package]
+name = "fpeg-py"
+description = "The native module of the fpeg Python package"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "_fpeg"
+crate-type = ["cdylib"]
+# An extension module cannot link a test binary without libpython. pytest covers this crate.
+test = false
+doctest = false
+
+[dependencies]
+fpeg.workspace = true
+pyo3 = "0.30.1"
+
+[lints]
+workspace = true

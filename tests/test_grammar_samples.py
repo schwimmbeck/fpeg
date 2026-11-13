@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 PYTHON_SAMPLES = (
-    Path(__file__).parent.parent / "crates" / "fastpeg" / "grammars" / "samples" / "python"
+    Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "python"
 )
 
 pytestmark = pytest.mark.skipif(
