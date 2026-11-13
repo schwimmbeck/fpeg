@@ -111,7 +111,7 @@ fn env_number(name: &str, default: u64) -> u64 {
 
 #[test]
 fn grammar_texts_with_one_edit_never_panic() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../grammars");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
     let mutants = env_number("FASTPEG_MUTANTS", DEFAULT_MUTANTS);
     let first = env_number("FASTPEG_MUTANT_SEED", 0);
     let limits = Limits {

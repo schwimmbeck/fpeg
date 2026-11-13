@@ -43,7 +43,7 @@ COMMENT_BY_SUFFIX = {
 EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt", ".svg"}
 EXEMPT_NAMES = {"LICENSE", ".gitignore", ".gitattributes", ".python-version", "py.typed"}
 # Sample inputs of the acceptance grammars are data in many formats, not source files.
-EXEMPT_DIRECTORIES = ("grammars/samples/",)
+EXEMPT_DIRECTORIES = ("crates/fastpeg/grammars/samples/",)
 
 
 def header_problem(path: Path, comment: str) -> str | None:

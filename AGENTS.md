@@ -37,10 +37,10 @@ A directory marked with a milestone appears with it.
 
 ```text
 crates/fastpeg/       core: grammar front end, analysis, compiler, parsing machine, tree. No Python types
+  grammars/           grammars shipped with the library and the acceptance grammars, samples in samples/
 crates/fastpeg-cli/   the fastpeg command: check, parse, profile
 crates/fastpeg-py/    PyO3 binding, built with maturin
 python/fastpeg/       Python package: Transformer, tree and token views, type stubs
-grammars/             grammars shipped with the library and the acceptance grammars, samples in samples/
 examples/             runnable examples, each one used by the docs (M3)
 benchmarks/           benchmark harness, corpus fetchers, recorded results
 benchmarks/rust/      Rust baselines, a package outside the workspace

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT
 
-//! The grammar of grammars, built in code. It mirrors the text in `grammars/fpeg.fpeg` and in
+//! The grammar of grammars, built in code. It mirrors the text in `crates/fastpeg/grammars/fpeg.fpeg` and in
 //! the language reference rule for rule, and a test holds the two together.
 
 use super::Grammar;
@@ -441,14 +441,14 @@ mod tests {
 
     #[test]
     fn grammar_text_and_builder_print_the_same() {
-        let text = repository_file("grammars/fpeg.fpeg");
+        let text = repository_file("crates/fastpeg/grammars/fpeg.fpeg");
         let parsed = Grammar::from_text(&text).unwrap_or_else(|e| panic!("{e:?}"));
         assert_eq!(parsed.to_string(), grammar().to_string());
     }
 
     #[test]
     fn reference_page_shows_the_grammar_file() {
-        let file = repository_file("grammars/fpeg.fpeg");
+        let file = repository_file("crates/fastpeg/grammars/fpeg.fpeg");
         let body = file
             .split_once("\n\n%flag")
             .map(|(_, rest)| format!("%flag{rest}"));

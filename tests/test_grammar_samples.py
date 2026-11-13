@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
-PYTHON_SAMPLES = Path(__file__).parent.parent / "grammars" / "samples" / "python"
+PYTHON_SAMPLES = (
+    Path(__file__).parent.parent / "crates" / "fastpeg" / "grammars" / "samples" / "python"
+)
 
 pytestmark = pytest.mark.skipif(
     sys.version_info < (3, 15), reason="the Python grammar and its samples follow Python 3.15"

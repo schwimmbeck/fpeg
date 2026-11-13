@@ -31,7 +31,7 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn acceptance_grammars_parse_their_samples() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../grammars");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
     let bless = std::env::var_os("FASTPEG_BLESS").is_some();
     let mut grammars: Vec<PathBuf> = std::fs::read_dir(&root)
         .expect("the grammars directory exists")

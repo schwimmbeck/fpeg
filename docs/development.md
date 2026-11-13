@@ -51,9 +51,9 @@ The tests of the core crate run on the reference interpreter.
 | Test | What it checks |
 |---|---|
 | `tests/semantics/*.txt` | case files: a grammar, inputs, and the expected tree or error for each. Every grammar must also print to text that reads back the same |
-| `tests/acceptance.rs` | every grammar in `grammars/` prints back to the same grammar and parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree |
+| `tests/acceptance.rs` | every grammar in `crates/fastpeg/grammars/` prints back to the same grammar and parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree |
 | `tests/generated.rs` | generated grammars and inputs: nothing panics, every parse ends within the limits, printing reads back, and memoization never changes a result |
-| `tests/mutated.rs` | the grammars of `grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
+| `tests/mutated.rs` | the grammars of `crates/fastpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
 | `tests/docs.rs` | every `fpeg` block of the documentation |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
 
