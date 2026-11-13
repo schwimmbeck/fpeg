@@ -22,7 +22,7 @@ use crate::grammar::{Grammar, GrammarError};
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
 use crate::parse::{END_OF_INPUT, Limit, Limits, ParseError, ParseErrorKind};
-use crate::tree::{FieldId, KindId, Names, Tree};
+use crate::tree::{FieldId, Kind, KindId, Names, Tree};
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
 const STACK_BYTES: usize = 256 * 1024 * 1024;
@@ -184,6 +184,11 @@ impl Reference {
     /// Resolve a grammar, or report the problems in it, the first hundred at most.
     pub fn new(grammar: &Grammar) -> Result<Reference, Vec<GrammarError>> {
         crate::resolve::resolve(grammar).map(|grammar| Reference { grammar })
+    }
+
+    /// The kind table, as [`crate::Parser::kinds`] has it.
+    pub fn kinds(&self) -> Vec<Kind> {
+        self.grammar.kinds()
     }
 
     /// Parse the whole input from the rule `start`, with the default depth and

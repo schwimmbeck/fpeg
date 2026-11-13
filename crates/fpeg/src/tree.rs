@@ -36,6 +36,27 @@ impl FieldId {
     pub const NONE: FieldId = FieldId(0);
 }
 
+/// How many items a field can hold in one node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum FieldCount {
+    /// At most one.
+    One,
+    /// Possibly several.
+    Many,
+}
+
+/// What a compiled grammar knows about one kind of node or token.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Kind {
+    /// The name, shared by every kind that one rule or alias makes.
+    pub name: String,
+    /// What an expected set shows for it.
+    pub display: String,
+    /// The fields of its nodes, by field id, with how many items each can hold.
+    pub fields: Vec<(FieldId, FieldCount)>,
+}
+
 /// The names behind kind and field ids, shared by a grammar and its trees.
 #[derive(Debug, Default)]
 pub struct Names {

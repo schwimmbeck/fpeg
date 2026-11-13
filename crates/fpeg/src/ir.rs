@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::grammar::{ClassItem, Span};
-use crate::tree::{FieldId, KindId, Names};
+use crate::tree::{FieldCount, FieldId, Kind, KindId, Names};
 
 /// Identifies a rule of a resolved grammar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -52,6 +52,21 @@ pub(crate) struct Grammar {
     pub reserved: Reserved,
     pub tab_width: u32,
     pub labels: Vec<Label>,
+    /// For each kind, the fields of its nodes with how many items each can hold.
+    pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
+}
+
+impl Grammar {
+    /// The kind table that engines show to their callers.
+    pub fn kinds(&self) -> Vec<Kind> {
+        (self.names.kinds.iter().enumerate())
+            .map(|(id, name)| Kind {
+                name: name.clone(),
+                display: self.kind_display.get(id).cloned().unwrap_or_default(),
+                fields: self.kind_fields.get(id).cloned().unwrap_or_default(),
+            })
+            .collect()
+    }
 }
 
 /// A resolved rule. Its kind lives on in the expressions that call it.
@@ -178,4 +193,40 @@ pub(crate) enum Expr {
     /// An expression that the translation uses twice, the item of a separated repetition,
     /// shared so that nesting them does not double the grammar at every level.
     Shared(Arc<Expr>),
+}
+
+impl Expr {
+    /// The direct subexpressions. A pass that follows them into shared parts visits each shared
+    /// part at every use, so passes keep a set of those they have seen.
+    pub fn children(&self) -> &[Expr] {
+        match self {
+            Expr::Seq(items) | Expr::Choice(items) => items,
+            Expr::Repeat { expr, .. }
+            | Expr::And(expr)
+            | Expr::Not(expr)
+            | Expr::Token { expr, .. }
+            | Expr::Node { expr, .. }
+            | Expr::Transparent { expr, .. }
+            | Expr::Field { expr, .. }
+            | Expr::Unreserved(expr)
+            | Expr::FlagOn { expr, .. }
+            | Expr::FlagOff { expr, .. }
+            | Expr::Indent { expr, .. }
+            | Expr::Def { expr, .. }
+            | Expr::Label { expr, .. } => std::slice::from_ref(&**expr),
+            Expr::Shared(expr) => std::slice::from_ref(&**expr),
+            Expr::Empty
+            | Expr::Literal { .. }
+            | Expr::Class(_)
+            | Expr::Any
+            | Expr::Call(_)
+            | Expr::Cut
+            | Expr::Skip
+            | Expr::WordEnd
+            | Expr::FlagTest { .. }
+            | Expr::Same { .. }
+            | Expr::Ref { .. }
+            | Expr::ErrorAlternative => &[],
+        }
+    }
 }

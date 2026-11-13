@@ -19,6 +19,7 @@ mod analysis;
 mod diag;
 mod grammar;
 mod ir;
+mod items;
 mod lines;
 mod parse;
 #[cfg(feature = "reference")]
@@ -38,7 +39,7 @@ pub use lines::LineIndex;
 pub use parse::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limit, Limits, ParseError, ParseErrorKind};
 #[cfg(feature = "reference")]
 pub use reference::Reference;
-pub use tree::{FieldId, KindId, Names, NodeRef, Tree};
+pub use tree::{FieldCount, FieldId, Kind, KindId, Names, NodeRef, Tree};
 pub use vm::Parser;
 
 /// The version of this crate, which the command line and the Python package report.

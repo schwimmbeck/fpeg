@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ir::{CharSet, Reserved};
-use crate::tree::{FieldId, KindId, Names};
+use crate::tree::{FieldId, Kind, KindId, Names};
 
 /// One instruction of the parsing machine.
 ///
@@ -213,4 +213,6 @@ pub(crate) struct Program {
     pub kind_display: Vec<String>,
     /// The texts of the error labels.
     pub labels: Vec<String>,
+    /// The kind table shown to callers.
+    pub kinds: Vec<Kind>,
 }

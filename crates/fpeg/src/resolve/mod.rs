@@ -255,10 +255,12 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
     if !r.errors.is_empty() {
         return Err(r.errors);
     }
-    let rules = r.rules.into_iter().flatten().collect();
+    let rules: Vec<ir::Rule> = r.rules.into_iter().flatten().collect();
+    let facts = crate::items::count(&rules, r.kinds.names.len());
     Ok(ir::Grammar {
         rules,
         entry,
+        kind_fields: facts.kind_fields,
         names: Arc::new(Names {
             kinds: r.kinds.names,
             fields: r.fields.names,

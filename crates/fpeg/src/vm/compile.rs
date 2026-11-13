@@ -114,6 +114,7 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
         names: Arc::clone(&grammar.names),
         kind_display: grammar.kind_display.clone(),
         labels,
+        kinds: grammar.kinds(),
     })
 }
 

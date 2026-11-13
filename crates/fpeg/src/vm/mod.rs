@@ -18,7 +18,7 @@ use std::fmt;
 
 use crate::grammar::{Grammar, GrammarError};
 use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
-use crate::tree::Tree;
+use crate::tree::{Kind, Names, Tree};
 use machine::{Machine, Stop};
 use program::Program;
 
@@ -125,6 +125,16 @@ impl Parser {
                 kind: ParseErrorKind::Limit(limit),
             }),
         }
+    }
+
+    /// The names of the grammar's kinds and fields, which its trees share.
+    pub fn names(&self) -> &Names {
+        &self.program.names
+    }
+
+    /// The kind table, indexed by [`KindId`].
+    pub fn kinds(&self) -> &[Kind] {
+        &self.program.kinds
     }
 
     /// The compiled program as text, one instruction per line. Its format may change with any
