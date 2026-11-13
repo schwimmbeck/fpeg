@@ -16,6 +16,13 @@ NUM: [0-9]+
 --- "<1>"
 (start x=~"<" x=NUM"1" x=~">")
 
+=== a field over a repetition of no matches captures nothing
+start: x=(A B){0} A
+A: "a"
+B: "b"
+--- "a"
+(start A"a")
+
 === a field captures a token through flags, indentation, captures and labels
 %flag a
 start: w=%on(a, "+") x=%def(n, "-") y=%indent("*") z=("/" ^ "slash")

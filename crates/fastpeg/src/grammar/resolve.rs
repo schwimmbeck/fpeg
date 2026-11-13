@@ -896,6 +896,8 @@ impl<'g> Resolver<'g> {
                         expr.span,
                     );
                 }
+                // A repetition of no matches captures nothing.
+                let parts = parts.filter(|_| *max != Some(0));
                 return E::Repeat {
                     expr: Box::new(self.lower_parts(inner, scope, parts)),
                     min: *min,
