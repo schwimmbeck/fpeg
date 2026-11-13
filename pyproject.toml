@@ -48,7 +48,7 @@ module-name = "fastpeg._fastpeg"
 [tool.uv]
 # One uv range for development and CI, where setup-uv installs the highest version in it, so
 # that the lock file does not drift between them.
-required-version = ">=0.12.6,<0.14"
+required-version = ">=0.13.8,<0.14"
 # Rebuild the native module when the Rust sources change.
 cache-keys = [
     { file = "pyproject.toml" },
