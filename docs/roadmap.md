@@ -11,7 +11,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 ## M1 Language specification and reference interpreter
 
 - The grammar language and its meaning written down as the normative reference.
-- A set of acceptance grammars written in that language: JSON, CSV, expressions, a configuration language, an indentation-based language, Lua, Python and the grammar language itself.
+- A set of acceptance grammars written in that language: JSON, CSV, expressions, a configuration language, an indentation-based language, Lua, Python, a SQL subset and the grammar language itself.
 - A slow reference interpreter that implements exactly the written semantics. It is test infrastructure: every later engine and optimization has to agree with it.
 
 ## M2 Core engine

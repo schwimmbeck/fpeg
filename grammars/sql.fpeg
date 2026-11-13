@@ -1,0 +1,90 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT
+
+// A subset of SQL: queries with joins, grouping, ordering and subqueries, and statements that
+// insert, update, delete and create tables. Keywords ignore case and are reserved, so a column
+// named like one is written in double quotes. Comments use -- and /* */.
+
+%word [A-Za-z0-9_]
+%ignore [ \t\r\n]+ | COMMENT
+
+start: statements=(statement ** ";") ";"?
+
+?statement: select
+          | insert
+          | update
+          | delete
+          | create_table
+
+select: ("select"i distinct="distinct"i? columns=(column ++ ",")
+        ("from"i sources=(source ++ ","))?
+        ("where"i where=expr)?
+        ("group"i "by"i groups=(expr ++ ","))?
+        ("having"i having=expr)?
+        ("order"i "by"i orderings=(ordering ++ ","))?
+        ("limit"i limit=expr ("offset"i offset=expr)?)?)
+?column: "*" -> all_columns
+       | value=expr ("as"i? alias=identifier)? -> column
+?source: left=source kind=join_kind? "join"i right=table ("on"i condition=expr)? -> join
+       | table
+?table: table=name ("as"i? alias=identifier)? -> table
+      | "(" query=select ")" "as"i? alias=identifier -> derived_table
+join_kind: "inner"i -> inner
+         | "left"i "outer"i? -> left
+         | "right"i "outer"i? -> right
+         | "full"i "outer"i? -> full
+         | "cross"i -> cross
+ordering: value=expr direction=("asc"i | "desc"i)?
+
+insert: ("insert"i "into"i table=name ("(" columns=(identifier ++ ",") ")")?
+        ("values"i rows=(row ++ ",") | query=select))
+row: "(" values=(expr ++ ",") ")"
+update: "update"i table=name "set"i assignments=(assignment ++ ",") ("where"i where=expr)?
+assignment: column=identifier "=" value=expr
+delete: "delete"i "from"i table=name ("where"i where=expr)?
+create_table: ("create"i "table"i (exists="if"i "not"i "exists"i)? table=name
+              "(" columns=(column_definition ++ ",") ")")
+column_definition: name=identifier type=type_name constraints=constraint*
+type_name: name=NAME ("(" sizes=(NUMBER ++ ",") ")")?
+?constraint: "primary"i "key"i -> primary_key
+           | "not"i "null"i -> not_null
+           | "unique"i -> unique
+           | "default"i value=expr -> default
+           | "references"i table=name ("(" column=identifier ")")? -> references
+
+expr: %precedence {
+    or: left=or "or"i right=and -> or
+    and: left=and "and"i right=not -> and
+    not: "not"i operand=not -> not
+    compare: left=compare op=COMPARE right=additive -> compare
+           | value=additive "is"i negated="not"i? "null"i -> is_null
+           | value=additive negated="not"i? "in"i "(" (items=(expr ++ ",") | query=select) ")" -> in
+           | value=additive negated="not"i? "like"i pattern=additive -> like
+           | value=additive negated="not"i? "between"i low=additive "and"i high=additive -> between
+    additive: left=additive op=("+" | "-" | "||") right=multiplicative -> binary
+    multiplicative: left=multiplicative op=("*" | "/" | "%") right=unary -> binary
+    unary: op=("-" | "+") operand=unary -> unary
+    primary: NUMBER
+           | STRING
+           | "null"i -> null
+           | "true"i -> true
+           | "false"i -> false
+           | "case"i branches=when+ ("else"i otherwise=expr)? "end"i -> case
+           | "exists"i "(" query=select ")" -> exists
+           | "(" query=select ")" -> subquery
+           | function=name "(" (all="*" | distinct="distinct"i? arguments=(expr ** ",")) ")" -> call
+           | name
+           | "(" expr ")"
+}
+when: "when"i condition=expr "then"i result=expr
+
+name: parts=(identifier ++ ".")
+?identifier: NAME | QUOTED_NAME
+
+@reserved
+NAME "name": [A-Za-z_] [A-Za-z0-9_]*
+QUOTED_NAME "quoted name": "\"" ([^"] | "\"\"")+ "\""
+NUMBER "number": [0-9]+ ("." [0-9]+)? ([eE] [+\-]? [0-9]+)?
+STRING "string": "'" ([^'] | "''")* "'"
+COMPARE: "<>" | "!=" | "<=" | ">=" | "=" | "<" | ">"
+COMMENT: "--" [^\r\n]* | "/*" (!"*/" .)* "*/"
