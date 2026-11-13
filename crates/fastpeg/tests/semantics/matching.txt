@@ -111,6 +111,11 @@ start: \p{Alphabetic} \p{White_Space} \p{Uppercase} \p{Lowercase} \P{Alphabetic}
 --- "ä\tßß1"
 error at 3: expected \p{Uppercase}
 
+=== a literal takes every escape of the table
+start: "\\" "\"" '\'' "\n" "\r" "\t" "\0" "\x41" "\u{e9}"
+--- "\\\"'\n\r\t\0Aé"
+(start ~"\\" ~"\"" ~"'" ~"\n" ~"\r" ~"\t" ~"\0" ~"A" ~"é")
+
 === any matches one code point and fails at the end
 start: . .
 --- "€x"
