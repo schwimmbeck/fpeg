@@ -17,8 +17,8 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::sync::PyOnceLock;
-use pyo3::types::{PyIterator, PyList, PyTuple, PyType};
-use pyo3::{PyTraverseError, PyTypeInfo, PyVisit};
+use pyo3::types::{PyIterator, PyList, PyString, PyTuple, PyType};
+use pyo3::{PyTraverseError, PyTypeInfo, PyVisit, intern};
 
 use crate::grammar::GrammarCore;
 use crate::token::{self, Positions};
@@ -324,10 +324,17 @@ fn cycle() -> PyErr {
     PyValueError::new_err("the tree contains itself")
 }
 
+/// Joins the parts of a text in Python, so that a text too large for memory raises MemoryError
+/// instead of ending the process, and a lone surrogate stays as it is.
+fn join<'py>(parts: &Bound<'py, PyList>) -> PyResult<Bound<'py, PyAny>> {
+    let py = parts.py();
+    intern!(py, "").call_method1(intern!(py, "join"), (parts,))
+}
+
 /// The steps of a walk that writes text: an item to write at a level, or text to write.
 enum Step<'py> {
     Item(Bound<'py, PyAny>, usize, Option<String>),
-    Text(&'static str),
+    Text(Bound<'py, PyString>),
     Leave(usize),
 }
 
@@ -442,9 +449,12 @@ impl Tree {
     /// The tree as indented lines, as Lark writes it, with `name=` before an item that fills a
     /// field of a node of a parse.
     #[pyo3(signature = (indent_str = "  "))]
-    fn pretty(slf: &Bound<'_, Self>, indent_str: &str) -> PyResult<String> {
+    fn pretty<'py>(slf: &Bound<'py, Self>, indent_str: &str) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
-        let mut out = String::new();
+        let indent = PyString::new(py, indent_str);
+        // The lines of one level share one string of indentation.
+        let mut indents: Vec<Bound<'py, PyAny>> = Vec::new();
+        let parts = PyList::empty(py);
         let mut path: HashSet<usize> = HashSet::new();
         let mut pending = vec![Step::Item(slf.clone().into_any(), 0, None)];
         while let Some(step) = pending.pop() {
@@ -455,18 +465,21 @@ impl Tree {
                     continue;
                 }
                 Step::Text(text) => {
-                    out.push_str(text);
+                    parts.append(text)?;
                     continue;
                 }
             };
-            out.push_str(&indent_str.repeat(level));
+            while indents.len() <= level {
+                indents.push(indent.mul(indents.len())?);
+            }
+            parts.append(&indents[level])?;
             if let Some(field) = field {
-                out.push_str(&field);
-                out.push('=');
+                parts.append(field)?;
+                parts.append(intern!(py, "="))?;
             }
             let Ok(tree) = obj.cast::<Tree>() else {
-                out.push_str(&obj.str()?.to_string());
-                out.push('\n');
+                parts.append(obj.str()?)?;
+                parts.append(intern!(py, "\n"))?;
                 continue;
             };
             let key = obj.as_ptr().addr();
@@ -474,25 +487,25 @@ impl Tree {
                 return Err(cycle());
             }
             pending.push(Step::Leave(key));
-            out.push_str(&tree.get().data_object(py).bind(py).str()?.to_string());
+            parts.append(tree.get().data_object(py).bind(py).str()?)?;
             let children = tree.get().children_list(py)?;
             let fields = tree.get().child_fields(children.len());
             if children.len() == 1 && !children.get_item(0)?.is_instance_of::<Tree>() {
-                out.push('\t');
+                parts.append(intern!(py, "\t"))?;
                 if let Some(field) = &fields[0] {
-                    out.push_str(field);
-                    out.push('=');
+                    parts.append(field)?;
+                    parts.append(intern!(py, "="))?;
                 }
-                out.push_str(&children.get_item(0)?.str()?.to_string());
-                out.push('\n');
+                parts.append(children.get_item(0)?.str()?)?;
+                parts.append(intern!(py, "\n"))?;
                 continue;
             }
-            out.push('\n');
+            parts.append(intern!(py, "\n"))?;
             for (child, field) in children.iter().zip(fields).rev() {
                 pending.push(Step::Item(child, level + 1, field));
             }
         }
-        Ok(out)
+        join(&parts)
     }
 
     /// Every subtree, children before their parents, each once.
@@ -662,45 +675,45 @@ impl Tree {
         tree_hash(slf.as_any())
     }
 
-    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+    fn __repr__<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
-        let mut out = String::new();
+        let parts = PyList::empty(py);
         let mut path: HashSet<usize> = HashSet::new();
         let mut pending = vec![Step::Item(slf.clone().into_any(), 0, None)];
         while let Some(step) = pending.pop() {
             let obj = match step {
                 Step::Item(obj, ..) => obj,
                 Step::Text(text) => {
-                    out.push_str(text);
+                    parts.append(text)?;
                     continue;
                 }
                 Step::Leave(key) => {
                     path.remove(&key);
-                    out.push_str("])");
+                    parts.append(intern!(py, "])"))?;
                     continue;
                 }
             };
             let Ok(tree) = obj.cast::<Tree>() else {
-                out.push_str(&obj.repr()?.to_string());
+                parts.append(obj.repr()?)?;
                 continue;
             };
             let key = obj.as_ptr().addr();
             if !path.insert(key) {
                 return Err(cycle());
             }
-            out.push_str("Tree(");
-            out.push_str(&tree.get().data_object(py).bind(py).repr()?.to_string());
-            out.push_str(", [");
+            parts.append(intern!(py, "Tree("))?;
+            parts.append(tree.get().data_object(py).bind(py).repr()?)?;
+            parts.append(intern!(py, ", ["))?;
             pending.push(Step::Leave(key));
             let children: Vec<Bound<'_, PyAny>> = tree.get().children_list(py)?.iter().collect();
             for (i, child) in children.into_iter().enumerate().rev() {
                 pending.push(Step::Item(child, 0, None));
                 if i > 0 {
-                    pending.push(Step::Text(", "));
+                    pending.push(Step::Text(intern!(py, ", ").clone()));
                 }
             }
         }
-        Ok(out)
+        join(&parts)
     }
 
     /// Pickle the tree flat, as its items in postorder, so that a deep tree pickles without deep

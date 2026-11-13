@@ -4,6 +4,8 @@
 import copy
 import gc
 import pickle
+import subprocess
+import sys
 import weakref
 from collections.abc import Callable
 from typing import Any
@@ -17,6 +19,20 @@ call: name=NAME "(" args=(NAME ** ",") ")" kw=kw?
 kw: "!" NAME
 NAME: [a-z\u{e4}]+
 %ignore " "+
+"""
+
+# Writes a text 5 GB long with a limit of 1 GB above what the interpreter uses.
+TOO_LARGE = """
+import os, resource
+import fpeg
+tree = fpeg.Tree("a", ["x" * 10**8] * 50)
+used = int(open("/proc/self/statm").read().split()[0]) * os.sysconf("SC_PAGE_SIZE")
+limit = used + 2**30
+resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+try:
+    tree.pretty()
+except MemoryError:
+    print("MemoryError")
 """
 
 
@@ -146,6 +162,23 @@ def test_deep_trees_print_compare_hash_and_pickle_without_recursion() -> None:
     assert hash(other) == hash(deep)
     assert repr(deep).count("Tree(") == 5001
     assert deep.pretty().count("\n") == 5001
+
+
+def test_pretty_and_repr_keep_a_lone_surrogate() -> None:
+    class Odd:
+        def __repr__(self) -> str:
+            return "\udc80"
+
+    assert fpeg.Tree("a", ["\ud800"]).pretty() == "a\t\ud800\n"
+    assert repr(fpeg.Tree("a", [Odd()])) == "Tree('a', [\udc80])"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux alone enforces a limit on address space")
+def test_a_text_too_large_for_memory_raises_memory_error() -> None:
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", TOO_LARGE], capture_output=True, text=True, timeout=60
+    )
+    assert result.stdout == "MemoryError\n", result.stderr
 
 
 def test_a_tree_that_contains_itself_is_refused() -> None:
