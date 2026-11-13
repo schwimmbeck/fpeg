@@ -9,10 +9,8 @@
 use std::fmt;
 
 pub mod builder;
-#[cfg(feature = "reference")]
 mod meta;
 pub(crate) mod print;
-#[cfg(feature = "reference")]
 mod text;
 
 /// How deeply the expressions of a grammar may nest. Passes over an expression recurse, so a

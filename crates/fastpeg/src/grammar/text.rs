@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! The text front end: parse grammar text with the grammar of grammars and turn the tree into
-//! the grammar model. Until the engine exists it runs on the reference interpreter.
+//! The text front end: parse grammar text with the grammar of grammars on the parsing machine
+//! and turn the tree into the grammar model.
 
 use std::sync::OnceLock;
 
@@ -13,15 +13,15 @@ use super::{
 };
 use crate::lines::LineIndex;
 use crate::parse::{Limit, ParseErrorKind};
-use crate::reference::Reference;
 use crate::tree::NodeRef;
+use crate::vm::Parser;
 
 impl Grammar {
     /// Read a grammar from its text.
     pub fn from_text(text: &str) -> Result<Grammar, Vec<GrammarError>> {
-        static META: OnceLock<Result<Reference, Vec<GrammarError>>> = OnceLock::new();
+        static META: OnceLock<Result<Parser, Vec<GrammarError>>> = OnceLock::new();
         let meta = META
-            .get_or_init(|| Reference::new(&meta::grammar()))
+            .get_or_init(|| Parser::new(&meta::grammar()))
             .as_ref()
             .map_err(Clone::clone)?;
         let tree = meta.parse(text, "start").map_err(|error| {
