@@ -11,7 +11,7 @@
 
 use std::ffi::{c_int, c_uint, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::ptr::{addr_of_mut, null_mut};
+use std::ptr::{addr_of_mut, null, null_mut};
 use std::sync::atomic::{AtomicIsize, AtomicPtr, Ordering};
 
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -320,9 +320,108 @@ unsafe extern "C" fn get_position(
     })
 }
 
-// The docstring of the type. CPython reads a signature from the start of a docstring: the name
-// with its arguments, then a line "--".
+/// `update(type=None, value=None)`: a token like this one with another type or value.
+unsafe extern "C" fn token_update(
+    obj: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+    kwargs: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    trap(|py| {
+        // SAFETY: CPython passes the token, a tuple of arguments and a dict of keywords or null.
+        let (obj, args, kwargs) = unsafe {
+            let obj = Bound::from_borrowed_ptr(py, obj);
+            let args = Bound::from_borrowed_ptr(py, args).cast_into::<PyTuple>()?;
+            let kwargs = if kwargs.is_null() {
+                None
+            } else {
+                Some(Bound::from_borrowed_ptr(py, kwargs).cast_into::<PyDict>()?)
+            };
+            (obj, args, kwargs)
+        };
+        let values = bind(&args, kwargs.as_ref(), &["type", "value"], 0, "update()")?;
+        let given = |i: usize| values[i].clone().filter(|v| !v.is_none());
+        let kind_name = given(0).unwrap_or_else(|| kind_name_of(&obj));
+        let text = match given(1) {
+            Some(text) => text,
+            None => plain(&obj)?,
+        };
+        let ty = TOKEN_TYPE.load(Ordering::Relaxed);
+        let new = new_str_subtype(py, ty, text)?;
+        fill(&new, kind_name, positions_of(&obj), 0, 0);
+        Ok(new.into_ptr())
+    })
+}
+
+/// `Token.new_borrow_pos(type, value, borrow_t)`: a token with the positions of another.
+unsafe extern "C" fn token_new_borrow_pos(
+    cls: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+    kwargs: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    trap(|py| {
+        // SAFETY: CPython passes the class, a tuple of arguments and a dict of keywords or null.
+        let (cls, args, kwargs) = unsafe {
+            let cls = Bound::from_borrowed_ptr(py, cls).cast_into::<PyType>()?;
+            let args = Bound::from_borrowed_ptr(py, args).cast_into::<PyTuple>()?;
+            let kwargs = if kwargs.is_null() {
+                None
+            } else {
+                Some(Bound::from_borrowed_ptr(py, kwargs).cast_into::<PyDict>()?)
+            };
+            (cls, args, kwargs)
+        };
+        let names = ["type", "value", "borrow_t"];
+        let values = bind(&args, kwargs.as_ref(), &names, 3, "new_borrow_pos()")?;
+        let borrowed = values[2].as_ref().map(|t| {
+            let attribute = |name: &str| t.getattr(name).ok().filter(|v| !v.is_none());
+            [
+                attribute("start_pos"),
+                attribute("line"),
+                attribute("column"),
+                attribute("end_line"),
+                attribute("end_column"),
+                attribute("end_pos"),
+            ]
+        });
+        let mut all = vec![values[0].clone(), values[1].clone()];
+        all.extend(borrowed.into_iter().flatten());
+        Ok(construct(py, cls.as_type_ptr(), &all)?.into_ptr())
+    })
+}
+
+/// `__reduce__`: the token as `Token(...)` would make it again, without its grammar.
+unsafe extern "C" fn token_reduce(
+    obj: *mut ffi::PyObject,
+    _: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    trap(|py| {
+        // SAFETY: CPython passes the token.
+        let obj = unsafe { Bound::from_borrowed_ptr(py, obj) };
+        let p = positions_of(&obj);
+        let text = plain(&obj)?;
+        let args = PyTuple::new(
+            py,
+            [
+                kind_name_of(&obj).unbind(),
+                text.unbind(),
+                position_object(py, p.start_pos),
+                position_object(py, p.line),
+                position_object(py, p.column),
+                position_object(py, p.end_line),
+                position_object(py, p.end_column),
+                position_object(py, p.end_pos),
+            ],
+        )?;
+        let reduced = PyTuple::new(py, [obj.get_type().into_any(), args.into_any()])?;
+        Ok(reduced.into_ptr())
+    })
+}
+
+// The docstrings of the type and its methods. CPython reads a signature from the start of a
+// docstring: the name with its arguments, then a line "--".
 const TOKEN_DOC: &std::ffi::CStr = c"Token(type, value, start_pos=None, line=None, column=None, end_line=None, end_column=None, end_pos=None)\n--\n\nA token of a parse: a str with the name of its kind and its place, as Lark's Token. Positions count code points, lines and columns count from 1.";
+const UPDATE_DOC: &std::ffi::CStr = c"update($self, /, type=None, value=None)\n--\n\nA token like this one with another type or value, at the same place.";
+const NEW_BORROW_POS_DOC: &std::ffi::CStr = c"new_borrow_pos($type, /, type, value, borrow_t)\n--\n\nA token of a type and value at the place of another token.";
 
 /// Make the token type. Called once, when the module loads.
 pub fn create_type(py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
@@ -369,6 +468,33 @@ pub fn create_type(py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
         ),
         ffi::PyGetSetDef::default(),
     ]));
+    let methods = Box::leak(Box::new([
+        ffi::PyMethodDef {
+            ml_name: c"update".as_ptr(),
+            ml_meth: ffi::PyMethodDefPointer {
+                PyCFunctionWithKeywords: token_update,
+            },
+            ml_flags: ffi::METH_VARARGS | ffi::METH_KEYWORDS,
+            ml_doc: UPDATE_DOC.as_ptr(),
+        },
+        ffi::PyMethodDef {
+            ml_name: c"new_borrow_pos".as_ptr(),
+            ml_meth: ffi::PyMethodDefPointer {
+                PyCFunctionWithKeywords: token_new_borrow_pos,
+            },
+            ml_flags: ffi::METH_VARARGS | ffi::METH_KEYWORDS | ffi::METH_CLASS,
+            ml_doc: NEW_BORROW_POS_DOC.as_ptr(),
+        },
+        ffi::PyMethodDef {
+            ml_name: c"__reduce__".as_ptr(),
+            ml_meth: ffi::PyMethodDefPointer {
+                PyCFunction: token_reduce,
+            },
+            ml_flags: ffi::METH_NOARGS,
+            ml_doc: null(),
+        },
+        ffi::PyMethodDef::zeroed(),
+    ]));
     let slots = Box::leak(Box::new([
         ffi::PyType_Slot {
             slot: ffi::Py_tp_new,
@@ -385,6 +511,10 @@ pub fn create_type(py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
         ffi::PyType_Slot {
             slot: ffi::Py_tp_getset,
             pfunc: getsets.as_mut_ptr().cast(),
+        },
+        ffi::PyType_Slot {
+            slot: ffi::Py_tp_methods,
+            pfunc: methods.as_mut_ptr().cast(),
         },
         ffi::PyType_Slot {
             slot: ffi::Py_tp_doc,

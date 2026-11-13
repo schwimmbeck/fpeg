@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import pickle
+
 import fpeg
 import pytest
 
@@ -28,8 +30,21 @@ def test_a_token_is_made_in_python_as_lark_makes_it() -> None:
         fpeg.Token("NAME", "z", -1)
 
 
-def test_a_token_shows_as_lark_s_does() -> None:
-    assert repr(name_token()) == "Token('NAME', 'abc')"
+def test_update_and_new_borrow_pos_keep_the_positions() -> None:
+    token = name_token()
+    renamed = token.update(type="ID")
+    assert (renamed.type, renamed, renamed.start_pos, renamed.column) == ("ID", "abc", 1, 2)
+    retexted = token.update(value="xyz")
+    assert (retexted.type, retexted, retexted.end_pos) == ("NAME", "xyz", 4)
+    borrowed = fpeg.Token.new_borrow_pos("OTHER", "q", token)
+    assert (borrowed.type, borrowed, borrowed.line, borrowed.end_column) == ("OTHER", "q", 1, 5)
+
+
+def test_a_token_shows_and_pickles_as_lark_s_does() -> None:
+    token = name_token()
+    assert repr(token) == "Token('NAME', 'abc')"
+    again = pickle.loads(pickle.dumps(token))
+    assert (again.type, again, again.start_pos, again.end_column) == ("NAME", "abc", 1, 5)
 
 
 def test_the_attributes_of_a_token_are_read_only() -> None:

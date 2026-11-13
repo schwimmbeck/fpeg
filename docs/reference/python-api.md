@@ -26,17 +26,19 @@ except fpeg.GrammarError as error:
 
 ## Token
 
-A `Token` is a `str` with the name of its kind in `type` and its place in Lark's attributes: `start_pos` and `end_pos` count code points, `line` and `column` count from 1, and `end_column` is the column after the last character. Tokens compare and hash as their text. Their attributes are read-only.
+A `Token` is a `str` with the name of its kind in `type` and its place in Lark's attributes: `start_pos` and `end_pos` count code points, `line` and `column` count from 1, and `end_column` is the column after the last character. Tokens compare and hash as their text. Their attributes are read-only, and `update()` makes a token with another type or text at the same place.
 
 ```python
 number = fpeg.Token("NUMBER", "22", 11, 1, 12, end_line=1, end_column=14, end_pos=13)
 assert isinstance(number, str) and number == "22"
 assert (number.type, number.start_pos, number.end_pos) == ("NUMBER", 11, 13)
+assert number.update(type="INT").type == "INT"
 assert fpeg.Token("NAME", "x") == "x"
 ```
 
 ```{eval-rst}
 .. autoclass:: fpeg.Token
+   :members: update, new_borrow_pos
 ```
 
 ## Errors
