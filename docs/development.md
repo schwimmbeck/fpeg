@@ -78,7 +78,7 @@ The tests of the core crate run on the reference interpreter, and the differenti
 | `tests/generated.rs` | generated grammars and inputs, made by `tests/common/generator.rs`: nothing panics, every parse ends within the limits, printing reads back, memoization never changes a result, and every parse keeps to the grammar's item counts: no node holds more items in a field than they allow or lacks a field of exactly one item, and no item is of a kind they say no parse makes |
 | `tests/differential.rs` | the parsing machine against the reference interpreter on every case file, every acceptance grammar with its samples, and generated grammars: the same tree, or the same error with the same expected set, with the machine remembering what the grammar marks, nothing, and every rule. Grammars the machine does not run yet are skipped, and each test reports how many |
 | `tests/mutated.rs` | the grammars of `crates/fpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
-| `tests/docs.rs` | every `fpeg` block of the documentation outside the diagnostics pages |
+| `tests/docs.rs` | every `fpeg` block of the documentation outside the diagnostics pages reads, and one with a `start` rule gives no error and no warning, apart from what the parser does not run yet |
 | `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fpeg check` prints, and its fix gives neither an error nor a warning |
 | `tests/check.rs` | the warnings: each is given where it holds and left out where it does not, the acceptance grammars give none, and a very long choice and a very long chain of rules are checked in time |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
@@ -89,7 +89,7 @@ The tests of the core crate run on the reference interpreter, and the differenti
 
 ## Documentation
 
-The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. A block in the language `output` right after a Python block shows what that block printed, and the build fails when it differs. `tests/test_readme.py` holds the Python blocks of `README.md` to the same rules. `cargo test` reads every `fpeg` grammar block, and resolves the ones that define a `start` rule. The build output lands in `docs/_build/html`.
+The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. A block in the language `output` right after a Python block shows what that block printed, and the build fails when it differs. `tests/test_readme.py` holds the Python blocks of `README.md` to the same rules. `cargo test` reads every `fpeg` grammar block, and checks the ones that define a `start` rule, which must give no warning. The build output lands in `docs/_build/html`.
 
 The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for light and dark pages, used by the documentation and by `README.md`, and `favicon.svg`, a heavier cut of the mark that follows the browser's colour scheme by itself.
 

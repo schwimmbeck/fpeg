@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Every grammar block in the docs must read, and one with a `start` rule must also resolve,
-//! so that an example in the docs cannot drift from the language. The pages of diagnostics show
-//! grammars with problems on purpose, and `diagnostics.rs` checks them.
+//! Every grammar block in the docs must read, and one with a `start` rule must also pass
+//! `check` without an error or a warning, so that an example in the docs cannot drift from the
+//! language or show what it warns about. The pages of diagnostics show grammars with problems
+//! on purpose, and `diagnostics.rs` checks them.
 
 use std::path::{Path, PathBuf};
 
-use fpeg::{Grammar, Reference};
+use fpeg::{DiagnosticCode, Grammar};
 
 fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("the docs directory is readable") {
@@ -47,7 +48,7 @@ fn grammar_blocks(text: &str) -> Vec<(usize, String)> {
 }
 
 #[test]
-fn grammar_blocks_in_the_docs_read_and_complete_ones_resolve() {
+fn grammar_blocks_in_the_docs_read_and_complete_ones_pass_the_check() {
     let docs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs");
     let mut files = Vec::new();
     markdown_files(&docs, &mut files);
@@ -61,8 +62,11 @@ fn grammar_blocks_in_the_docs_read_and_complete_ones_resolve() {
             match Grammar::from_text(&block) {
                 Err(errors) => failures.push(format!("{at}: {errors:?}")),
                 Ok(grammar) if grammar.rules.iter().any(|r| r.name.text == "start") => {
-                    if let Err(errors) = Reference::new(&grammar) {
-                        failures.push(format!("{at}: {errors:?}"));
+                    // What the parser does not run yet is no fault of an example.
+                    let mut found = fpeg::check(&grammar);
+                    found.retain(|diagnostic| diagnostic.code != DiagnosticCode::NotYet);
+                    if !found.is_empty() {
+                        failures.push(format!("{at}: {found:?}"));
                     }
                 }
                 Ok(_) => {}

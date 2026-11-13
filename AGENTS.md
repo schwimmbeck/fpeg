@@ -116,7 +116,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
 
 - `README.md` is for users only and stays short: what fpeg is, a first example, how to install, a link to the documentation. No build steps and no internals.
 - User documentation lives in `docs/`, one Markdown file per page. A page changes in the same commit as the behaviour it describes, never afterwards.
-- Every code example in the docs runs in CI. The docs build runs the Python blocks, and `cargo test` reads every grammar block and resolves those with a `start` rule. Printed output is shown in an `output` block right after its Python block, which the build compares, and a test runs the README's blocks the same way. Shell commands and plain text are not examples. An example that cannot run is a bug.
+- Every code example in the docs runs in CI. The docs build runs the Python blocks, and `cargo test` reads every grammar block and checks those with a `start` rule, which must give no warning. Printed output is shown in an `output` block right after its Python block, which the build compares, and a test runs the README's blocks the same way. Shell commands and plain text are not examples. An example that cannot run is a bug.
 - Every diagnostic has a stable code, and its page shows an input that triggers it and the fix.
 - `CHANGELOG.md` records user-visible changes per release.
 - Design notes and decisions belong in `PLAN.md`, or in the explanation pages of `docs/` once they are worth publishing.
