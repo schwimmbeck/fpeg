@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 

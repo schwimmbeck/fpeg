@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Benchmark inputs, generated or downloaded into ``benchmarks/corpora`` and checked by hash.
 

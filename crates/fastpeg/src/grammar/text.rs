@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! The text front end: parse grammar text with the grammar of grammars and turn the tree into
 //! the grammar model. Until the engine exists it runs on the reference interpreter.

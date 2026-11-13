@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-FileCopyrightText: 2017 Erez Shinan
 # SPDX-FileCopyrightText: 2020 Michael Wayne Goodman
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 """JSON baseline: the standard library, Lark and pe on one 2.5 MB file.
 

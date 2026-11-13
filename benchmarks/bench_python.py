@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Python source baseline: CPython, tree-sitter, LibCST and Lark on one real source file.
 

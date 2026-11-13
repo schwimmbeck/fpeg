@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Check that every source file starts with SPDX lines.
 
 A file of the project starts with the project's two lines. A file that holds outside code keeps
-its own copyright lines and needs a licence compatible with MIT. Reads the files git tracks or
-would track, so ignored build output is skipped. A file type the check does not know is an
-error, so that a new kind of source file cannot go unchecked.
+its own copyright lines and needs a licence compatible with both MIT and Apache-2.0. Reads the
+files git tracks or would track, so ignored build output is skipped. A file type the check does
+not know is an error, so that a new kind of source file cannot go unchecked.
 """
 
 import subprocess
@@ -16,7 +16,7 @@ from pathlib import Path
 COPYRIGHT_TAG = "SPDX-FileCopyrightText: "
 LICENCE_TAG = "SPDX-License-Identifier: "
 PROJECT_HOLDER = "2026 Dominik Schwimmbeck"
-PROJECT_LICENCE = "MIT"
+PROJECT_LICENCE = "MIT OR Apache-2.0"
 COMPATIBLE_LICENCES = {
     "MIT",
     "MIT OR Apache-2.0",
@@ -41,7 +41,14 @@ COMMENT_BY_SUFFIX = {
     ".ps1": "#",
 }
 EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt", ".svg"}
-EXEMPT_NAMES = {"LICENSE", ".gitignore", ".gitattributes", ".python-version", "py.typed"}
+EXEMPT_NAMES = {
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    ".gitignore",
+    ".gitattributes",
+    ".python-version",
+    "py.typed",
+}
 # Sample inputs of the acceptance grammars are data in many formats, not source files.
 EXEMPT_DIRECTORIES = ("crates/fastpeg/grammars/samples/",)
 
@@ -66,7 +73,7 @@ def header_problem(path: Path, comment: str) -> str | None:
     if holders == [PROJECT_HOLDER]:
         return f"a project file must use the licence {PROJECT_LICENCE}"
     if licences[0] not in COMPATIBLE_LICENCES:
-        return f"licence {licences[0]} is not in the list of licences compatible with MIT"
+        return f"licence {licences[0]} is not compatible with both MIT and Apache-2.0"
     return None
 
 

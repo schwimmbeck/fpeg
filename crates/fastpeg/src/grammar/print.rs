@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! The canonical text of a grammar. Parsing the text gives back an equal grammar, and printing
 //! that grammar gives the same text, which makes the printer an oracle for the front end.

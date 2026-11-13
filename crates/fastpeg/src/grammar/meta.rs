@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! The grammar of grammars, built in code. It mirrors the text in `crates/fastpeg/grammars/fpeg.fpeg` and in
 //! the language reference rule for rule, and a test holds the two together.

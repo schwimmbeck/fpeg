@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! fastpeg compiles a parsing expression grammar, given as text at runtime, to bytecode for a
 //! parsing machine and builds a lossless parse tree with exact source spans.

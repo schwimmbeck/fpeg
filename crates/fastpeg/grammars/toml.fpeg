@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // A subset of TOML 1.1: tables, arrays of tables, dotted keys, basic, literal and multi-line
 // strings, integers, floats, booleans, and arrays and inline tables that may span lines. Dates

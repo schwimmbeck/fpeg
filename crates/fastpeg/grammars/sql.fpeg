@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // A subset of SQL: queries with joins, grouping, ordering and subqueries, and statements that
 // insert, update, delete and create tables. Keywords ignore case and are reserved, so a column

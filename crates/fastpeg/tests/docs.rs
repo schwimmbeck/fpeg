@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Every grammar block in the docs must read, and one with a `start` rule must also resolve,
 //! so that an example in the docs cannot drift from the language.

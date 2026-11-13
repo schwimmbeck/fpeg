@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // The grammar of fastpeg grammars, written in its own notation. It must stay identical to the
 // grammar in docs/reference/grammar.md and to the one built in crates/fastpeg/src/grammar/meta.rs.

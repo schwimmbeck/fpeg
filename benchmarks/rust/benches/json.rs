@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! JSON baseline in Rust: pest's generated parser, its runtime interpreter pest_vm and the
 //! hand-written serde_json, on the input of the Python JSON benchmarks.

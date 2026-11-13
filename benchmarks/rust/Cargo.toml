@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 # Kept out of the workspace, so the library's checks and lock file carry no baseline parsers.
 [package]
@@ -9,7 +9,7 @@ publish = false
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.98"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 authors = ["Dominik Schwimmbeck"]
 
 [lib]

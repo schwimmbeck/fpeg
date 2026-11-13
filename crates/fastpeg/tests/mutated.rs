@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Grammar texts with one random edit never panic the text front end or the resolver, every
 //! edited text that still reads prints back to the same grammar, and the grammars that still

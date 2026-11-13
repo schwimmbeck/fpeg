@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 [workspace]
 members = ["crates/fastpeg", "crates/fastpeg-cli", "crates/fastpeg-py"]
@@ -10,7 +10,7 @@ resolver = "3"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.98"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 authors = ["Dominik Schwimmbeck"]
 repository = "https://github.com/schwimmbeck/fastpeg"
 

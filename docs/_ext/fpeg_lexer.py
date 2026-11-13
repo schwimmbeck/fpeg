@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 """A Pygments lexer for fastpeg grammars, so that grammar blocks in the docs are highlighted."""
 

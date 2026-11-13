@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
 // a line, and f-strings and t-strings nest inside replacement fields, with any quotes inside

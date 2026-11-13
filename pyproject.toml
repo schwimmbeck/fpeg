@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: MIT OR Apache-2.0
 
 [build-system]
 requires = ["maturin>=1.16,<2"]
@@ -9,8 +9,8 @@ build-backend = "maturin"
 name = "fastpeg"
 description = "A PEG parsing library with a native engine and a Transformer for parse trees"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 authors = [{ name = "Dominik Schwimmbeck" }]
 requires-python = ">=3.11"
 keywords = ["parser", "peg", "grammar", "parsing", "transformer"]

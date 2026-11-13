@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Generated grammars and inputs. Resolving and parsing never panic and always end, every
 //! grammar prints to text that reads back to the same grammar, and memoization never changes a

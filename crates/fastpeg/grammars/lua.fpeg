@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // Lua 5.4. Long brackets match their closing level through a capture, keywords are reserved,
 // and the operators follow the twelve precedence levels of the language. Assignment targets

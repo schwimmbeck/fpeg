@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // An indentation-based outline: entries are keys with an optional value, and an entry's
 // children are the entries indented under it. A block ends where a line returns to an outer

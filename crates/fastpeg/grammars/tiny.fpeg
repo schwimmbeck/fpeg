@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT OR Apache-2.0
 
 // A tiny imperative language with functions, variables, conditionals, loops and expressions.
 // Keywords are reserved and need a word boundary.
