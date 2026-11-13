@@ -214,6 +214,32 @@ fn check_reports_each_problem_with_its_place_and_code() {
     );
 }
 
+#[test]
+fn check_prints_warnings_and_fails_on_them_only_when_strict() {
+    let paths = files(
+        "warnings",
+        &[("odd.fpeg", "start: \"a\"? | \"b\"\n"), ("good.fpeg", SUMS)],
+    );
+    let odd = paths[0].display();
+    let warning = format!(
+        "{odd}:1:15: warning[W101]: this alternative is never tried, since the one before it \
+         cannot fail\n"
+    );
+    let out = run(["check".as_ref(), paths[0].as_os_str()]);
+    assert!(out.status.success());
+    assert_eq!(text(&out.stdout), warning);
+    let out = run([
+        "check".as_ref(),
+        paths[1].as_os_str(),
+        "--strict".as_ref(),
+        paths[0].as_os_str(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(text(&out.stdout), warning);
+    let out = run(["check".as_ref(), "--strict".as_ref(), paths[1].as_os_str()]);
+    assert!(out.status.success(), "{}", text(&out.stdout));
+}
+
 /// The cells of the line of a profile's table that starts with `name`.
 fn profile_row(table: &str, name: &str) -> Vec<String> {
     let line = table.lines().find(|line| line.starts_with(name));

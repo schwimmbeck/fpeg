@@ -5,16 +5,19 @@ The `fpeg` command checks grammars, parses inputs with them and shows where a pa
 ## fpeg check
 
 ```text
-fpeg check GRAMMAR...
+fpeg check [--strict] GRAMMAR...
 ```
 
-Reads, resolves and compiles each grammar file and prints its problems, one per line:
+Reads, resolves and compiles each grammar file and prints what it finds, one finding per line:
 
 ```text
 grammar.fpeg:1:8: error[E201]: unknown rule item
+other.fpeg:3:14: warning[W101]: this alternative is never tried, since the one before it cannot fail
 ```
 
-A line holds the file, the line and the column of the problem, both counted from 1 and the column in code points, then the [diagnostic code](diagnostics/index.md) and the message. A grammar without problems prints nothing. The exit status is 0 when no grammar has a problem and 1 otherwise, so a build can run the command as a check.
+A line holds the file, the line and the column of the finding, both counted from 1 and the column in code points, then `error` or `warning` with the [diagnostic code](diagnostics/index.md), and the message. An error keeps the grammar from being used. A warning is about a grammar that works, and likely not as meant. It is given once the grammar has no error left. A grammar without findings prints nothing.
+
+The exit status is 0 when no grammar has an error and 1 otherwise, so a build can run the command as a check. With `--strict` a warning fails the command as an error does.
 
 ## fpeg parse
 

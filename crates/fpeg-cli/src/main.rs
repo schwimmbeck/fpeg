@@ -9,7 +9,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fpeg::{Diagnostic, Grammar, LineIndex, NodeRef, ParseError, ParseErrorKind, Parser, Tree};
+use fpeg::{
+    Diagnostic, Grammar, LineIndex, NodeRef, ParseError, ParseErrorKind, Parser, Severity, Tree,
+};
 
 mod profile;
 
@@ -17,9 +19,12 @@ const USAGE: &str = "\
 Usage: fpeg <command> [options]
 
 Commands:
-  check GRAMMAR...             report the problems of grammars
+  check GRAMMAR...             report the errors and warnings of grammars
   parse GRAMMAR [INPUT]        parse INPUT, or standard input, and print its tree
   profile GRAMMAR INPUT...     parse the inputs and print what each rule did
+
+Options of check:
+  --strict                     fail on a warning as on an error
 
 Options of parse and profile:
   --start RULE                 the rule to start from, start if not given
@@ -109,50 +114,75 @@ fn read(path: &Path) -> Result<String, Failure> {
     })
 }
 
-/// Print the problems of a grammar, each with its place in the grammar text.
-fn report(path: &Path, text: &str, errors: &[Diagnostic]) {
+/// Read a grammar file. Editors on Windows may begin a file with a byte order mark, which is
+/// no part of the text.
+fn read_grammar(path: &Path) -> Result<String, Failure> {
+    let file = read(path)?;
+    Ok(match file.strip_prefix('\u{feff}') {
+        Some(text) => text.to_owned(),
+        None => file,
+    })
+}
+
+/// Print the errors and warnings of a grammar, each with its place in the grammar text.
+fn report(path: &Path, text: &str, found: &[Diagnostic]) {
     let lines = LineIndex::new(text);
-    for error in errors {
-        let (line, column) = lines.line_column(text, error.span.start as usize);
-        let (code, message) = (error.code, &error.message);
+    for diagnostic in found {
+        let (line, column) = lines.line_column(text, diagnostic.span.start as usize);
+        let (severity, code, message) =
+            (diagnostic.severity(), diagnostic.code, &diagnostic.message);
         say(
             false,
             format_args!(
-                "{}:{line}:{column}: error[{code}]: {message}",
+                "{}:{line}:{column}: {severity}[{code}]: {message}",
                 path.display()
             ),
         );
     }
 }
 
-/// Read and compile a grammar, or report its problems.
+/// Read and compile a grammar, or report its errors.
 fn compile(path: &Path) -> Result<Parser, Failure> {
-    let file = read(path)?;
-    // Editors on Windows may begin a file with a byte order mark, which is no part of the text.
-    let text = file.strip_prefix('\u{feff}').unwrap_or(&file);
-    let grammar = Grammar::from_text(text).map_err(|errors| {
-        report(path, text, &errors);
+    let text = read_grammar(path)?;
+    let grammar = Grammar::from_text(&text).map_err(|errors| {
+        report(path, &text, &errors);
         Failure::Problem
     })?;
     Parser::new(&grammar).map_err(|errors| {
-        report(path, text, &errors);
+        report(path, &text, &errors);
         Failure::Problem
     })
 }
 
 fn check(args: &[OsString]) -> Result<(), Failure> {
-    if args.is_empty() {
+    let mut strict = false;
+    let mut paths = Vec::new();
+    for arg in args {
+        match arg.to_string_lossy().as_ref() {
+            "--strict" => strict = true,
+            option if option.starts_with('-') => {
+                return Err(Failure::Usage(format!("unexpected argument '{option}'")));
+            }
+            _ => paths.push(PathBuf::from(arg)),
+        }
+    }
+    if paths.is_empty() {
         return Err(Failure::Usage("check needs a grammar".into()));
     }
-    if let Some(option) = args.iter().find(|a| a.to_string_lossy().starts_with('-')) {
-        let option = option.to_string_lossy();
-        return Err(Failure::Usage(format!("unexpected argument '{option}'")));
+    let mut failed = false;
+    for path in &paths {
+        let Ok(text) = read_grammar(path) else {
+            failed = true;
+            continue;
+        };
+        let found = match Grammar::from_text(&text) {
+            Ok(grammar) => fpeg::check(&grammar),
+            Err(errors) => errors,
+        };
+        report(path, &text, &found);
+        failed |= (found.iter()).any(|found| strict || found.severity() == Severity::Error);
     }
-    let mut problems = false;
-    for path in args {
-        problems |= compile(&PathBuf::from(path)).is_err();
-    }
-    match problems {
+    match failed {
         true => Err(Failure::Problem),
         false => Ok(()),
     }
