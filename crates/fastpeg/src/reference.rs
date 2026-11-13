@@ -35,9 +35,10 @@ pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 const STACK_BYTES: usize = 256 * 1024 * 1024;
 
 /// Matches that may enclose each other before a parse stops with the depth limit, whatever the
-/// rule bodies look like. A debug build takes about 7 KB of stack per match, so this keeps the
-/// recursion well within `STACK_BYTES`.
-const MAX_NESTED_EVALUATIONS: u32 = 20_000;
+/// rule bodies look like. A debug build on Windows takes about 7 KB of stack per match and other
+/// targets differ, so this keeps the recursion within `STACK_BYTES` with room to spare. The most
+/// nested Python file of CPython's tests needs about 1000.
+const MAX_NESTED_EVALUATIONS: u32 = 10_000;
 
 /// What a failed column check expects, in an expected set.
 const INDENTATION: &str = "indentation";
