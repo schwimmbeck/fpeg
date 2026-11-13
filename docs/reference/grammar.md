@@ -297,7 +297,7 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 | `=> text` | the text as a plain string |
 | `=> unquote` | the text without its first and last character, its quotes, with the escapes of JSON decoded and `\'` too: `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t` and `\uXXXX`, where two escapes of a surrogate pair make one character and a lone surrogate stays one. Another escape is an error |
 | `=> list`, `=> tuple`, `=> dict` | of the values of the visible children, `dict` from pairs |
-| `=> None`, `=> True`, `=> False`, a number, a string | the constant, a number with a fraction or an exponent being a float |
+| `=> None`, `=> True`, `=> False`, a number, a string | the constant, a number with a fraction being a float |
 | `=> Name(a, b, key=c, items=*, flag=None)` | a call of the function `Name` given with the grammar: a field gives its value, or `None` when absent, for a field of at most one item and a list for a field of several, a constant gives itself and `*` the list of the values of all visible children |
 | `=> Name` alone | the function `Name` given with the grammar, called with the text of a token or the list of a node's children, as `int` and `list` are |
 

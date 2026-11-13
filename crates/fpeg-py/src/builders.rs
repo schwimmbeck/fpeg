@@ -83,13 +83,13 @@ pub fn function_name(builder: &ValueBuilder) -> Option<&fpeg::Name> {
     }
 }
 
-/// The value of a constant written in a builder. A number with a fraction or an exponent is a
-/// float, any other an int of any size.
+/// The value of a constant written in a builder. A number with a fraction is a float, any other
+/// an int of any size.
 fn constant(py: Python<'_>, value: &Constant) -> PyResult<Py<PyAny>> {
     Ok(match value {
         Constant::None => py.None(),
         Constant::Bool(value) => value.into_pyobject(py)?.to_owned().into_any().unbind(),
-        Constant::Number(text) if text.contains(['.', 'e', 'E']) => {
+        Constant::Number(text) if text.contains('.') => {
             PyFloat::type_object(py).call1((text,))?.unbind()
         }
         Constant::Number(text) => PyInt::type_object(py).call1((text,))?.unbind(),
