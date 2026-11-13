@@ -398,10 +398,10 @@ impl Tree {
 
     /// The text of the node in its input, or `None` for a tree built in Python.
     #[getter]
-    fn text(&self) -> Option<String> {
+    fn text<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyString>> {
         let (parsed, index) = self.origin()?;
         let (start, end) = parsed.tree.node(index as usize)?.span();
-        Some(parsed.text(start, end).to_owned())
+        Some(PyString::new(py, parsed.text(start, end)))
     }
 
     /// The field `name` of the node: its item or `None` for a field of at most one item, a list
@@ -490,7 +490,9 @@ impl Tree {
             parts.append(tree.get().data_object(py).bind(py).str()?)?;
             let children = tree.get().children_list(py)?;
             let fields = tree.get().child_fields(children.len());
-            if children.len() == 1 && !children.get_item(0)?.is_instance_of::<Tree>() {
+            // The length the fields were made for, as another thread may change a list built in
+            // Python meanwhile.
+            if fields.len() == 1 && !children.get_item(0)?.is_instance_of::<Tree>() {
                 parts.append(intern!(py, "\t"))?;
                 if let Some(field) = &fields[0] {
                     parts.append(field)?;
