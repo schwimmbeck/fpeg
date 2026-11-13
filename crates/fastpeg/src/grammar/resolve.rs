@@ -24,12 +24,12 @@ use super::{
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
 use crate::tree::{FieldId, KindId, Names};
 
-/// Template instances resolving may create before it gives up, so that a template whose
-/// arguments grow with every use cannot make it run forever.
+/// Template instances resolving may create before it gives up. Growing arguments meet the depth
+/// limit or the expression budget first, this bounds many small instances.
 const MAX_TEMPLATE_INSTANCES: usize = 1_000;
 
-/// Expressions the arguments and bodies of all template instances may hold together, so that
-/// arguments that double with every use cannot exhaust memory.
+/// Expressions all template instances may expand into together, counting a copy of an argument
+/// for every use of its parameter, so that a small grammar cannot take the memory of a huge one.
 const MAX_INSTANCE_EXPRESSIONS: usize = 100_000;
 
 /// The tab width when a grammar sets none.
@@ -146,7 +146,8 @@ struct Resolver<'g> {
     errors: Vec<GrammarError>,
 }
 
-/// Resolve a grammar into the core language, or report every problem found.
+/// Resolve a grammar into the core language, or report the problems found, the first hundred at
+/// most.
 pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError>> {
     let mut r = Resolver {
         grammar,

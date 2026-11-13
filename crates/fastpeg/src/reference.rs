@@ -122,7 +122,7 @@ pub struct Reference {
 }
 
 impl Reference {
-    /// Resolve a grammar, or report every problem in it.
+    /// Resolve a grammar, or report the problems in it, the first hundred at most.
     pub fn new(grammar: &Grammar) -> Result<Reference, Vec<GrammarError>> {
         crate::grammar::resolve::resolve(grammar).map(|grammar| Reference { grammar })
     }
