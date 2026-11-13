@@ -33,7 +33,7 @@ RUST = BENCHMARKS / "rust"
 RUST_TARGET = RUST / "target"
 CRITERION = RUST_TARGET / "criterion"
 
-PYPERF_SUITES = ("json", "python", "ord")
+PYPERF_SUITES = ("json", "binding", "python", "ord")
 SUITES = (*PYPERF_SUITES, "rust")
 MODES = ("default", "fast", "rigorous", "smoke")
 RECORD_MODES = ("default", "rigorous")

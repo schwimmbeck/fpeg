@@ -93,7 +93,7 @@ The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for ligh
 
 ## Benchmarks
 
-The Rust suite measures fpeg's parsing machine beside other Rust parsers, and the Python suites measure other parsers until the Python binding exists. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
+The Rust suite measures fpeg's parsing machine beside other Rust parsers. The `json` suite measures fpeg's Python package beside other Python parsers, and the `binding` suite measures what the binding adds to a parse: transforms with and without methods, tokens made from views, and many small parses. The `python` and `ord` suites measure the parsers fpeg will be compared with on Python source. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
 
 ```sh
 uv run --group bench python benchmarks/run.py
@@ -103,7 +103,7 @@ This prepares the inputs, runs every suite and writes a summary and the raw resu
 
 | Option | Effect |
 |---|---|
-| `--suite json` | run one suite: `json`, `python`, `ord` or `rust`. Repeat it for several |
+| `--suite json` | run one suite: `json`, `binding`, `python`, `ord` or `rust`. Repeat it for several |
 | `--mode fast` | fewer pyperf worker processes and values, and criterion's quick mode, for a rough answer in less time |
 | `--mode rigorous` | twice the pyperf worker processes. The Rust suite measures as in the default mode |
 | `--mode smoke` | one value per Python benchmark and criterion's quick mode, to check that every suite runs |
