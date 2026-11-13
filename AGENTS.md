@@ -21,7 +21,7 @@ Status: milestones M0 and M1 are done. M1 brought the normative drafts of the gr
 
 Each one settles an argument that would otherwise come up again and again.
 
-- **General purpose.** No engine code, API or doc is shaped for one grammar or one user. A need that shows up in one grammar becomes a general primitive or a library grammar, or it stays out. The first real application, the ORD language of the ordec project, is an example and a test, never a special case.
+- **General purpose.** No engine code, API or doc is shaped for one grammar or one user. A need that shows up in one grammar becomes a general primitive or a library grammar, or it stays out. The first real application is an example and a test, never a special case.
 - **Semantics first.** What a grammar means is written down independently of how it is parsed, and a slow reference interpreter, compiled only for tests and fuzzing, implements exactly that text. Every engine and every optimization has to agree with it.
 - **Measure, then optimize.** An optimization lands with a benchmark that shows its effect and a switch that turns it off. One that does not pay is removed.
 - **A good number proves nothing until a control shows it can fail.** Run the case that must break a check before trusting the check.
