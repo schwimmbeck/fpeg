@@ -27,6 +27,7 @@ CHECKS = [
         "uv run --group docs sphinx-build -W --keep-going -q -b html docs docs/_build/html",
     ),
     ("licence headers", "uv run python scripts/check_licence_headers.py"),
+    ("REUSE compliance", "uv run reuse lint --quiet"),
     ("benchmark crate formatting", f"cargo fmt --check {BENCH}"),
     ("benchmark crate lints", f"cargo clippy {BENCH} --all-targets -- -D warnings"),
 ]

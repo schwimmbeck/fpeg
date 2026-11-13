@@ -68,6 +68,7 @@ uv run pyright --warnings
 uv run pytest
 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 uv run python scripts/check_licence_headers.py
+uv run reuse lint
 cargo fmt --check --manifest-path benchmarks/rust/Cargo.toml
 cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warnings
 ```
@@ -75,6 +76,7 @@ cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warn
 - `uv run python scripts/check.py` runs all of them in this order, stops at the first failure and prints the time each took. Run it before every commit.
 - The docs build runs every Python code block in the docs.
 - The second clippy builds the crates as users and the Python package get them. The tests turn on the `reference` feature for the whole workspace, so only that build sees code the tests alone use.
+- The licence check holds project files to the project's licence and holder. `reuse lint` checks that the repository follows the REUSE specification: `REUSE.toml` gives copyright and licence to the files that cannot carry a header, and `LICENSES/` holds the text of every licence used.
 - pyright checks `python/`, `tests/` and `scripts/`. The benchmarks and the docs import their own dependency groups, and ruff lints them.
 - Benchmarks: `uv run --group bench python benchmarks/run.py`. `--mode smoke` checks that every suite runs, `--record` writes a run to commit. `docs/development.md` lists the options.
 
@@ -93,7 +95,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
 - Model data explicitly. Typed records and enums instead of positional tuples, parallel arrays in the public API or stringly typed flags.
 - Errors are values. The core returns `Result` and never panics on any grammar or input. A panic is a bug and gets a test.
 - `unsafe` is allowed only where a benchmark shows the gain. Each block carries a `// SAFETY:` comment, sits behind a safe function and is covered by tests that run under Miri where Miri can run them.
-- Every source file starts with two SPDX lines in the comment style of its language: `SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck` and `SPDX-License-Identifier: MIT OR Apache-2.0`. Outside code needs a licence compatible with both MIT and Apache-2.0 and keeps its own header.
+- Every source file starts with two SPDX lines in the comment style of its language: <!-- REUSE-IgnoreStart -->`SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck` and `SPDX-License-Identifier: MIT OR Apache-2.0`<!-- REUSE-IgnoreEnd -->. Outside code needs a licence compatible with both MIT and Apache-2.0 and keeps its own header.
 - Keep dependencies few and current. A new dependency of the core needs its reason in the commit message, since it lands in every wheel.
 
 ## Tests

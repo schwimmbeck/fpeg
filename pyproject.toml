@@ -29,7 +29,13 @@ dynamic = ["version"]
 Repository = "https://github.com/schwimmbeck/fastpeg"
 
 [dependency-groups]
-dev = ["maturin>=1.16", "pyright>=1.1.414", "pytest>=9.2", "ruff>=0.17.5"]
+dev = [
+    "maturin>=1.16",
+    "pyright>=1.1.414",
+    "pytest>=9.2",
+    "reuse>=6.3.0",
+    "ruff>=0.17.5",
+]
 docs = ["furo>=2025.12.19", "myst-parser>=5.2", "sphinx>=9.2"]
 bench = [
     "libcst>=1.9",

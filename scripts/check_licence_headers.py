@@ -13,8 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+# REUSE-IgnoreStart
 COPYRIGHT_TAG = "SPDX-FileCopyrightText: "
 LICENCE_TAG = "SPDX-License-Identifier: "
+# REUSE-IgnoreEnd
 PROJECT_HOLDER = "2026 Dominik Schwimmbeck"
 PROJECT_LICENCE = "MIT OR Apache-2.0"
 COMPATIBLE_LICENCES = {

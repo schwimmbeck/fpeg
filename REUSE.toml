@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Copyright and licence of the files that carry no header of their own: documentation, lock
+# files, recorded benchmark results, the logo, small configuration files, the case files and the
+# grammar samples, which are inputs in many formats. Every other file states both in its header.
+version = 1
+
+[[annotations]]
+path = [
+    "**/*.md",
+    "**/*.lock",
+    "**/*.svg",
+    ".gitattributes",
+    ".gitignore",
+    ".python-version",
+    "python/fastpeg/py.typed",
+    "benchmarks/results/**",
+    "crates/fastpeg/grammars/samples/**",
+    "crates/fastpeg/tests/semantics/*.txt",
+]
+SPDX-FileCopyrightText = "2026 Dominik Schwimmbeck"
+SPDX-License-Identifier = "MIT OR Apache-2.0"

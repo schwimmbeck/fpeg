@@ -34,6 +34,9 @@ Every change passes these checks before it is committed. Continuous integration 
 | Python tests | `uv run pytest` |
 | Documentation | `uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html` |
 | Licence headers | `uv run python scripts/check_licence_headers.py` |
+| REUSE compliance | `uv run reuse lint` |
+
+Every file states its copyright and licence, in a header or, for files that cannot carry one, in `REUSE.toml`, and `LICENSES/` holds the text of every licence used, as the [REUSE specification](https://reuse.software/spec/) asks.
 
 `uv run python scripts/check.py` runs all of these in order, together with the checks of the benchmark crate below, and stops at the first failure.
 
