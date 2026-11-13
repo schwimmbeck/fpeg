@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0, M1 and M2 are done. Work continues with M3.
+M0 to M3 are done. Work continues with M4.
 
 ## M0 Foundations
 
@@ -24,8 +24,9 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## M3 Python binding
 
-- `Tree` and `Token` views, the `Transformer`, value builders written in the grammar, and `ParseError`.
-- JSON from grammar text to Python objects, checked against the `json` module.
+- `Tree` and `Token` views, the `Transformer`, value builders written in the grammar, `ParseError` with the place of a failure, and type stubs.
+- JSON and CSV from grammar text to Python objects, checked against the `json` and `csv` modules.
+- The first tutorials and the reference of the Python API.
 
 ## M4 The language, complete for context-free use
 

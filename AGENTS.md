@@ -15,7 +15,7 @@ fpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
 - Python is the first binding. It exposes the tree lazily and runs a `Transformer`, a class with one method per rule, after the parse.
 - Grammar analysis reports diagnostics with stable codes. A command-line checker and later a language server use the same diagnostics.
 
-Status: milestones M0, M1 and M2 are done. M1 brought the normative drafts of the grammar language and its semantics, the grammar model and builder, the reference interpreter with the text front end, and the acceptance grammars with their samples. M2 built the engine: the parsing machine runs grammars without left recursion, cuts, columns and captures, the reference interpreter, compiled only for tests, stays the definition it is compared with, and the command line checks grammars and parses inputs. M3 brings the Python binding. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`) appear with the milestone that needs them.
+Status: milestones M0 to M3 are done. M1 brought the normative drafts of the grammar language and its semantics, the grammar model and builder, the reference interpreter with the text front end, and the acceptance grammars with their samples. M2 built the engine: the parsing machine runs grammars without left recursion, cuts, columns and captures, the reference interpreter, compiled only for tests, stays the definition it is compared with, and the command line checks grammars and parses inputs. M3 built the Python binding: views of the tree, the Transformer and the value builders, with JSON and CSV checked against `json` and `csv`. M4 completes the language for context-free use. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`) appear with the milestone that needs them.
 
 ## Principles
 
@@ -41,7 +41,6 @@ crates/fpeg/          core: grammar front end, analysis, compiler, parsing machi
 crates/fpeg-cli/      the fpeg command: check, parse, profile
 crates/fpeg-py/       PyO3 binding, built with maturin
 python/fpeg/          Python package: Transformer, tree and token views, type stubs
-examples/             runnable examples, each one used by the docs (M3)
 benchmarks/           benchmark harness, corpus fetchers, recorded results
 benchmarks/rust/      fpeg's Rust benchmarks and baselines, a package outside the workspace
 docs/                 user documentation, one Markdown file per page
