@@ -128,8 +128,10 @@ class Transformer:
 
     def _transform_token(self, token: Token) -> Sequence[Any]:
         cls = type(self)
-        name = token.type
-        if getattr(self, "__visit_tokens__", True) and _is_handler(cls, name):
+        # A token made in Python may have any object as its type.
+        name: Any = token.type
+        visit = getattr(self, "__visit_tokens__", True)
+        if visit and isinstance(name, str) and _is_handler(cls, name):
             mode = _token_convention(cls, name)
             method = getattr(self, name)
             call: Callable[[], Any] = (

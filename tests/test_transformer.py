@@ -455,6 +455,8 @@ def test_a_lone_token_and_any_other_value_transform_too() -> None:
     number = parse("f(7)").children[0].children[1]
     assert Tokens().transform(number) == 7
     assert Tokens().transform("plain") == "plain"
+    odd = fpeg.Token(None, "x")  # type: ignore[arg-type] # a type no str, which Python allows
+    assert Tokens().transform(odd) is odd
 
     class Default(fpeg.Transformer):
         def __default_token__(self, token: fpeg.Token) -> str:
