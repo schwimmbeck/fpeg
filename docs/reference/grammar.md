@@ -243,7 +243,7 @@ group: "(" %on(bracket, expr ")")
 | `%on(a, e)`, `%off(a, e)` | match `e` with the flag set or cleared |
 | `%if(a)`, `%if(!a)` | succeed without consuming input when the flag is set, or cleared |
 
-A flag holds for the whole extent of `e`, including the rules it calls and the skip expression. Using an undeclared flag is an error. The closing `")"` above is inside `%on`, because skipping happens before a token: a line break in front of `)` is skipped only while the flag is set.
+A flag holds for the whole extent of `e`, including the rules it calls and the skip expression. Using an undeclared flag is an error, and a grammar declares at most 64 flags. The closing `")"` above is inside `%on`, because skipping happens before a token: a line break in front of `)` is skipped only while the flag is set.
 
 ### Indentation
 

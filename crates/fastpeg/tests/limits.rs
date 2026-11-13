@@ -195,11 +195,16 @@ fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
 #[test]
 fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
     let count = usize::from(u16::MAX) + 2;
-    let mut flags = GrammarBuilder::new();
-    for i in 0..count {
-        flags.flag(&format!("f{i}"));
-    }
-    flags.rule("start", lit("a"));
+    let flag_grammar = |flags: usize| {
+        let mut builder = GrammarBuilder::new();
+        for i in 0..flags {
+            builder.flag(&format!("f{i}"));
+        }
+        builder.rule("start", lit("a"));
+        builder
+    };
+    Reference::new(&flag_grammar(64).build()).expect("64 flags are allowed");
+    let flags = flag_grammar(65);
     let mut fields = GrammarBuilder::new();
     let named = (0..count)
         .map(|i| field(&format!("x{i}"), lit("a")))
@@ -216,7 +221,7 @@ fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
     instances.rule("start", Expr::new(ExprKind::Choice(uses)));
     instances.rule("t", r("x")).params(["x"]);
     for (builder, message) in [
-        (flags, "too many flags"),
+        (flags, "at most 64 flags"),
         (fields, "too many field names"),
         (captures, "too many capture names"),
         (instances, "too many instances"),

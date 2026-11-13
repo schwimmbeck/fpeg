@@ -32,6 +32,9 @@ const MAX_TEMPLATE_INSTANCES: usize = 1_000;
 /// for every use of its parameter, so that a small grammar cannot take the memory of a huge one.
 const MAX_INSTANCE_EXPRESSIONS: usize = 100_000;
 
+/// Flags a grammar may declare. The engine keeps the flags in one 64-bit register.
+const MAX_FLAGS: usize = 64;
+
 /// The tab width when a grammar sets none.
 const DEFAULT_TAB_WIDTH: u32 = 8;
 
@@ -440,11 +443,16 @@ impl<'g> Resolver<'g> {
     fn directives(&mut self) {
         let g = self.grammar;
         for flag in &g.flags {
-            let Ok(next) = u16::try_from(self.flags.len()) else {
-                self.error("the grammar declares too many flags".into(), flag.span);
+            if self.flags.contains_key(flag.text.as_str()) {
+                continue;
+            }
+            if self.flags.len() == MAX_FLAGS {
+                let message = format!("a grammar declares at most {MAX_FLAGS} flags");
+                self.error(message, flag.span);
                 break;
-            };
-            self.flags.entry(&flag.text).or_insert(FlagId(next));
+            }
+            let next = FlagId(self.flags.len() as u16);
+            self.flags.insert(&flag.text, next);
         }
         if let Some(word) = &g.word {
             match &word.kind {
