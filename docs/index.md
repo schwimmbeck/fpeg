@@ -21,6 +21,35 @@ import fpeg
 print(fpeg.__version__)
 ```
 
+## A first parse
+
+A grammar is a string, and `parse` returns the tree of an input:
+
+```python
+grammar = fpeg.Grammar(r"""
+start: (pair ** ",")
+pair: key=NAME "=" value=NUMBER
+NAME: [a-z]+
+NUMBER: [0-9]+
+%ignore " "+
+""")
+
+tree = grammar.parse("x = 1, y = 22")
+print(tree.pretty())
+```
+
+```output
+start
+  pair
+    key=x
+    value=1
+  pair
+    key=y
+    value=22
+```
+
+Lowercase names are rules and uppercase names terminals, `**` separates repetitions, `key=` and `value=` name the parts of a pair, and `%ignore` skips the spaces. The tutorials go on from here.
+
 ## Tutorials
 
 - [Your first grammar](tutorial/first-grammar.md): JSON from nothing to Python objects.
