@@ -92,12 +92,24 @@ fn grammars_that_nest_too_deeply_are_errors_not_stack_overflows() {
 }
 
 #[test]
-fn templates_whose_arguments_double_stop_after_a_few_instances() {
-    let errors = grammar_errors("start: t<\"b\">\nt<x>: \"a\" t<x x> | x\n");
-    assert!(
-        errors.iter().any(|e| e.contains("too many instances")),
-        "{errors:?}"
-    );
+fn templates_that_expand_too_far_are_errors_before_they_take_the_memory() {
+    let doubling = "start: t<\"b\">\nt<x>: \"a\" t<x x> | x\n".to_owned();
+    // An argument made of many copies of the parameter, built only if it fits.
+    let copies = format!("start: t<\"a\">\nt<p>: t<({})>\n", ["p"; 250].join(" "));
+    // A valid grammar whose last template lowers a copy of a large argument per use.
+    let mut uses = String::from("start: d1<\"a\">\n");
+    for i in 1..11 {
+        uses.push_str(&format!("d{i}<p>: d{}<(p p)>\n", i + 1));
+    }
+    uses.push_str("d11<p>: x<(p p)>\n");
+    uses.push_str(&format!("x<p>: {}\n", ["p"; 1_000].join(" ")));
+    for text in [doubling, copies, uses] {
+        let errors = grammar_errors(&text);
+        assert!(
+            errors.iter().any(|e| e.contains("too many expressions")),
+            "{errors:?}"
+        );
+    }
 }
 
 #[test]

@@ -70,12 +70,14 @@ enum Mode {
 }
 
 /// Where an expression is lowered: the mode, whether it stands directly inside a field, the
-/// arguments of the template instance, and the level names of a precedence block.
+/// arguments of the template instance with how many expressions each holds, and the level
+/// names of a precedence block.
 #[derive(Clone, Copy)]
 struct Scope<'s> {
     mode: Mode,
     in_field: bool,
     params: &'s HashMap<String, Expr>,
+    sizes: &'s HashMap<String, usize>,
     levels: Option<&'s HashMap<String, RuleId>>,
 }
 
@@ -194,11 +196,12 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
     while let Some(pending) = r.queue.pop_front() {
         r.lower_rule(pending);
     }
-    let no_params = HashMap::new();
+    let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
     let plain = Scope {
         mode: Mode::Plain,
         in_field: false,
         params: &no_params,
+        sizes: &no_sizes,
         levels: None,
     };
     let ignored: Vec<&Expr> = grammar.ignore.iter().collect();
@@ -279,6 +282,25 @@ fn unfielded_items(expr: &ir::Expr, rules: &[u8]) -> u8 {
         // An inner field keeps its items, and lookahead adds none.
         _ => 0,
     }
+}
+
+/// How many expressions `expr` holds once each parameter is replaced by an argument holding
+/// `sizes[parameter]` expressions, worked out without building it and saturating.
+fn substituted_size(expr: &Expr, sizes: &HashMap<String, usize>) -> usize {
+    let mut pending = vec![expr];
+    let mut size = 0usize;
+    while let Some(expr) = pending.pop() {
+        if let ExprKind::Reference { name, args } = &expr.kind
+            && args.is_empty()
+            && let Some(&argument) = sizes.get(&name.text)
+        {
+            size = size.saturating_add(argument);
+            continue;
+        }
+        size = size.saturating_add(1);
+        pending.extend(expr.children());
+    }
+    size
 }
 
 /// Replace references to parameters by their arguments.
@@ -387,6 +409,11 @@ impl<'g> Resolver<'g> {
         }
     }
 
+    fn too_large(&mut self, template: &str, span: Span) {
+        let message = format!("the instances of {template} expand into too many expressions");
+        self.error(message, span);
+    }
+
     /// The id of the instance of `rule` with these closed arguments, created on first use.
     fn instance(&mut self, rule: &'g Rule, args: Vec<Expr>, span: Span) -> RuleId {
         let key: Vec<String> = args.iter().map(expr_text).collect();
@@ -402,21 +429,25 @@ impl<'g> Resolver<'g> {
                 .map(|r| r.name.text.as_str())
                 .collect();
             let templates = self.instances.len().saturating_sub(plain.len());
-            let body: Vec<&Expr> = match &rule.body {
-                RuleBody::Alternatives(alternatives) => {
-                    alternatives.iter().map(|a| &a.expr).collect()
-                }
-                RuleBody::Precedence(_) => Vec::new(),
-            };
-            let size: usize = args.iter().chain(body).map(|e| e.measure().0).sum();
-            self.instance_expressions += size;
-            if templates >= MAX_TEMPLATE_INSTANCES
-                || self.instance_expressions > MAX_INSTANCE_EXPRESSIONS
-            {
+            if templates >= MAX_TEMPLATE_INSTANCES {
                 let message = format!("the template {} creates too many instances", rule.name.text);
-                if !self.errors.iter().any(|e| e.message == message) {
-                    self.error(message, span);
-                }
+                self.error(message, span);
+                return RuleId(0);
+            }
+            // The instance lowers a copy of an argument for every use of its parameter.
+            let sizes: HashMap<String, usize> = (rule.params.iter())
+                .map(|p| p.text.clone())
+                .zip(args.iter().map(|a| a.measure().0))
+                .collect();
+            let expanded = match &rule.body {
+                RuleBody::Alternatives(alternatives) => (alternatives.iter())
+                    .map(|a| substituted_size(&a.expr, &sizes))
+                    .fold(0, usize::saturating_add),
+                RuleBody::Precedence(_) => 0,
+            };
+            self.instance_expressions = self.instance_expressions.saturating_add(expanded);
+            if self.instance_expressions > MAX_INSTANCE_EXPRESSIONS {
+                self.too_large(&rule.name.text, span);
                 return RuleId(0);
             }
         }
@@ -559,10 +590,14 @@ impl<'g> Resolver<'g> {
             RuleKind::Lexical => Mode::Lexical,
             RuleKind::Terminal => Mode::Plain,
         };
+        let sizes: HashMap<String, usize> = (params.iter())
+            .map(|(name, arg)| (name.clone(), arg.measure().0))
+            .collect();
         let scope = Scope {
             mode,
             in_field: false,
             params: &params,
+            sizes: &sizes,
             levels: None,
         };
         let mut body = match &rule.body {
@@ -663,11 +698,12 @@ impl<'g> Resolver<'g> {
                 self.error(message, level.name.span);
             }
         }
-        let no_params = HashMap::new();
+        let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
         let scope = Scope {
             mode: Mode::Syntactic,
             in_field: false,
             params: &no_params,
+            sizes: &no_sizes,
             levels: Some(&scope_names),
         };
         for (k, level) in levels.iter().enumerate() {
@@ -753,9 +789,10 @@ impl<'g> Resolver<'g> {
                         let message = format!("the parameter {} takes no arguments", name.text);
                         self.error(message, expr.span);
                     }
-                    let no_params = HashMap::new();
+                    let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
                     let closed = Scope {
                         params: &no_params,
+                        sizes: &no_sizes,
                         levels: None,
                         ..scope
                     };
@@ -968,6 +1005,15 @@ impl<'g> Resolver<'g> {
                 args.len()
             );
             self.error(message, span);
+            return ir::Expr::Empty;
+        }
+        // Arguments that take in parameters grow with every instance, so their size is known
+        // before they are built.
+        let size = (args.iter())
+            .map(|a| substituted_size(a, scope.sizes))
+            .fold(0, usize::saturating_add);
+        if size > MAX_INSTANCE_EXPRESSIONS {
+            self.too_large(&target.name.text, span);
             return ir::Expr::Empty;
         }
         let closed: Vec<Expr> = args.iter().map(|a| substitute(a, scope.params)).collect();
