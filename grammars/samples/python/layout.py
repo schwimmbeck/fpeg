@@ -37,4 +37,7 @@ values = 1..__class__, 1.e5, 0_0, 0xdead_beef, 1if x else 2
 a[x:=1]
 {y:=2}
 f"{x:=10}"
+if x:
+    a = 1
+    b = 2  # a form feed starts the line, and columns restart
 # a final comment without a line break

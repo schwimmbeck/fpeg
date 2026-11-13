@@ -9,7 +9,7 @@ The definition has two steps. First, every grammar is translated into a small co
 - The input is a UTF-8 string. Positions are byte offsets from 0 to the length of the input, and every position used below lies on a code point boundary.
 - A *character* is one code point.
 - A *line break* is `\r\n`, `\n` or `\r`. A line starts at position 0 and after every line break.
-- The *column* of a position is computed over the characters between the start of its line and the position: each character advances the column by 1, a tab advances it to the next multiple of the tab width (`%tabs`, default 8). The first column is 0.
+- The *column* of a position is computed over the characters between the start of its line and the position: each character advances the column by 1, a tab advances it to the next multiple of the tab width (`%tabs`, default 8), and a form feed sets it back to 0. The first column is 0.
 
 ## The core language
 

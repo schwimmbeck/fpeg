@@ -41,7 +41,8 @@ impl LineIndex {
     }
 
     /// The column of a byte offset, counting from 0: one per code point from the start of the
-    /// line, with a tab advancing to the next multiple of `tab_width`.
+    /// line, with a tab advancing to the next multiple of `tab_width` and a form feed going back
+    /// to 0, as Python counts indentation.
     pub fn column(&self, text: &str, offset: usize, tab_width: u32) -> u32 {
         let start = self.line_start(offset);
         let mut column = 0u32;
@@ -49,6 +50,7 @@ impl LineIndex {
         for c in text.get(start..offset).unwrap_or("").chars() {
             column = match c {
                 '\t' if tab_width > 0 => (column / tab_width + 1).saturating_mul(tab_width),
+                '\x0C' => 0,
                 _ => column.saturating_add(1),
             };
         }
@@ -61,15 +63,15 @@ mod tests {
     use super::LineIndex;
 
     #[test]
-    fn columns_count_code_points_and_expand_tabs_after_any_line_break() {
-        let text = "ab\r\n\täx\rcd\ny";
+    fn columns_count_code_points_expand_tabs_and_restart_at_form_feeds() {
+        let text = "ab\r\n\täx\rcd\n  \x0C y";
         let lines = LineIndex::new(text);
         let x = text.find('x').unwrap_or_default();
         assert_eq!(lines.line(x), 1);
         assert_eq!(lines.column(text, x, 8), 9);
         assert_eq!(lines.column(text, x, 4), 5);
         assert_eq!(lines.line(text.find('d').unwrap_or_default()), 2);
-        assert_eq!(lines.column(text, text.len(), 8), 1);
+        assert_eq!(lines.column(text, text.len() - 1, 8), 1);
     }
 
     #[test]

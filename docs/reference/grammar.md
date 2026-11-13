@@ -257,7 +257,7 @@ block: NEWLINE %indent((%same stmt)+)
 | `%same` | the next token must start exactly at the reference column. Consumes nothing |
 | `%tabs n` | a tab advances to the next multiple of `n` columns when columns are compared. Default 8 |
 
-The reference column is 0 at the start of a parse. Columns count code points from the start of the line, starting at 0.
+The reference column is 0 at the start of a parse. Columns count code points from the start of the line, starting at 0, and a form feed sets the count back to 0.
 
 ### Captures
 

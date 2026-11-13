@@ -26,7 +26,9 @@ impl Grammar {
         let tree = meta.parse(text, "start").map_err(|error| {
             let lines = LineIndex::new(text);
             let line = lines.line(error.position) + 1;
-            let column = lines.column(text, error.position, 1) + 1;
+            // A count of code points for people to read, not the column that indentation uses.
+            let before = text.get(lines.line_start(error.position)..error.position);
+            let column = before.unwrap_or("").chars().count() + 1;
             let message = match error.kind {
                 ParseErrorKind::NoMatch { expected } => format!(
                     "syntax error at line {line}, column {column}: expected {}",

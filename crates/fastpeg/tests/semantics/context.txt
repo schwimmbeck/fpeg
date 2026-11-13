@@ -28,6 +28,14 @@ error at 2: expected indentation
 --- "a\n  b\n c\n"
 error at 7: expected end of input, indentation
 
+=== a form feed sets the column back to 0
+%ignore [ \x0C]+
+start: NAME block
+block: "\n" %indent((%same NAME "\n")+)
+NAME: [a-z]+
+--- "a\n  b\n  \u{c}  c\n"
+(start NAME"a" (block ~"\n" NAME"b" ~"\n" NAME"c" ~"\n"))
+
 === nested blocks return to an outer column
 %ignore " "+
 start: stmt+
