@@ -141,11 +141,14 @@ class Transformer:
             where = f"in {cls.__qualname__}.{name}, for the token {name}"
             # A method that yields runs while its values are taken.
             return _noted(lambda: _results(call()), where)
-        built = _noted(lambda: _fpeg.token_value(token), f"in the builder of {name}, for a token")
+        where = f"in the builder of {name}, for a token"
+        built = _noted(lambda: _fpeg.token_value(token), where)
         if built is not _NO_VALUE:
-            return _results(built)
+            # A function that a builder calls may yield too.
+            return _noted(lambda: _results(built), where)
         if getattr(self, "__visit_tokens__", True) and _overrides(cls, "__default_token__"):
-            return _results(self.__default_token__(token))
+            where = f"in {cls.__qualname__}.__default_token__, for the token {name}"
+            return _noted(lambda: _results(self.__default_token__(token)), where)
         return (token,)
 
     def _transform_owned(self, root: Tree) -> Sequence[Any]:
@@ -187,7 +190,8 @@ class Transformer:
             where = f"in {cls.__qualname__}.{name}, for the tree {name}"
             return _noted(lambda: _results(method(*args, **kwargs)), where)
         if _overrides(cls, "__default__"):
-            return _results(self.__default__(name, children, tree.meta))
+            where = f"in {cls.__qualname__}.__default__, for the tree {name}"
+            return _noted(lambda: _results(self.__default__(name, children, tree.meta)), where)
         if len(children) == len(tree.children) and all(
             a is b for a, b in zip(children, tree.children, strict=True)
         ):

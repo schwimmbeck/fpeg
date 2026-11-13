@@ -343,7 +343,7 @@ def test_an_error_in_a_method_keeps_its_type_and_gets_a_note_with_the_place() ->
     ]
 
 
-def test_an_error_while_a_method_yields_gets_its_note_too() -> None:
+def test_an_error_while_a_method_or_builder_yields_gets_its_note_too() -> None:
     class Late(fpeg.Transformer):
         def group(self, *items: Any) -> Iterator[Any]:
             yield from items
@@ -354,12 +354,30 @@ def test_an_error_while_a_method_yields_gets_its_note_too() -> None:
             yield int(token)
             raise ValueError("late")
 
+    class LateDefaults(fpeg.Transformer):
+        def __default__(self, data: Any, children: list[Any], meta: Any) -> Iterator[Any]:
+            yield from children
+            raise ValueError("late")
+
+        def __default_token__(self, token: fpeg.Token) -> Iterator[Any]:
+            yield token
+            raise ValueError("late")
+
+    def late_values(text: str) -> Iterator[str]:
+        yield text
+        raise ValueError("late")
+
+    built = fpeg.Grammar("?start: NAME\nNAME: [a-z]+ => Late", functions={"Late": late_values})
     tree = parse("f([a, b])")
     copy = pickle.loads(pickle.dumps(tree))
     for transformer, item, where in [
         (Late(), tree, "Late.group, for the node group at line 1, column 3"),
         (Late(), copy, "Late.group, for the tree group"),
         (LateToken(), parse("f(1)"), "LateToken.NUMBER, for the token NUMBER"),
+        (LateDefaults(), tree, "LateDefaults.__default_token__, for the token NAME at line 1"),
+        (LateDefaults(), copy, "LateDefaults.__default_token__, for the token NAME"),
+        (LateDefaults(visit_tokens=False), copy, "LateDefaults.__default__, for the tree group"),
+        (fpeg.Transformer(), built.parse("x"), "in the builder of NAME, for a token"),
     ]:
         with pytest.raises(ValueError, match="late") as raised:
             transformer.transform(item)
