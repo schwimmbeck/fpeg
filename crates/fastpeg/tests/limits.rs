@@ -162,7 +162,14 @@ fn templates_that_expand_too_far_are_errors_before_they_take_the_memory() {
         alternatives.join(" | "),
         ["\"a\""; 2_000].join(" ")
     );
-    for text in [doubling, copies, uses, with_arguments, block] {
+    // An instance refused in the skip expression of a grammar without plain rules, so that no
+    // rule stands where the refused one would have been.
+    let in_skip = format!(
+        "%ignore x=T<({})>\nT<p>: {}\n",
+        ["\"a\""; 60].join(" "),
+        ["p"; 2_000].join(" ")
+    );
+    for text in [doubling, copies, uses, with_arguments, block, in_skip] {
         let errors = grammar_errors(&text);
         assert!(
             errors.iter().any(|e| e.contains("too many expressions")),

@@ -485,19 +485,20 @@ impl<'g> Resolver<'g> {
         self.error(message, span);
     }
 
-    /// The id of the instance of `rule` with these closed arguments, created on first use.
-    fn instance(&mut self, rule: &'g Rule, args: Vec<Expr>, span: Span) -> RuleId {
+    /// The id of the instance of `rule` with these closed arguments, created on first use, or
+    /// none, with an error, when the grammar may not have another instance.
+    fn instance(&mut self, rule: &'g Rule, args: Vec<Expr>, span: Span) -> Option<RuleId> {
         let key: Vec<String> = args.iter().map(expr_text).collect();
         let key = (rule.name.text.clone(), key.join("\u{1}"));
         if let Some(&id) = self.instances.get(&key) {
-            return id;
+            return Some(id);
         }
         if !args.is_empty() {
             let templates = self.instances.len() - self.plain_instances;
             if templates >= MAX_TEMPLATE_INSTANCES {
                 let message = format!("the template {} creates too many instances", rule.name.text);
                 self.error(message, span);
-                return RuleId(0);
+                return None;
             }
             // The instance lowers a copy of an argument for every use of its parameter.
             let sizes: HashMap<String, usize> = (rule.params.iter())
@@ -517,13 +518,13 @@ impl<'g> Resolver<'g> {
             self.instance_expressions = self.instance_expressions.saturating_add(expanded);
             if self.instance_expressions > MAX_INSTANCE_EXPRESSIONS {
                 self.too_large(&rule.name.text, span);
-                return RuleId(0);
+                return None;
             }
         }
         let id = self.allocate();
         self.instances.insert(key, id);
         self.queue.push_back(Pending { id, rule, args });
-        id
+        Some(id)
     }
 
     fn allocate(&mut self) -> RuleId {
@@ -1102,7 +1103,10 @@ impl<'g> Resolver<'g> {
             self.error(message, span);
             return ir::Expr::Empty;
         }
-        let id = self.instance(target, closed, span);
+        // A call to a placeholder would reach a rule that is not there.
+        let Some(id) = self.instance(target, closed, span) else {
+            return ir::Expr::Empty;
+        };
         match (scope.mode, target.kind()) {
             (Mode::Plain, RuleKind::Terminal) => ir::Expr::Call(id),
             (Mode::Plain, _) => {
