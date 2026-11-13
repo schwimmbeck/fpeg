@@ -11,7 +11,8 @@ use std::collections::HashMap;
 
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span};
-use crate::ir::CharSet;
+use crate::ir::{self, CharSet};
+use crate::items::Counts;
 use crate::vm::{Options, compile};
 
 /// Alternatives before an alternative that it is compared with. A choice between more is rare,
@@ -22,13 +23,14 @@ const MAX_COMPARED_ALTERNATIVES: usize = 256;
 /// forms that the parser does not run yet, which are errors too, and the warnings. Sorted by
 /// where they stand in the grammar.
 pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
-    let resolved = match crate::resolve::resolve(grammar) {
+    let (resolved, counts) = match crate::resolve::resolve_counted(grammar) {
         Ok(resolved) => resolved,
         Err(errors) => return errors,
     };
     let mut found = compile::compile(&resolved, &Options::default())
         .err()
         .unwrap_or_default();
+    shapes(grammar, &resolved, &counts, &mut found);
     let bodies = bodies(grammar);
     let mut checker = Checker {
         word: word_set(grammar),
@@ -65,6 +67,58 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
     found.sort_by_key(|diagnostic| (diagnostic.span.start, diagnostic.span.end));
     found.dedup();
     found
+}
+
+/// Warn about the alternatives of transparent rules that make a node for some inputs only,
+/// and about builders on those that never make one. A rule with parameters is left alone, since
+/// what its alternatives leave depends on its arguments.
+fn shapes(grammar: &Grammar, resolved: &ir::Grammar, counts: &Counts, found: &mut Vec<Diagnostic>) {
+    let lowered: HashMap<&str, &ir::Rule> = (resolved.rules.iter())
+        .map(|rule| (rule.name.as_str(), rule))
+        .collect();
+    for rule in &grammar.rules {
+        let name = &rule.name.text;
+        let (RuleBody::Alternatives(alternatives), Some(lowered)) =
+            (&rule.body, lowered.get(name.as_str()))
+        else {
+            continue;
+        };
+        if !rule.transparent || !rule.params.is_empty() {
+            continue;
+        }
+        // The body of a rule is its one alternative, or the choice between several.
+        let nodes = match &lowered.body {
+            ir::Expr::Choice(nodes) => nodes.as_slice(),
+            node => std::slice::from_ref(node),
+        };
+        for (alternative, node) in alternatives.iter().zip(nodes) {
+            // An alternative with an alias always makes a node.
+            let ir::Expr::Transparent { expr, .. } = node else {
+                continue;
+            };
+            let shape = counts.shape(expr);
+            let (code, message) = if shape.stays && shape.gives_way {
+                let message = format!(
+                    "this alternative makes a node {name} for some inputs and gives way to its \
+                     one child for others"
+                );
+                (DiagnosticCode::UnsteadyShape, message)
+            } else if shape.gives_way && alternative.builder.is_some() {
+                let message = format!(
+                    "the builder of this alternative is never used, since it always gives way to \
+                     its one child and makes no node {name}"
+                );
+                (DiagnosticCode::UnusedBuilder, message)
+            } else {
+                continue;
+            };
+            found.push(Diagnostic {
+                code,
+                message,
+                span: alternative.expr.span,
+            });
+        }
+    }
 }
 
 /// A rule, or a level of a precedence block: what a name stands for.

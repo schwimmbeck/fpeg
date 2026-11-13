@@ -8,8 +8,9 @@
 //! Counts are 0, 1 or 2, where 2 stands for several: summed through sequences, the largest
 //! through choices, multiplied through repetitions. A node or a token is one item to the node
 //! around it, whatever lies inside, so a rule's counts matter where it leaves no node of its own.
-//! Beside the most items, the counts know the fields that every match fills, so that a field of
-//! one item tells whether it can be absent.
+//! Beside the most items, the counts know whether a match can add no visible item or exactly
+//! one, which tells what becomes of a transparent node, and the fields that every match fills,
+//! so that a field of one item tells whether it can be absent.
 //!
 //! Rules are counted callees first, the rules that call each other together until their counts
 //! stop growing, and a shared part once per pass. The fields every match fills are found after
@@ -57,6 +58,8 @@ struct Items {
     fields: BTreeMap<FieldId, u8>,
     /// Whether some match adds no visible item.
     empty: bool,
+    /// Whether some match adds exactly one visible item.
+    single: bool,
     /// The fields that every match gives an item, and whether every match adds a visible item
     /// without a field.
     present: BTreeSet<FieldId>,
@@ -82,6 +85,7 @@ impl Items {
         Items {
             visible: 1,
             unfielded: 1,
+            single: true,
             unfielded_present: true,
             ..Items::default()
         }
@@ -92,10 +96,16 @@ impl Items {
         self.visible > 0 || self.empty
     }
 
+    /// Whether a transparent node around the expression stays for some match: one that adds
+    /// no visible item, or several.
+    fn stays(&self) -> bool {
+        self.visible > 1 || self.empty
+    }
+
     /// Whether two counts agree on the most items, leaving out the fields every match fills.
     fn same_most(&self, other: &Items) -> bool {
-        (self.visible, self.unfielded, &self.fields, self.empty)
-            == (other.visible, other.unfielded, &other.fields, other.empty)
+        let most = |items: &Items| (items.visible, items.unfielded, items.empty, items.single);
+        most(self) == most(other) && self.fields == other.fields
     }
 
     fn then(mut self, next: &Items) -> Items {
@@ -105,6 +115,8 @@ impl Items {
             let held = self.fields.entry(field).or_insert(0);
             *held = sum(*held, count);
         }
+        // One item in all: from one side, with none from the other.
+        self.single = (self.single && next.empty) || (self.empty && next.single);
         self.empty &= next.empty;
         self.present.extend(next.present.iter().copied());
         self.unfielded_present |= next.unfielded_present;
@@ -127,6 +139,7 @@ impl Items {
             *held = (*held).max(count);
         }
         self.empty |= other.empty;
+        self.single |= other.single;
         self
     }
 
@@ -146,6 +159,8 @@ impl Items {
                 .map(|(field, count)| (field, times(count)))
                 .collect(),
             empty: min == 0 || self.empty,
+            // One step that adds one item, and any further steps that add none.
+            single: self.single && (min <= 1 || self.empty),
             present: if min > 0 {
                 self.present
             } else {
@@ -273,6 +288,15 @@ pub(crate) struct ItemFacts {
     pub single_item: HashMap<String, bool>,
 }
 
+/// What becomes of a transparent node, as far as the counts of the expression in it show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Shape {
+    /// Some match leaves no visible item or several, and the node stays.
+    pub stays: bool,
+    /// Some match leaves exactly one visible item, and the node gives way to it.
+    pub gives_way: bool,
+}
+
 /// What each rule of a grammar adds where it is called, from which the counts of any
 /// expression follow. A rule missing from the slice, which only a grammar with errors has, never
 /// matches.
@@ -295,6 +319,15 @@ impl Counts {
             .filter(|&(_, count)| count > 0)
             .map(|(field, _)| field)
             .collect()
+    }
+
+    /// What becomes of a transparent node around `expr`.
+    pub fn shape(&self, expr: &ir::Expr) -> Shape {
+        let items = Counter::new(&self.summaries).of(expr);
+        Shape {
+            stays: items.stays(),
+            gives_way: items.single,
+        }
     }
 
     /// The facts of the grammar, with `kinds` kinds in its kind table.
@@ -380,7 +413,7 @@ impl KindItems {
                 let items = counter.of(inner);
                 // Only a node that stays holds fields: an alternative of a transparent rule that
                 // gives way to its one child passes the child's field on instead.
-                if matches!(expr, E::Node { .. }) || items.visible > 1 || items.empty {
+                if matches!(expr, E::Node { .. }) || items.stays() {
                     self.mark(*kind);
                     if let Some(present) = self.present.get_mut(kind.0 as usize) {
                         match present {

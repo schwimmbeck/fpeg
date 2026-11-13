@@ -95,7 +95,7 @@ Only the name and the body are required.
 | `@lexical` before `name: e` | a lexical rule. It produces a node with children, like a syntactic rule, but nothing is skipped between its elements. Syntactic rules it calls skip as usual |
 | `_name: e` | an inlined rule: its children join the parent's children |
 | `_NAME: e` | a hidden terminal: it is matched and recorded, but views do not show it |
-| `?name: e` | a transparent rule: when it has exactly one visible child, it is inlined. Fields are allowed only in its aliased alternatives, which always make a node |
+| `?name: e` | a transparent rule: when it has exactly one visible child, it is inlined. Fields are allowed only in its aliased alternatives, which always make a node. An alternative that is inlined for some inputs only gets a warning ([W301](diagnostics/W301.md)) |
 | `name "number": e` | a display name, used in error messages in place of the name |
 
 A terminal may use literals, classes, Unicode properties, `.` and other terminals, but no syntactic or lexical rules.
@@ -334,7 +334,7 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 | `=> Name` alone | the function `Name` given with the grammar, called with the text of a token or the list of a node's children, as `int` and `list` are |
 
 - A builder belongs to its alternative. Each alternative with a builder makes nodes of a kind of their own, named like the rule or the alias, so a tree reads the same with builders and without. Alternatives with equal builders share that kind, across rules too.
-- A builder needs a node to make a value of. An alternative of a rule `_name`, or an alternative without `->` in a precedence level, makes none ([E309](diagnostics/E309.md)). In a transparent rule `?name` the builder applies when the node stays, and an alternative that gives way to its one visible child leaves its builder unused.
+- A builder needs a node to make a value of. An alternative of a rule `_name`, or an alternative without `->` in a precedence level, makes none ([E309](diagnostics/E309.md)). In a transparent rule `?name` the builder applies when the node stays, and an alternative that gives way to its one visible child leaves its builder unused, which is a warning where it always gives way ([W302](diagnostics/W302.md)).
 - On a terminal a builder applies to every token of it, so the terminal's alternatives give one builder. A token has no children and no fields, so `list`, `tuple`, `dict`, `*` and fields do not fit there ([E309](diagnostics/E309.md)).
 - A field a builder names must be one its alternative can hold, written in it or given by a rule it calls that makes no node of its own ([E207](diagnostics/E207.md)).
 - The built-in builders take no arguments, a keyword is given once, and positional arguments come before keywords ([E310](diagnostics/E310.md)).

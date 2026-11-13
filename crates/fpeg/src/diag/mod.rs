@@ -8,7 +8,8 @@
 //! starts with E is an error, which keeps a grammar from being used, and the hundreds tell its
 //! area: 1 reading the text, 2 names, 3 forms, 4 limits, 5 what the roadmap brings later, 9
 //! bugs of fpeg itself. A code that starts with W is a warning, which [`crate::check`] gives
-//! for a grammar that works: 1 choices, 2 repetition and recursion.
+//! for a grammar that works: 1 choices, 2 repetition and recursion, 3 the shape
+//! of the tree.
 
 use std::fmt;
 
@@ -131,11 +132,15 @@ pub enum DiagnosticCode {
     EmptyRepetition,
     /// W202: a rule that calls itself at both ends of an alternative.
     LeftAndRightRecursion,
+    /// W301: an alternative of a transparent rule that makes a node for some inputs only.
+    UnsteadyShape,
+    /// W302: a builder on an alternative of a transparent rule that never makes a node.
+    UnusedBuilder,
 }
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 31] = [
+    pub const ALL: [DiagnosticCode; 33] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -167,6 +172,8 @@ impl DiagnosticCode {
         DiagnosticCode::ShadowedAlternative,
         DiagnosticCode::EmptyRepetition,
         DiagnosticCode::LeftAndRightRecursion,
+        DiagnosticCode::UnsteadyShape,
+        DiagnosticCode::UnusedBuilder,
     ];
 
     /// The code, such as `E201`.
@@ -203,6 +210,8 @@ impl DiagnosticCode {
             DiagnosticCode::ShadowedAlternative => "W103",
             DiagnosticCode::EmptyRepetition => "W201",
             DiagnosticCode::LeftAndRightRecursion => "W202",
+            DiagnosticCode::UnsteadyShape => "W301",
+            DiagnosticCode::UnusedBuilder => "W302",
         }
     }
 

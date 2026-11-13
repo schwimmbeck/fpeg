@@ -145,6 +145,14 @@ struct Resolver<'g> {
 /// Resolve a grammar into the core language, or report the problems found, the first hundred at
 /// most.
 pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>> {
+    resolve_counted(grammar).map(|(resolved, _)| resolved)
+}
+
+/// Resolve a grammar and keep the item counts of its rules, which `check` asks about the shapes
+/// of transparent nodes.
+pub(crate) fn resolve_counted(
+    grammar: &Grammar,
+) -> Result<(ir::Grammar, crate::items::Counts), Vec<Diagnostic>> {
     let mut r = Resolver {
         grammar,
         by_name: HashMap::new(),
@@ -300,7 +308,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>>
     }
     let facts = counts.facts(&r.rules, &entry, r.kind_names.len());
     let rules = r.rules.into_iter().flatten().collect();
-    Ok(ir::Grammar {
+    let resolved = ir::Grammar {
         rules,
         entry,
         kind_fields: facts.kind_fields,
@@ -318,7 +326,8 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>>
         reserved: r.reserved,
         tab_width: grammar.tabs.map_or(DEFAULT_TAB_WIDTH, |t| t.value),
         labels: r.labels,
-    })
+    };
+    Ok((resolved, counts))
 }
 
 fn choice(mut items: Vec<ir::Expr>) -> ir::Expr {

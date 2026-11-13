@@ -244,3 +244,48 @@ fn a_rule_that_calls_itself_at_both_ends_of_an_alternative_groups_to_the_right()
         assert_eq!(codes(text), expected, "{text}");
     }
 }
+
+#[test]
+fn an_alternative_of_a_transparent_rule_makes_a_node_for_every_input_or_for_none() {
+    for (body, expected) in [
+        ("N (\"+\" N)*", vec!["W301"]),
+        ("N?", vec!["W301"]),
+        ("N*", vec!["W301"]),
+        // Through a rule that makes no node of its own.
+        ("_items\n_items: N N?", vec!["W301"]),
+        ("_items\n_items: N N | N", vec!["W301"]),
+        // A literal leaves a hidden token, which does not count.
+        ("\"(\" N \")\"", vec![]),
+        ("N N", vec![]),
+        // None or two: the node stays either way.
+        ("(N N)?", vec![]),
+        ("(N N?){2}", vec![]),
+        // An alternative with an alias always makes its node.
+        ("N (\"+\" N)* -> sum", vec![]),
+        ("N (\"+\" N)+ -> sum | N", vec![]),
+    ] {
+        let text = format!("start: x\n?x: {body}\nN: [0-9]+\n");
+        assert_eq!(codes(&text), expected, "{text}");
+    }
+    // What a rule with parameters leaves depends on its arguments.
+    assert_eq!(
+        codes("start: maybe<N>\n?maybe<x>: x?\nN: [0-9]+\n"),
+        Vec::<&str>::new()
+    );
+}
+
+#[test]
+fn a_builder_is_unused_on_an_alternative_that_always_gives_way() {
+    for (body, expected) in [
+        ("N => list", vec!["W302"]),
+        ("\"(\" N \")\" => list | N N => list", vec!["W302"]),
+        // The node stays, or the alias makes one.
+        ("N N => list", vec![]),
+        ("N -> one => list", vec![]),
+        // Where the shape depends on the input, that is the warning.
+        ("N* => list", vec!["W301"]),
+    ] {
+        let text = format!("start: x\n?x: {body}\nN: [0-9]+\n");
+        assert_eq!(codes(&text), expected, "{text}");
+    }
+}
