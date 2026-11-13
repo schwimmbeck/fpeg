@@ -34,6 +34,10 @@ class Point[T: (int, float) = int](Base, metaclass=Meta):
         return [await f() for f in self.callbacks]
 
 
+def keyword_only(a, b=1, /, c=2, *, d, e=3):
+    return lambda x, /, *, y: (x, y)
+
+
 def generator(n):
     total = yield
     yield from range(n)

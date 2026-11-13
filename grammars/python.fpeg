@@ -3,10 +3,10 @@
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
 // a line, and f-strings and t-strings nest replacement fields to any depth, with any quotes
-// inside them. Hard keywords are reserved, soft keywords stay names. Three parts accept a
+// inside them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
 // superset that a later check narrows: assignment and loop targets take primary expressions,
-// the kinds of parameters may come in any order, and comprehension clauses and starred items
-// take any expression where Python takes one of a tighter level.
+// and comprehension clauses and starred items take any expression where Python takes one of
+// a tighter level.
 
 %flag bracket
 %word [\p{XID_Continue}]
@@ -135,18 +135,29 @@ pattern_name: parts=(NAME ++ ".")
 
 // Parameters and arguments
 
-parameters: items=(parameter ++ ",") ","?
-?parameter: "/" -> positional_only
-          | "**" name=NAME (":" annotation=expression)? -> var_keyword
-          | "*" name=NAME? (":" annotation=star_annotation)? -> var_positional
-          | name=NAME (":" annotation=expression)? ("=" default=expression)? -> parameter
+parameters: _parameters<parameter, default_parameter, star_parameter, double_star_parameter>
+lambda_parameters: _parameters<lambda_parameter, lambda_default, lambda_star, lambda_double_star>
+// Parameters without a default come before those with one, and "/" may follow any of them.
+// Then come "*" with or without a name, the keyword-only parameters, at least one after a
+// bare "*", and "**".
+_parameters<plain, defaulted, star, double_star>: (_positional<plain, defaulted> ("," _starred<plain, defaulted, star, double_star>)? | _starred<plain, defaulted, star, double_star>) ","?
+_positional<plain, defaulted>: (items=(plain ++ ",") ",")? items=(defaulted ++ ",") ("," items=positional_only ("," items=(defaulted ++ ","))?)?
+                             | items=(plain ++ ",") ("," items=positional_only ("," items=(plain ++ ","))?)? ("," items=(defaulted ++ ","))?
+_starred<plain, defaulted, star, double_star>: items=star ("," items=((defaulted | plain) ++ ","))? ("," items=double_star)?
+                                             | items=bare_star "," items=((defaulted | plain) ++ ",") ("," items=double_star)?
+                                             | items=double_star
+positional_only: "/"
+bare_star: "*" -> var_positional
+parameter: name=NAME (":" annotation=expression)? !"="
+default_parameter: name=NAME (":" annotation=expression)? "=" default=expression -> parameter
+star_parameter: "*" name=NAME (":" annotation=star_annotation)? -> var_positional
 ?star_annotation: "*" value=expression -> starred
                 | expression
-lambda_parameters: items=(lambda_parameter ++ ",") ","?
-?lambda_parameter: "/" -> positional_only
-                 | "**" name=NAME -> var_keyword
-                 | "*" name=NAME? -> var_positional
-                 | name=NAME ("=" default=expression)? -> parameter
+double_star_parameter: "**" name=NAME (":" annotation=expression)? -> var_keyword
+lambda_parameter: name=NAME !"=" -> parameter
+lambda_default: name=NAME "=" default=expression -> parameter
+lambda_star: "*" name=NAME -> var_positional
+lambda_double_star: "**" name=NAME -> var_keyword
 type_params: "[" %on(bracket, items=(type_param ++ ",") ","? "]")
 ?type_param: "**" name=NAME ("=" default=expression)? -> param_spec
            | "*" name=NAME ("=" default=expression)? -> type_var_tuple
