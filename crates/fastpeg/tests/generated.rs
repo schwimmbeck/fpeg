@@ -123,11 +123,17 @@ impl Generator {
             8 => capture_ref("c"),
             9 if !self.params.is_empty() => r(self.rng.pick(&self.params)),
             10 if !self.levels.is_empty() => r(self.rng.pick(&self.levels)),
-            // Closed arguments keep the number of template instances small.
+            // Mostly closed arguments, which keep the number of template instances small. One
+            // that takes in the parameter grows with every instance until a limit stops it.
             11 if self.template && !terminal => {
-                let argument = match self.rng.chance(50) {
-                    true => class([range('a', 'b')]),
-                    false => self.terminal_or_literal(),
+                let growing = !self.params.is_empty() && self.rng.chance(30);
+                let argument = match (growing, self.rng.below(4)) {
+                    (true, 0) => flat(vec![r("p"), lit("a")], false),
+                    (true, 1) => on("f", r("p")),
+                    (true, 2) => label_message(opt(r("p")), "oops"),
+                    (true, _) => field("x", r("p")),
+                    (false, 0 | 1) => class([range('a', 'b')]),
+                    (false, _) => self.terminal_or_literal(),
                 };
                 r_args("t", [argument])
             }
