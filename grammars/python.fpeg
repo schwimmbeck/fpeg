@@ -3,9 +3,10 @@
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
 // a line, and f-strings and t-strings nest replacement fields to any depth, with any quotes
-// inside them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
+// inside them. Hard keywords are reserved, soft keywords stay names. Three parts accept a
 // superset that a later check narrows: assignment and loop targets take primary expressions,
-// and the kinds of parameters may come in any order.
+// the kinds of parameters may come in any order, and comprehension clauses and starred items
+// take any expression where Python takes one of a tighter level.
 
 %flag bracket
 %word [\p{XID_Continue}]
@@ -249,7 +250,10 @@ slices: items=(slice ++ ",") ","?
 
 // Strings
 
-strings: parts=(fstring<F_RAW_PREFIX, F_PREFIX> | fstring<T_RAW_PREFIX, T_PREFIX> | STRING)+
+// Bytes, template strings and the other strings each concatenate only with their own kind.
+strings: parts=BYTES+
+       | parts=fstring<T_RAW_PREFIX, T_PREFIX>+
+       | parts=(fstring<F_RAW_PREFIX, F_PREFIX> | STRING)+
 
 @lexical
 fstring<raw, plain>: prefix=raw (
@@ -265,7 +269,7 @@ _f_body<quote, line_break, escape>: quote %off(bracket, parts=(F_TEXT<quote, lin
 replacement_field: "{" %on(bracket, value=(yield_expression | star_expressions) debug="="? conversion=conversion? format=format_spec? "}")
 
 @lexical
-conversion: "!" name=NAME
+conversion: "!" name=CONVERSION
 
 @lexical
 format_spec: ":" %off(bracket, parts=(F_SPEC_TEXT | replacement_field)*)
@@ -280,13 +284,15 @@ F_PREFIX: [fF]
 F_RAW_PREFIX: [fF] [rR] | [rR] [fF]
 T_PREFIX: [tT]
 T_RAW_PREFIX: [tT] [rR] | [rR] [tT]
+CONVERSION: [sra] !\p{XID_Continue}
 
-STRING: RAW_PREFIX STRING_BODY<RAW_ESCAPE> | [bB] STRING_BODY<BYTES_ESCAPE> | [uU]? STRING_BODY<ESCAPE>
-RAW_PREFIX: [rR] [bB]? | [bB] [rR]
-STRING_BODY<escape>: LONG_STRING<"\"\"\"", escape> | LONG_STRING<"'''", escape>
-                   | SHORT_STRING<"\"", escape> | SHORT_STRING<"'", escape>
-LONG_STRING<quote, escape>: quote (!quote (escape | [^\\]))* quote
-SHORT_STRING<quote, escape>: quote (!quote (escape | [^\\\r\n]))* quote
+STRING: [rR] STRING_BODY<RAW_ESCAPE, .> | [uU]? STRING_BODY<ESCAPE, .>
+BYTES: ([rR] [bB] | [bB] [rR]) STRING_BODY<RAW_ESCAPE, ASCII> | [bB] STRING_BODY<BYTES_ESCAPE, ASCII>
+ASCII: [\x00-\x7F]
+STRING_BODY<escape, char>: LONG_STRING<"\"\"\"", escape, char> | LONG_STRING<"'''", escape, char>
+                         | SHORT_STRING<"\"", escape, char> | SHORT_STRING<"'", escape, char>
+LONG_STRING<quote, escape, char>: quote (!quote (escape | !"\\" char))* quote
+SHORT_STRING<quote, escape, char>: quote (!quote (escape | ![\\\r\n] char))* quote
 RAW_ESCAPE: "\\" (_LINE_BREAK | .)
 BYTES_ESCAPE: "\\" ("x" HEX{2} | ![x] (_LINE_BREAK | .))
 ESCAPE: "\\" ESCAPED
@@ -298,7 +304,8 @@ HEX: [0-9a-fA-F]
 
 @reserved
 NAME: [\p{XID_Start}_] \p{XID_Continue}*
-NUMBER: (HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | FLOAT_NUMBER | INT_NUMBER) [jJ]?
+// Only decimal numbers can be imaginary, and then leading zeros are fine.
+NUMBER: HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | (FLOAT_NUMBER | DIGITS) [jJ] | FLOAT_NUMBER | INT_NUMBER
 HEX_NUMBER: "0" [xX] ("_"? [0-9a-fA-F])+
 OCT_NUMBER: "0" [oO] ("_"? [0-7])+
 BIN_NUMBER: "0" [bB] ("_"? [01])+

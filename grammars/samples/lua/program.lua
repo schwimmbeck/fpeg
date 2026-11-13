@@ -25,6 +25,8 @@ local text = [[
 long string, no escapes: \n stays]]
 local escaped = "tab\tquote\" zap \z
                  continued"
+local codes = "\x41\65\u{20AC}\\\
+next line"
 local s = Stack.new(1, 2, 3)
 s:push(2 ^ -1)
 print(sum{1, 2; 3}, text .. escaped, 0x1F, 0xA.8p1, 3e-2, .5)

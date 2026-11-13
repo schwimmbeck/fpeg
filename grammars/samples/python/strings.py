@@ -22,3 +22,6 @@ template = t"Hello {name}" tr"\{name}"
 conversion = f"{name!a} {name!s}"
 dictionary = f"{ {'a': 1}['a'] }"
 lambda_inside = f"{(lambda x: x * 2)(3)}"
+imaginary = 09j, 0_9j, 007j, 0e5j
+joined = b"a" b"b", t"a" t"b", f"a" "b", "a" f"b"
+spaced = f"{name!r }"

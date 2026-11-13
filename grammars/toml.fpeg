@@ -18,6 +18,7 @@ key: parts=(simple_key ++ ".")
 ?simple_key: BARE_KEY | BASIC_STRING | LITERAL_STRING
 
 ?value: ML_BASIC_STRING
+      | ML_LITERAL_STRING
       | BASIC_STRING
       | LITERAL_STRING
       | FLOAT
@@ -34,6 +35,7 @@ BARE_KEY: [A-Za-z0-9_\-]+
 BASIC_STRING: "\"" ([^"\\\r\n] | "\\" ESCAPE)* "\""
 LITERAL_STRING: "'" [^'\r\n]* "'"
 ML_BASIC_STRING: "\"\"\"" (!"\"\"\"" ("\\" ESCAPE | .))* "\"\"\""
+ML_LITERAL_STRING: "'''" (!"'''" .)* "'''"
 ESCAPE: ["\\bfnrt] | "u" HEX{4} | "U" HEX{8}
 HEX: [0-9A-Fa-f]
 INTEGER: "0x" HEX ("_"? HEX)* | "0o" [0-7] ("_"? [0-7])* | "0b" [01] ("_"? [01])* | [+\-]? DECIMAL

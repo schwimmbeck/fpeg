@@ -25,3 +25,6 @@ name = "b"
 notes = """
 two
 lines"""
+pattern = '''
+\d+ "kept" \n
+as written'''

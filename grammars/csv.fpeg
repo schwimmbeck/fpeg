@@ -5,7 +5,7 @@
 // twice and line breaks. An empty line is a record without fields.
 
 start: (line _EOL)* record?
-?line: record | ()
+?line: record | () -> record => list
 record: &[^\r\n] fields=(field ++ ",") => list
 field: value=(QUOTED | BARE)?
 

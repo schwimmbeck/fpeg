@@ -98,7 +98,9 @@ HEX: [0-9a-fA-F]
 STRING: "\"" ("\\" ESCAPE | [^"\\\r\n])* "\""
       | "'" ("\\" ESCAPE | [^'\\\r\n])* "'"
       | LONG_BRACKET
-ESCAPE: "z" [ \t\r\n]* | "\r\n" | .
+// The escapes of Lua 5.4, of which only these exist. A line break may follow the backslash.
+ESCAPE: [abfnrtv\\"'] | "z" [ \t\r\n\x0B\x0C]* | "x" HEX HEX | DIGIT{1,3} | "u{" HEX+ "}"
+      | "\r\n" | "\n\r" | "\n" | "\r"
 LONG_BRACKET: "[" %def(level, "="*) "[" (!("]" %ref(level) "]") .)* "]" %ref(level) "]"
 COMMENT: "--" (LONG_BRACKET | [^\r\n]*)
 
