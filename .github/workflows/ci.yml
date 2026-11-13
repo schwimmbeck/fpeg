@@ -9,7 +9,7 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    # Weekly, for the benchmark smoke run on Windows, which pushes skip.
+    # Weekly, for the benchmark smoke run on Windows, which pushes skip. Nothing else runs then.
     - cron: "0 3 * * 1"
 
 permissions:
@@ -27,6 +27,7 @@ env:
 jobs:
   test:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +56,7 @@ jobs:
 
   checks:
     name: Lints, types, docs and licence headers
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'schedule' && '["ubuntu-latest", "windows-latest"]' || '["ubuntu-latest"]') }}
+        os: ${{ fromJSON(github.event_name == 'schedule' && '["windows-latest"]' || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
