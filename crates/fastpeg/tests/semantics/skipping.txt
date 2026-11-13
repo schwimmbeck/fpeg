@@ -48,3 +48,10 @@ NAME: [a-z]+
 start: "a" "b"
 --- "a b"
 error at 1: expected "b"
+
+=== the skip expression may use a template
+start: "a" "b"
+%ignore SPACES<" ">
+SPACES<x>: x+
+--- "a   b"
+(start ~"a" ~"b")
