@@ -19,6 +19,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
+use super::profile::{Profile, Profiler};
 use super::program::{Inst, Program};
 use crate::parse::{END_OF_INPUT, Limit, Limits};
 use crate::tree::{FieldId, KindId, Tree};
@@ -253,6 +254,8 @@ pub(crate) struct Machine<'p, 'i> {
     farthest: Option<u32>,
     /// In diagnose mode, the farthest failure position of the run before, and what failed there.
     diagnose: Option<(u32, BTreeSet<Expected>)>,
+    /// The counts of a profiling parse.
+    profiler: Option<Box<Profiler>>,
 }
 
 impl<'p, 'i> Machine<'p, 'i> {
@@ -290,6 +293,26 @@ impl<'p, 'i> Machine<'p, 'i> {
             limits,
             farthest: None,
             diagnose: diagnose.map(|at| (at, BTreeSet::new())),
+            profiler: None,
+        }
+    }
+
+    /// Count what each rule does, for [`Machine::profile`].
+    pub fn profiling(mut self) -> Machine<'p, 'i> {
+        self.profiler = Some(Box::new(Profiler::new(self.program)));
+        self
+    }
+
+    /// What the parse did, if the machine was profiling.
+    pub fn profile(&mut self) -> Option<Profile> {
+        let profiler = self.profiler.take()?;
+        Some(profiler.finish(self.steps, self.nodes.len(), self.memo.len()))
+    }
+
+    /// Tell a profiler that the routine of the newest call is over, failed or not.
+    fn profile_left(&mut self, failed: bool) {
+        if let Some(profiler) = self.profiler.as_deref_mut() {
+            profiler.left(self.steps, failed.then_some(self.pos));
         }
     }
 
@@ -492,6 +515,12 @@ impl<'p, 'i> Machine<'p, 'i> {
                         return Err(Stop::Limit(Limit::Depth));
                     }
                     self.depth += 1;
+                    if let Some(profiler) = self.profiler.as_deref_mut() {
+                        let rule = self.program.rule_at(target);
+                        profiler.called((rule, self.pos, self.flags, self.quiet > 0));
+                        let (stack, nodes) = (self.stack.len(), self.nodes.len());
+                        profiler.entered(rule, self.pos, self.steps, stack, nodes);
+                    }
                     self.stack.push(Entry::Call { ret: self.pc + 1 });
                     self.pc = target;
                 }
@@ -503,6 +532,9 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::Skip => match self.program.skip {
                     Some(skip) => {
+                        if let Some(profiler) = self.profiler.as_deref_mut() {
+                            profiler.skip(self.steps);
+                        }
                         self.stack.push(Entry::Sub { ret: self.pc + 1 });
                         self.pc = skip;
                     }
@@ -511,9 +543,15 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Inst::Ret => match self.stack.pop() {
                     Some(Entry::Call { ret }) => {
                         self.depth -= 1;
+                        self.profile_left(false);
                         self.pc = ret;
                     }
-                    Some(Entry::Sub { ret }) => self.pc = ret,
+                    Some(Entry::Sub { ret }) => {
+                        if let Some(profiler) = self.profiler.as_deref_mut() {
+                            profiler.returned_from(self.pc, self.steps);
+                        }
+                        self.pc = ret;
+                    }
                     Some(Entry::Frame) => self.return_frame()?,
                     _ => return Err(Stop::NoMatch),
                 },
@@ -659,15 +697,18 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some(info) = self.program.rules.get(rule as usize) else {
             return Err(Stop::NoMatch);
         };
-        if recursive && let Some(index) = self.active(rule) {
-            return self.use_entry(index);
-        }
         let key = MemoKey {
             rule,
             pos: self.pos,
             flags: self.flags,
             quiet: self.quiet > 0,
         };
+        if let Some(profiler) = self.profiler.as_deref_mut() {
+            profiler.called((rule, key.pos, key.flags, key.quiet));
+        }
+        if recursive && let Some(index) = self.active(rule) {
+            return self.use_entry(index);
+        }
         if info.memo
             && let Some(stored) = self.memo.get(&key).copied()
             && self.usable(stored)
@@ -675,6 +716,9 @@ impl<'p, 'i> Machine<'p, 'i> {
             let Some(found) = stored.result else {
                 return self.fail();
             };
+            if let Some(profiler) = self.profiler.as_deref_mut() {
+                profiler.hit(rule);
+            }
             // Giving a result again is work of its length, and may put it under two parents.
             self.steps += u64::from(found.count);
             self.shared = true;
@@ -709,6 +753,10 @@ impl<'p, 'i> Machine<'p, 'i> {
             recursion,
             outer_dependency: std::mem::replace(&mut self.dependency, NO_FRAME),
         });
+        if let Some(profiler) = self.profiler.as_deref_mut() {
+            let (stack, nodes) = (self.stack.len(), self.nodes.len());
+            profiler.entered(rule, self.pos, self.steps, stack, nodes);
+        }
         self.stack.push(Entry::Frame);
         self.pc = info.pc;
         Ok(())
@@ -813,6 +861,12 @@ impl<'p, 'i> Machine<'p, 'i> {
             count: made.len() as u32,
         };
         self.items.truncate(frame.items as usize);
+        // The first seed is no growth yet.
+        if recursion.seed.is_some()
+            && let Some(profiler) = self.profiler.as_deref_mut()
+        {
+            profiler.grew(frame.key.rule);
+        }
         self.pos = frame.key.pos;
         if let Some(newest) = self.frames.last_mut() {
             newest.recursion = Some(Recursion {
@@ -864,8 +918,12 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some((frame, independent)) = self.drop_frame() else {
             return Ok(());
         };
+        self.profile_left(!matched);
         if !(frame.memo && independent) {
             return Ok(());
+        }
+        if let Some(profiler) = self.profiler.as_deref_mut() {
+            profiler.stored(frame.key.rule);
         }
         let mut result = None;
         if matched {
@@ -928,6 +986,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Entry::Mark { .. } => None,
                 Entry::Call { .. } => {
                     self.depth -= 1;
+                    self.profile_left(true);
                     None
                 }
                 Entry::Frame => {
@@ -1018,10 +1077,14 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.pc = alt;
                     return Ok(());
                 }
-                Entry::Call { .. } => self.depth -= 1,
+                Entry::Call { .. } => {
+                    self.depth -= 1;
+                    self.profile_left(false);
+                }
                 // An error is no result to remember.
                 Entry::Frame => {
                     self.drop_frame();
+                    self.profile_left(false);
                 }
                 Entry::Flags { saved } => self.flags = saved,
                 _ => {}

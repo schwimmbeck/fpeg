@@ -7,6 +7,7 @@
 mod compile;
 mod disasm;
 mod machine;
+mod profile;
 mod program;
 #[cfg(feature = "reference")]
 mod verify;
@@ -20,6 +21,7 @@ use crate::grammar::{Grammar, GrammarError};
 use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
 use crate::tree::{Kind, Names, Tree};
 use machine::{Machine, Stop};
+pub use profile::{Profile, ProfileRow};
 use program::Program;
 
 /// How a grammar is compiled. The default suits every use but tests and measurements, which
@@ -106,23 +108,48 @@ impl Parser {
     /// A parse that fails is run a second time to collect what was expected at the farthest
     /// failure, so a valid input never pays for it.
     pub fn parse_with(&self, input: &str, start: &str, limits: Limits) -> Result<Tree, ParseError> {
+        self.run(input, start, limits, false).0
+    }
+
+    /// Parse as [`Parser::parse_with`] does and count what each rule did: how often it was
+    /// called and failed, the steps spent in it, and what remembering it answered or would
+    /// answer. For finding the rules that take the time. The counting slows the parse.
+    pub fn profile(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+    ) -> (Result<Tree, ParseError>, Profile) {
+        let (result, profile) = self.run(input, start, limits, true);
+        (result, profile.unwrap_or_default())
+    }
+
+    fn run(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+        profiling: bool,
+    ) -> (Result<Tree, ParseError>, Option<Profile>) {
+        let refused = |kind| {
+            let error = ParseError { position: 0, kind };
+            (Err(error), None)
+        };
         let Some(&entry) = self.program.entries.get(start) else {
-            return Err(ParseError {
-                position: 0,
-                kind: ParseErrorKind::UnknownStart(start.to_owned()),
-            });
+            return refused(ParseErrorKind::UnknownStart(start.to_owned()));
         };
         if u32::try_from(input.len()).is_err() {
-            return Err(ParseError {
-                position: 0,
-                kind: ParseErrorKind::Limit(Limit::InputSize),
-            });
+            return refused(ParseErrorKind::Limit(Limit::InputSize));
         }
         let mut machine = Machine::new(&self.program, input, limits, None);
+        if profiling {
+            machine = machine.profiling();
+        }
         let outcome = machine.run(entry);
+        let profile = machine.profile();
         let farthest = machine.farthest();
         let position = farthest.unwrap_or(0) as usize;
-        match outcome {
+        let result = match outcome {
             Ok(()) => machine.tree().map_err(|limit| ParseError {
                 position,
                 kind: ParseErrorKind::Limit(limit),
@@ -154,7 +181,8 @@ impl Parser {
                 position,
                 kind: ParseErrorKind::Limit(limit),
             }),
-        }
+        };
+        (result, profile)
     }
 
     /// The names of the grammar's kinds and fields, which its trees share.

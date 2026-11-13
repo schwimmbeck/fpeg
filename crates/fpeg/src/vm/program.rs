@@ -202,6 +202,15 @@ pub(crate) struct RuleInfo {
     pub recursive: bool,
 }
 
+impl Program {
+    /// The index of the rule whose routine starts at `pc`. Routines lie in the order of
+    /// their rules.
+    pub fn rule_at(&self, pc: u32) -> u32 {
+        let after = self.rules.partition_point(|rule| rule.pc <= pc);
+        after.saturating_sub(1) as u32
+    }
+}
+
 /// A compiled grammar. See the module documentation.
 #[derive(Debug)]
 pub(crate) struct Program {
