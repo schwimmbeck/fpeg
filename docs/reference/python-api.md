@@ -204,6 +204,8 @@ value = fpeg.Transformer().transform(json.parse('{"a": [1.5, true, null, "\\u00e
 assert value == {"a": [1.5, True, None, "\u00e9"]}
 ```
 
+A token on its own, as `parse` returns it for a transparent start rule over a terminal, finds the builder of its terminal through its grammar. A tree keeps its grammar alive and a token does not, so keep the grammar while such a token is transformed.
+
 A builder may call a function of your own, given with the grammar in `functions`. Every function the builders call must be given, which loading the grammar checks ([E208](diagnostics/E208.md)).
 
 ```python
