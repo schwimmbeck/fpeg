@@ -104,6 +104,13 @@ start: \p{XID_Start} [^a]
 --- spans "äö"
 (start@0..4 ~"ä"@0..2 ~"ö"@2..4)
 
+=== each property matches the code points that have it
+start: \p{Alphabetic} \p{White_Space} \p{Uppercase} \p{Lowercase} \P{Alphabetic}
+--- "ä\tÄß1"
+(start ~"ä" ~"\t" ~"Ä" ~"ß" ~"1")
+--- "ä\tßß1"
+error at 3: expected \p{Uppercase}
+
 === any matches one code point and fails at the end
 start: . .
 --- "€x"
