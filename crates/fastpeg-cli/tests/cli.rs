@@ -143,6 +143,54 @@ fn a_failed_parse_reports_where_and_what_was_expected() {
 }
 
 #[test]
+fn a_closed_output_is_no_failure_of_the_command() {
+    // Fifty copies of a grammar with a hundred problems print more than a pipe holds.
+    let unknown: Vec<String> = (0..100).map(|i| format!("missing{i}")).collect();
+    let paths = files(
+        "closed",
+        &[("many.fpeg", &format!("start: {}\n", unknown.join(" ")))],
+    );
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fastpeg"))
+        .arg("check")
+        .args(std::iter::repeat_n(paths[0].as_os_str(), 50))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the fastpeg binary runs");
+    drop(child.stdout.take());
+    let out = child.wait_with_output().expect("the binary finishes");
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+}
+
+#[test]
+fn an_unknown_start_rule_and_a_byte_order_mark_are_problems_of_the_grammar_file() {
+    let paths = files(
+        "start",
+        &[
+            ("marked.fpeg", "\u{feff}start: \"a\"\n"),
+            ("input.txt", "a"),
+        ],
+    );
+    let out = run(["check".as_ref(), paths[0].as_os_str()]);
+    assert!(out.status.success(), "{}", text(&out.stdout));
+    let out = run([
+        "parse".as_ref(),
+        "--start".as_ref(),
+        "nope".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        format!(
+            "{}: error: no rule nope to start from\n",
+            paths[0].display()
+        )
+    );
+}
+
+#[test]
 fn check_reports_each_problem_with_its_place_and_code() {
     let paths = files(
         "check",

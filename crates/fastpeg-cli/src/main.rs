@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fastpeg::{Grammar, GrammarError, LineIndex, NodeRef, Parser, Tree};
+use fastpeg::{Grammar, GrammarError, LineIndex, NodeRef, ParseErrorKind, Parser, Tree};
 
 const USAGE: &str = "\
 Usage: fastpeg <command> [options]
@@ -32,6 +32,15 @@ const EXIT_PROBLEM: u8 = 1;
 /// Exit status for a command line that cannot be understood, as in most Unix tools.
 const EXIT_USAGE: u8 = 2;
 
+/// Print a line on standard output, or on standard error with `error`. A stream that closed,
+/// as when a pager quits, is no failure of the command, so what cannot be written is dropped.
+fn say(error: bool, line: std::fmt::Arguments<'_>) {
+    let _ = match error {
+        true => writeln!(std::io::stderr(), "{line}"),
+        false => writeln!(std::io::stdout(), "{line}"),
+    };
+}
+
 /// Why a command stopped: problems already reported, or a command line it cannot understand.
 enum Failure {
     Problem,
@@ -43,11 +52,11 @@ fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let outcome = match args.first().map(|arg| arg.to_string_lossy()).as_deref() {
         Some("--version" | "-V") if args.len() == 1 => {
-            println!("fastpeg {}", fastpeg::VERSION);
+            say(false, format_args!("fastpeg {}", fastpeg::VERSION));
             Ok(())
         }
         Some("--help" | "-h") if args.len() == 1 => {
-            println!("{USAGE}");
+            say(false, format_args!("{USAGE}"));
             Ok(())
         }
         Some("check") => check(&args[1..]),
@@ -68,9 +77,9 @@ fn main() -> ExitCode {
         Err(Failure::Problem) => ExitCode::from(EXIT_PROBLEM),
         Err(Failure::Usage(message)) => {
             if !message.is_empty() {
-                eprintln!("error: {message}\n");
+                say(true, format_args!("error: {message}\n"));
             }
-            eprintln!("{USAGE}");
+            say(true, format_args!("{USAGE}"));
             ExitCode::from(EXIT_USAGE)
         }
     }
@@ -79,11 +88,17 @@ fn main() -> ExitCode {
 /// Read a file as UTF-8 text, reporting why it cannot be.
 fn read(path: &Path) -> Result<String, Failure> {
     let bytes = std::fs::read(path).map_err(|error| {
-        eprintln!("{}: error: cannot read it: {error}", path.display());
+        say(
+            true,
+            format_args!("{}: error: cannot read it: {error}", path.display()),
+        );
         Failure::Problem
     })?;
     String::from_utf8(bytes).map_err(|_| {
-        eprintln!("{}: error: it is not UTF-8 text", path.display());
+        say(
+            true,
+            format_args!("{}: error: it is not UTF-8 text", path.display()),
+        );
         Failure::Problem
     })
 }
@@ -93,24 +108,28 @@ fn report(path: &Path, text: &str, errors: &[GrammarError]) {
     let lines = LineIndex::new(text);
     for error in errors {
         let (line, column) = lines.line_column(text, error.span.start as usize);
-        println!(
-            "{}:{line}:{column}: error[{}]: {}",
-            path.display(),
-            error.code,
-            error.message
+        let (code, message) = (error.code, &error.message);
+        say(
+            false,
+            format_args!(
+                "{}:{line}:{column}: error[{code}]: {message}",
+                path.display()
+            ),
         );
     }
 }
 
 /// Read and compile a grammar, or report its problems.
 fn compile(path: &Path) -> Result<Parser, Failure> {
-    let text = read(path)?;
-    let grammar = Grammar::from_text(&text).map_err(|errors| {
-        report(path, &text, &errors);
+    let file = read(path)?;
+    // Editors on Windows may begin a file with a byte order mark, which is no part of the text.
+    let text = file.strip_prefix('\u{feff}').unwrap_or(&file);
+    let grammar = Grammar::from_text(text).map_err(|errors| {
+        report(path, text, &errors);
         Failure::Problem
     })?;
     Parser::new(&grammar).map_err(|errors| {
-        report(path, &text, &errors);
+        report(path, text, &errors);
         Failure::Problem
     })
 }
@@ -169,7 +188,8 @@ fn parse_options(args: &[OsString]) -> Result<ParseOptions, Failure> {
 
 fn parse(args: &[OsString]) -> Result<(), Failure> {
     let options = parse_options(args)?;
-    let parser = compile(&PathBuf::from(&options.paths[0]))?;
+    let grammar = PathBuf::from(&options.paths[0]);
+    let parser = compile(&grammar)?;
     let (name, input) = match options.paths.get(1).filter(|path| *path != "-") {
         Some(path) => (
             path.to_string_lossy().into_owned(),
@@ -179,13 +199,13 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
             let mut bytes = Vec::new();
             let name = "<stdin>".to_owned();
             if let Err(error) = std::io::stdin().read_to_end(&mut bytes) {
-                eprintln!("{name}: error: cannot read it: {error}");
+                say(true, format_args!("{name}: error: cannot read it: {error}"));
                 return Err(Failure::Problem);
             }
             match String::from_utf8(bytes) {
                 Ok(input) => (name, input),
                 Err(_) => {
-                    eprintln!("{name}: error: it is not UTF-8 text");
+                    say(true, format_args!("{name}: error: it is not UTF-8 text"));
                     return Err(Failure::Problem);
                 }
             }
@@ -202,9 +222,21 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
             let _ = std::io::stdout().write_all(text.as_bytes());
             Ok(())
         }
+        // A start rule the grammar lacks is a problem of the grammar, not of the input.
+        Err(error) if matches!(error.kind, ParseErrorKind::UnknownStart(_)) => {
+            let message = error.message();
+            say(
+                true,
+                format_args!("{}: error: {message}", grammar.display()),
+            );
+            Err(Failure::Problem)
+        }
         Err(error) => {
             let (line, column) = LineIndex::new(&input).line_column(&input, error.position);
-            eprintln!("{name}:{line}:{column}: error: {}", error.message());
+            say(
+                true,
+                format_args!("{name}:{line}:{column}: error: {}", error.message()),
+            );
             Err(Failure::Problem)
         }
     }
