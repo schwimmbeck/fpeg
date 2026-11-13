@@ -117,9 +117,18 @@ impl fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 /// A grammar resolved for the reference interpreter.
-#[derive(Debug)]
 pub struct Reference {
     grammar: ir::Grammar,
+}
+
+// Not derived: the core language would print a shared item at every use, which doubles with
+// each level of nested separated repetitions.
+impl fmt::Debug for Reference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Reference")
+            .field("rules", &self.grammar.rules.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Reference {

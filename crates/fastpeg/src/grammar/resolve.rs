@@ -1149,8 +1149,9 @@ mod tests {
     use std::sync::Arc;
 
     use super::resolve;
-    use crate::grammar::builder::{GrammarBuilder, field, lit, r, sep_many, seq};
+    use crate::grammar::builder::{GrammarBuilder, lit, r, sep_many};
     use crate::ir;
+    use crate::reference::Reference;
 
     fn children(expr: &ir::Expr) -> Vec<&ir::Expr> {
         use ir::Expr as E;
@@ -1192,17 +1193,20 @@ mod tests {
     }
 
     #[test]
-    fn nested_separated_repetitions_lower_and_check_their_item_once() {
+    fn nested_separated_repetitions_cost_linear_time_and_space() {
         let mut expr = lit("a");
         for _ in 0..40 {
             expr = sep_many(expr, lit(","));
         }
         let mut g = GrammarBuilder::new();
-        // A field and a rule without a node of its own make the field check walk them.
-        g.rule("start", seq([field("x", expr.clone()), r("_items")]));
+        // In a rule without a node of its own, the field check walks the whole body.
+        g.rule("start", r("_items"));
         g.rule("_items", expr);
-        let grammar = resolve(&g.build()).expect("the grammar resolves");
+        let grammar = g.build();
+        let resolved = resolve(&grammar).expect("the grammar resolves");
         // Forty levels that each copied their item would hold more than a trillion.
-        assert!(size(&grammar) < 1_000, "{}", size(&grammar));
+        assert!(size(&resolved) < 1_000, "{}", size(&resolved));
+        let reference = Reference::new(&grammar).expect("the grammar resolves");
+        assert!(format!("{reference:?}").len() < 100);
     }
 }
