@@ -126,6 +126,7 @@ item: "(" start ")" | "x"
 
 - Remembering never changes what a grammar matches or the tree it gives, only the work a parse takes. It pays for a rule that is tried again and again and takes long to match, and costs a lookup for every call otherwise.
 - The levels of a [precedence block](#operator-precedence) are remembered without a mark, since each level tries the next one again whenever its own operator does not follow. `@nomemo` on the block turns that off for its levels, and `@memo` on a block changes nothing.
+- A left-recursive rule is remembered without a mark as well, for the same reason: the last pass over it, which finds that the match grows no further, tries its other alternatives again. `@nomemo` turns that off.
 - No other rule is remembered unless it is marked. On a rule with parameters a mark holds for every use.
 - A rule cannot be `@memo` and `@nomemo` at once ([E302](diagnostics/E302.md)).
 
@@ -137,6 +138,22 @@ args: "(" list<expr, ","> ")"
 ```
 
 A rule with parameters is a template. Parameters are names that stand for expressions inside the body. Each use with a distinct list of arguments becomes a rule of its own, with the same name, before anything is matched. The arguments are expressions, and a use must pass as many as the rule declares.
+
+### Left recursion
+
+A rule may call itself at the very place where it started, directly or through other rules.
+
+```fpeg
+start: chain
+?chain: chain "." NAME -> member
+      | NAME
+NAME: [a-z]+
+```
+
+- Such a rule matches as far as it can and groups to the left: `a.b.c` is the member `c` of the member `b` of `a`. The [semantics](semantics.md) page says exactly how.
+- A rule that calls itself at both ends, as in `e: e "-" e | N`, groups to the right.
+- For operators, a [precedence block](#operator-precedence) says the same with less to write.
+- A chain of a thousand members gives a tree a thousand nodes deep.
 
 ## Expressions
 

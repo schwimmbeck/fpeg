@@ -34,8 +34,8 @@ pub struct Options {
 /// answered at once.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Memo {
-    /// The levels of precedence blocks and the rules the grammar marks `@memo`, without
-    /// those it marks `@nomemo`.
+    /// The levels of precedence blocks, the left-recursive rules and the rules the grammar
+    /// marks `@memo`, without those it marks `@nomemo`.
     #[default]
     Grammar,
     /// No rule.
@@ -74,9 +74,9 @@ impl fmt::Debug for Parser {
 }
 
 impl Parser {
-    /// Compile a grammar, or report the problems in it, the first hundred at most. Left
-    /// recursion, columns and captures are reported as problems until the milestones of the
-    /// roadmap bring them to the machine.
+    /// Compile a grammar, or report the problems in it, the first hundred at most. Columns
+    /// and captures are reported as problems until the milestone of the roadmap brings them
+    /// to the machine.
     pub fn new(grammar: &Grammar) -> Result<Parser, Vec<GrammarError>> {
         Parser::with_options(grammar, &Options::default())
     }

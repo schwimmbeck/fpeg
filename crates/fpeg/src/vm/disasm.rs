@@ -107,6 +107,10 @@ impl Program {
                 Some(info) => format!("MemoCall {}", info.name),
                 None => format!("MemoCall ?{rule}"),
             },
+            Inst::LrCall(rule) => match self.rules.get(rule as usize) {
+                Some(info) => format!("LrCall {}", info.name),
+                None => format!("LrCall ?{rule}"),
+            },
             Inst::Sub(target) => match routines.shared.get(&target) {
                 Some(index) => format!("Sub shared {index}"),
                 None => format!("Sub ?{target}"),

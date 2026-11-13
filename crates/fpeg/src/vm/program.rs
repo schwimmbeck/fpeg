@@ -72,6 +72,12 @@ pub(crate) enum Inst {
     /// Call the rule with this index, whose results are remembered: a result stored for this
     /// position, flags and quiet state is given at once, and a call that runs stores its own.
     MemoCall(u32),
+    /// Call the rule with this index, which lies on a left cycle. While the rule is being
+    /// matched at this position with these flags, the call gives the match of the pass before,
+    /// or fails in the first pass. Otherwise it runs the rule, again and again for as long as
+    /// each pass that used such a call ends further, and remembers the result if the rule is
+    /// remembered.
+    LrCall(u32),
     /// Call the shared part whose routine starts at the target.
     Sub(u32),
     /// Return from the routine.
@@ -186,12 +192,14 @@ impl Class {
     }
 }
 
-/// A rule's name, where its routine starts, and whether its results are remembered.
+/// A rule's name, where its routine starts, whether its results are remembered, and whether
+/// it can call itself where it started, so that its calls take part in left recursion.
 #[derive(Clone, Debug)]
 pub(crate) struct RuleInfo {
     pub name: String,
     pub pc: u32,
     pub memo: bool,
+    pub recursive: bool,
 }
 
 /// A compiled grammar. See the module documentation.

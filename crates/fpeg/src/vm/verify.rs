@@ -163,6 +163,11 @@ impl Tables<'_> {
                 Some(_) => return Err("remembers a rule that is not remembered".into()),
                 None => return Err(format!("no rule {rule}")),
             },
+            Inst::LrCall(rule) => match p.rules.get(rule as usize) {
+                Some(info) if info.recursive => vec![(next, shape)],
+                Some(_) => return Err("grows a rule that is not left recursive".into()),
+                None => return Err(format!("no rule {rule}")),
+            },
             Inst::Sub(target) => match self.shared.contains(&target) {
                 true => vec![(next, shape)],
                 false => return Err("calls no shared part".into()),

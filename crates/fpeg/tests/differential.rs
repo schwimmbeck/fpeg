@@ -100,18 +100,23 @@ fn default_limits() -> [Limits; 2] {
     [reference, Limits::default()]
 }
 
-/// Parse with the reference and with each parser, and compare.
+/// Parse with the reference and with each parser, and compare. With `remembering`, the parser
+/// that remembers nothing is left out.
 fn compare(
     reference: &Reference,
     parsers: &[Parser],
     input: &str,
     start: &str,
     limits: [Limits; 2],
+    remembering: bool,
 ) -> Vec<Verdict> {
     let expected = shown(reference.parse_with(input, start, limits[0]), input);
     let verdict = |(parser, memo): (&Parser, &Memo)| {
+        if remembering && *memo == Memo::Off {
+            return None;
+        }
         let actual = shown(parser.parse_with(input, start, limits[1]), input);
-        match (&expected, actual) {
+        Some(match (&expected, actual) {
             (Ok(expected), Ok(actual)) if *expected == actual => Verdict::Same,
             (Ok(expected), Ok(actual)) => Verdict::Differ(format!(
                 "on {input:?} the reference gives\n{expected}\nand the machine, remembering \
@@ -120,9 +125,9 @@ fn compare(
             )),
             (Ok(_), Err(limit)) => Verdict::MachineLimit(limit),
             (Err(_), _) => Verdict::ReferenceLimit,
-        }
+        })
     };
-    parsers.iter().zip(&MEMO).map(verdict).collect()
+    parsers.iter().zip(&MEMO).filter_map(verdict).collect()
 }
 
 /// How many parses were compared and skipped.
@@ -184,7 +189,8 @@ fn case_files_give_the_same_results_on_both_engines() {
                     continue;
                 };
                 let at = format!("{at}, line {}", check.line);
-                for verdict in compare(reference, parsers, input, "start", default_limits()) {
+                let limits = default_limits();
+                for verdict in compare(reference, parsers, input, "start", limits, false) {
                     tally.count(verdict, &mut failures, &at);
                 }
             }
@@ -238,14 +244,17 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
         run.push(name);
         for file in files {
             let input = std::fs::read_to_string(&file).expect("the sample is readable");
-            for verdict in compare(&reference, &parsers, &input, "start", default_limits()) {
+            // Without a memo the levels of a precedence block take time that doubles with each
+            // level, so the samples are parsed only by the parsers that remember them.
+            let limits = default_limits();
+            for verdict in compare(&reference, &parsers, &input, "start", limits, true) {
                 tally.count(verdict, &mut failures, &file.display().to_string());
             }
         }
     }
     tally.report(&format!("acceptance grammars ({} run)", run.join(", ")));
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
-    for name in ["csv", "fpeg", "json", "toml"] {
+    for name in ["csv", "expressions", "fpeg", "json", "sql", "tiny", "toml"] {
         assert!(run.contains(&name), "the machine does not run {name}");
     }
 }
@@ -288,11 +297,11 @@ fn check_against_reference(seed: u64) -> Option<String> {
     for start in std::iter::once("start").chain(terminal) {
         for input in &inputs {
             let limits = [reference_limits(), machine];
-            for verdict in compare(&reference, &parsers, input, start, limits) {
+            for verdict in compare(&reference, &parsers, input, start, limits, false) {
                 match verdict {
                     Verdict::Same => COMPARED.fetch_add(1, Ordering::Relaxed),
-                    // Inputs this short reach the depth limit only through left recursion,
-                    // which the machine must reject before it parses.
+                    // Inputs this short reach the depth limit only where left recursion is not
+                    // seen as such and descends without end.
                     Verdict::MachineLimit(Limit::Depth) => {
                         return Some(format!(
                             "from {start} on {input:?} only the machine hits the depth limit\n\

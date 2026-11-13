@@ -71,3 +71,37 @@ k: x | "k"
 x: k "x" | "b"
 --- "bx?"
 (start (x (k (x ~"b")) ~"x") ~"?")
+
+=== a terminal may be left recursive
+start: T
+T: T "x" | "y"
+--- "yxx"
+(start T"yxx")
+--- "x"
+error at 0: expected T
+
+=== a pass that fails after a cut leaves the match of the pass before
+start: e ";"
+?e: e "-" ~ N -> sub | N
+N: [0-9]
+--- "1-2-;"
+error at 4: expected N
+--- "1-2;"
+(start (sub N"1" ~"-" N"2") ~";")
+
+=== the table of left recursion is keyed by the flags that are on
+%flag f
+start: a | b
+a: "<" %on(f, r) ">"
+b: "<" r "!"
+r: %on(f, r) "x" -> grown | "y"
+--- "<yxx>"
+(start (a ~"<" (grown (grown (r ~"y") ~"x") ~"x") ~">"))
+--- "<yxx!"
+error at 4: expected ">", "x"
+
+=== a seed used twice in one pass stands twice in the tree
+start: d
+d: d d "x" -> pair | () -> nothing
+--- "x"
+(start (pair (nothing) (nothing) ~"x"))

@@ -109,11 +109,10 @@ impl Features {
         captures: true,
     };
 
-    /// The forms the parsing machine runs. Left recursion can still arise from the rules
-    /// grammars call, which the machine then reports.
+    /// The forms the parsing machine runs.
     pub const MACHINE: Features = Features {
         cut: true,
-        left_recursion: false,
+        left_recursion: true,
         columns: false,
         captures: false,
     };

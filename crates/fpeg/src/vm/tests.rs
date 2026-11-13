@@ -461,18 +461,33 @@ fn a_remembered_rule_is_matched_once_at_a_position() {
 }
 
 #[test]
-fn left_recursion_columns_and_captures_wait_for_their_milestones() {
+fn the_rules_on_left_cycles_and_no_others_take_part_in_left_recursion() {
     let cases = [
-        ("start: start \"a\" | \"a\"\n", "start is left recursive"),
+        ("start: start \"a\" | \"a\"\n", vec!["start"]),
         (
             "start: a\na: b \"x\"\nb: \"y\"? start\n",
-            "a is left recursive",
+            vec!["start", "a", "b"],
         ),
-        ("start: &start \"a\"\n", "start is left recursive"),
+        ("start: &start \"a\"\n", vec!["start"]),
         (
             "start: e\ne: %precedence {\n    sum: sum \"+\" atom\n    atom: \"1\"\n}\n",
-            "sum is left recursive",
+            vec!["sum"],
         ),
+        // Recursion after input, and after a lookahead that consumes nothing, is not left.
+        ("start: \"a\" start | \"b\"\n", vec![]),
+        ("start: !\"a\" \"b\" start?\n", vec![]),
+    ];
+    for (text, expected) in cases {
+        let rules = parser(text).program.rules;
+        let recursive = rules.iter().filter(|rule| rule.recursive);
+        let names: Vec<&str> = recursive.map(|rule| rule.name.as_str()).collect();
+        assert_eq!(names, expected, "{text}");
+    }
+}
+
+#[test]
+fn columns_and_captures_wait_for_their_milestone() {
+    let cases = [
         ("start: %indent(\"a\")\n", "start uses %indent or %same"),
         ("start: %def(x, \"a\") %ref(x)\n", "start uses %def or %ref"),
         (
@@ -486,13 +501,6 @@ fn left_recursion_columns_and_captures_wait_for_their_milestones() {
             errors.iter().any(|e| e.contains(problem)),
             "{text}: {errors:?}"
         );
-    }
-    // Recursion after input, and before a lookahead that consumes nothing, stays allowed.
-    for text in [
-        "start: \"a\" start | \"b\"\n",
-        "start: !\"a\" \"b\" start?\n",
-    ] {
-        assert_eq!(errors(text), Vec::<String>::new(), "{text}");
     }
 }
 

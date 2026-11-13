@@ -42,8 +42,9 @@ pub(crate) fn compile(
         cuttable: false,
         free_cuts: HashMap::new(),
     };
+    let facts = analysis::analyze(grammar);
     let mut rules = Vec::new();
-    for rule in &grammar.rules {
+    for (rule, &recursive) in grammar.rules.iter().zip(&facts.left_recursive) {
         rules.push(RuleInfo {
             name: rule.name.clone(),
             pc: c.here(),
@@ -51,9 +52,11 @@ pub(crate) fn compile(
                 (Memo::Off, _) | (Memo::Grammar, ir::MemoMark::NoMemo) => false,
                 (Memo::All, _) | (Memo::Grammar, ir::MemoMark::Memo) => true,
                 // A level is tried again by the level above it whenever that one's
-                // operator does not follow.
-                (Memo::Grammar, ir::MemoMark::None) => rule.level,
+                // operator does not follow, and a rule on a left cycle by the pass that
+                // finds its match grown no further.
+                (Memo::Grammar, ir::MemoMark::None) => rule.level || recursive,
             },
+            recursive,
         });
         // A cut ends at the call of its rule.
         c.cuttable = false;
@@ -98,6 +101,7 @@ pub(crate) fn compile(
     }
     for (at, rule) in std::mem::take(&mut c.calls) {
         c.code[at] = match rules.get(rule.0 as usize) {
+            Some(info) if info.recursive => Inst::LrCall(rule.0),
             Some(info) if info.memo => Inst::MemoCall(rule.0),
             Some(info) => Inst::Call(info.pc),
             // A call to a rule that does not exist fails, as the reference interpreter has it.
@@ -224,10 +228,8 @@ impl Uses {
     }
 }
 
-/// Report what the machine does not run yet: left recursion, columns and captures, the first
-/// hundred at most.
+/// Report what the machine does not run yet: columns and captures, the first hundred at most.
 fn unsupported(grammar: &ir::Grammar) -> Vec<GrammarError> {
-    let facts = analysis::analyze(grammar);
     let mut errors: Vec<GrammarError> = Vec::new();
     let mut add = |message: String, span: Span| {
         // The instances of a template repeat the messages of their template.
@@ -241,14 +243,8 @@ fn unsupported(grammar: &ir::Grammar) -> Vec<GrammarError> {
         }
     };
     let mut seen = HashSet::new();
-    for (rule, left_recursive) in grammar.rules.iter().zip(facts.left_recursive) {
+    for rule in &grammar.rules {
         let who = format!("the rule {}", rule.name);
-        if left_recursive {
-            let message = format!(
-                "{who} is left recursive, which the parser does not run yet, see the roadmap (M4)"
-            );
-            add(message, rule.span);
-        }
         let mut uses = Uses::default();
         uses.scan(&rule.body, &mut seen);
         for message in uses.messages(&who) {

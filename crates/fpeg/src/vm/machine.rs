@@ -9,6 +9,12 @@
 //! stood when it was pushed, so a parse holds no more nodes than its alternatives in progress
 //! make, and those that remembered results hold: no failure cuts the arena below its length
 //! at the newest result remembered with a node.
+//!
+//! A call of a rule that is remembered or on a left cycle keeps a frame beside the stack.
+//! Left recursion follows the semantics page: a frame is the entry of the table of left
+//! recursion for its rule, position and flags, a call that finds it takes the match of the
+//! pass before, its seed, and the rule's routine runs again for as long as each pass ends
+//! further.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
@@ -107,13 +113,14 @@ enum Entry {
     Flags {
         saved: u64,
     },
-    /// A call whose result is remembered. What it needs is the newest of [`Machine::frames`],
-    /// so that the entries keep their size.
+    /// A call of a rule that is remembered or on a left cycle. What it needs is the newest of
+    /// [`Machine::frames`], so that the entries keep their size.
     Frame,
 }
 
 /// What a remembered result depends on: the rule, the position, the flags that are on, and
 /// whether failures were being recorded, since a result found while they were not recorded none.
+/// Without the last, it is the key of the table of left recursion.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct MemoKey {
     rule: u32,
@@ -136,20 +143,46 @@ impl Match {
     }
 }
 
-/// A remembered result: a match with its items in [`Machine::memo_items`], or a failure.
+/// A remembered result: a match with its items in [`Machine::memo_items`], or a failure, and
+/// the first serial not yet given to a frame of left recursion when it was stored.
 #[derive(Clone, Copy, Debug)]
 struct Stored {
     result: Option<Match>,
+    made: u64,
 }
 
-/// A remembered call in progress: where it returns, the key of its result, and the height of
-/// the item stack when it started.
+/// What a frame of left recursion adds to a call: its entry of the table of left recursion.
+#[derive(Clone, Copy, Debug)]
+struct Recursion {
+    /// The match of the pass before, with its items in [`Machine::seeds`], which a use of the
+    /// entry gives. None until the body matched once, and then a use fails.
+    seed: Option<Match>,
+    /// The length of the arena after the seed, whose nodes a pass that fails must leave.
+    seed_nodes: u32,
+    /// Whether the pass in progress used the entry.
+    used: bool,
+    /// Frames of left recursion are numbered as they are made.
+    serial: u64,
+    /// The frame of left recursion made before this one, an index of [`Machine::frames`].
+    older: u32,
+}
+
+/// A call in progress of a rule that is remembered or on a left cycle.
 #[derive(Clone, Copy, Debug)]
 struct Frame {
     ret: u32,
     key: MemoKey,
+    /// The height of the item stack when the call started.
     items: u32,
+    /// Whether the result is to be remembered.
+    memo: bool,
+    recursion: Option<Recursion>,
+    /// The oldest frame of left recursion that the evaluation around the call had used.
+    outer_dependency: u32,
 }
+
+/// No frame, where an index of [`Machine::frames`] is expected.
+const NO_FRAME: u32 = u32::MAX;
 
 /// The token being matched: where it started, its kind, and how many entries the stack held
 /// when it opened. Tokens never nest, since nothing inside a token makes one.
@@ -189,8 +222,18 @@ pub(crate) struct Machine<'p, 'i> {
     items: Vec<Item>,
     nodes: Vec<Node>,
     children: Vec<Item>,
-    /// The remembered calls in progress, one for each `Frame` entry of the stack.
+    /// The calls in progress of rules that are remembered or on a left cycle, one for each
+    /// `Frame` entry of the stack.
     frames: Vec<Frame>,
+    /// The items of the seeds of the frames of left recursion, the newest frame's last.
+    seeds: Vec<Item>,
+    /// The newest frame of left recursion, or [`NO_FRAME`].
+    newest_recursion: u32,
+    /// The serial of the next frame of left recursion.
+    serial: u64,
+    /// The oldest frame of left recursion whose entry the evaluation in progress used, or
+    /// [`NO_FRAME`]. A result that used a frame older than its own call is not remembered.
+    dependency: u32,
     memo: HashMap<MemoKey, Stored>,
     /// The items of the remembered matches.
     memo_items: Vec<Item>,
@@ -231,6 +274,10 @@ impl<'p, 'i> Machine<'p, 'i> {
             nodes: Vec::new(),
             children: Vec::new(),
             frames: Vec::new(),
+            seeds: Vec::new(),
+            newest_recursion: NO_FRAME,
+            serial: 0,
+            dependency: NO_FRAME,
             memo: HashMap::new(),
             memo_items: Vec::new(),
             protected: 0,
@@ -448,7 +495,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.stack.push(Entry::Call { ret: self.pc + 1 });
                     self.pc = target;
                 }
-                Inst::MemoCall(rule) => self.call_frame(rule)?,
+                Inst::MemoCall(rule) => self.call_frame(rule, false)?,
+                Inst::LrCall(rule) => self.call_frame(rule, true)?,
                 Inst::Sub(target) => {
                     self.stack.push(Entry::Sub { ret: self.pc + 1 });
                     self.pc = target;
@@ -604,20 +652,26 @@ impl<'p, 'i> Machine<'p, 'i> {
         }
     }
 
-    /// Call a rule that is remembered: give what the memo holds for it here, or push a frame
-    /// and run its routine.
-    fn call_frame(&mut self, rule: u32) -> Result<(), Stop> {
+    /// Call a rule that is remembered or on a left cycle: give what the table of left recursion
+    /// or the memo holds for it here, or push a frame and run its routine.
+    fn call_frame(&mut self, rule: u32, recursive: bool) -> Result<(), Stop> {
         // The verifier holds the index inside the rules.
         let Some(info) = self.program.rules.get(rule as usize) else {
             return Err(Stop::NoMatch);
         };
+        if recursive && let Some(index) = self.active(rule) {
+            return self.use_entry(index);
+        }
         let key = MemoKey {
             rule,
             pos: self.pos,
             flags: self.flags,
             quiet: self.quiet > 0,
         };
-        if let Some(stored) = self.memo.get(&key).copied() {
+        if info.memo
+            && let Some(stored) = self.memo.get(&key).copied()
+            && self.usable(stored)
+        {
             let Some(found) = stored.result else {
                 return self.fail();
             };
@@ -634,40 +688,185 @@ impl<'p, 'i> Machine<'p, 'i> {
             return Err(Stop::Limit(Limit::Depth));
         }
         self.depth += 1;
+        // Frames nest no deeper than calls, which the depth limit counts in 32 bits.
+        let index = self.frames.len() as u32;
+        let recursion = recursive.then_some(Recursion {
+            seed: None,
+            seed_nodes: 0,
+            used: false,
+            serial: self.serial,
+            older: self.newest_recursion,
+        });
+        if recursive {
+            self.newest_recursion = index;
+            self.serial += 1;
+        }
         self.frames.push(Frame {
             ret: self.pc + 1,
             key,
             items: self.items.len() as u32,
+            memo: info.memo,
+            recursion,
+            outer_dependency: std::mem::replace(&mut self.dependency, NO_FRAME),
         });
         self.stack.push(Entry::Frame);
         self.pc = info.pc;
         Ok(())
     }
 
-    /// The body of the newest frame matched: the call returns.
+    /// The frame of `rule` that started at this position with these flags, if there is one:
+    /// its entry of the table of left recursion. The frames that started here are the newest,
+    /// so the search ends at the first that started earlier.
+    fn active(&mut self, rule: u32) -> Option<u32> {
+        let mut index = self.newest_recursion;
+        while let Some(frame) = self.frames.get(index as usize) {
+            if frame.key.pos != self.pos {
+                break;
+            }
+            if frame.key.rule == rule && frame.key.flags == self.flags {
+                return Some(index);
+            }
+            self.steps += 1;
+            index = frame
+                .recursion
+                .map_or(NO_FRAME, |recursion| recursion.older);
+        }
+        None
+    }
+
+    /// A left-recursive use: give the seed of the frame, or fail while it has none. A pass can
+    /// use a seed twice only while the seed is empty, since after a seed that consumed input
+    /// the position is another. So a seed doubles no tree that grows, and unlike a remembered
+    /// match it needs no count of the tree's entries.
+    fn use_entry(&mut self, index: u32) -> Result<(), Stop> {
+        self.dependency = self.dependency.min(index);
+        let frame = self.frames.get_mut(index as usize);
+        let Some(recursion) = frame.and_then(|frame| frame.recursion.as_mut()) else {
+            return Err(Stop::NoMatch);
+        };
+        recursion.used = true;
+        let Some(seed) = recursion.seed else {
+            return self.fail();
+        };
+        self.steps += u64::from(seed.count);
+        let items = self.seeds.get(seed.range()).unwrap_or_default();
+        self.items.extend_from_slice(items);
+        self.pos = seed.end;
+        self.pc += 1;
+        Ok(())
+    }
+
+    /// Whether a remembered result may be given here. Its evaluation used no frame of left
+    /// recursion still in progress, but matching again could use one made since, and only one
+    /// that started at this position. Those are the newest, so the newest decides.
+    fn usable(&self, stored: Stored) -> bool {
+        let newest = self.frames.get(self.newest_recursion as usize);
+        match newest.and_then(|frame| Some((frame.key.pos, frame.recursion?.serial))) {
+            Some((pos, serial)) => pos < self.pos || serial < stored.made,
+            None => true,
+        }
+    }
+
+    /// The body of the newest frame matched. A frame of left recursion whose entry the pass
+    /// used keeps the match as its seed and runs the body again, for as long as each pass ends
+    /// further than the one before. Otherwise the call returns.
     fn return_frame(&mut self) -> Result<(), Stop> {
         let Some(&frame) = self.frames.last() else {
             return Err(Stop::NoMatch);
         };
+        if let Some(recursion) = frame.recursion
+            && recursion.used
+        {
+            match recursion.seed {
+                Some(seed) if self.pos <= seed.end => {
+                    self.back_to_seed(frame, seed, recursion.seed_nodes);
+                }
+                _ => return self.grow(frame, recursion),
+            }
+        }
         self.end_frame(true)?;
         self.pc = frame.ret;
         Ok(())
     }
 
-    /// Take the newest frame off.
-    fn drop_frame(&mut self) -> Option<Frame> {
+    /// Keep the match of a pass as the seed of the newest frame, and run its body again.
+    fn grow(&mut self, frame: Frame, recursion: Recursion) -> Result<(), Stop> {
+        let Some(info) = self.program.rules.get(frame.key.rule as usize) else {
+            return Err(Stop::NoMatch);
+        };
+        let made = self.items.get(frame.items as usize..).unwrap_or_default();
+        self.steps += made.len() as u64;
+        let first = recursion
+            .seed
+            .map_or(self.seeds.len(), |s| s.first as usize);
+        self.seeds.truncate(first);
+        // Indices are 32 bits wide. Every kept item costs a step, so a limit of steps stops
+        // first.
+        let (Ok(first), Ok(seed_nodes)) = (u32::try_from(first), u32::try_from(self.nodes.len()))
+        else {
+            return Err(Stop::Limit(Limit::Steps));
+        };
+        self.seeds.extend_from_slice(made);
+        let seed = Match {
+            end: self.pos,
+            first,
+            count: made.len() as u32,
+        };
+        self.items.truncate(frame.items as usize);
+        self.pos = frame.key.pos;
+        if let Some(newest) = self.frames.last_mut() {
+            newest.recursion = Some(Recursion {
+                seed: Some(seed),
+                seed_nodes,
+                used: false,
+                ..recursion
+            });
+        }
+        self.stack.push(Entry::Frame);
+        self.pc = info.pc;
+        Ok(())
+    }
+
+    /// Make the seed of a frame the result of its call: the items and the arena as they stood
+    /// after the seed, whose nodes lie below everything a later pass made.
+    fn back_to_seed(&mut self, frame: Frame, seed: Match, seed_nodes: u32) {
+        self.restore(Saved {
+            pos: seed.end,
+            items: frame.items,
+            nodes: seed_nodes,
+        });
+        let items = self.seeds.get(seed.range()).unwrap_or_default();
+        self.items.extend_from_slice(items);
+    }
+
+    /// Take the newest frame off: out of the table of left recursion, with its seed. Returns
+    /// it, and whether its evaluation used no frame older than itself.
+    fn drop_frame(&mut self) -> Option<(Frame, bool)> {
         let frame = self.frames.pop()?;
+        let index = self.frames.len() as u32;
         self.depth -= 1;
-        Some(frame)
+        if let Some(recursion) = frame.recursion {
+            self.newest_recursion = recursion.older;
+            if let Some(seed) = recursion.seed {
+                self.seeds.truncate(seed.first as usize);
+            }
+        }
+        let used = self.dependency;
+        self.dependency = frame.outer_dependency.min(used);
+        Some((frame, used >= index))
     }
 
     /// Take the newest frame off and remember its result: the items above its height if it
-    /// `matched`, else a failure. A match that holds a node keeps the arena as long as it is
-    /// now.
+    /// `matched`, else a failure. A result that used a frame older than its own call depends on
+    /// a match that is still growing and is not remembered. A match that holds a node keeps the
+    /// arena as long as it is now.
     fn end_frame(&mut self, matched: bool) -> Result<(), Stop> {
-        let Some(frame) = self.drop_frame() else {
+        let Some((frame, independent)) = self.drop_frame() else {
             return Ok(());
         };
+        if !(frame.memo && independent) {
+            return Ok(());
+        }
         let mut result = None;
         if matched {
             let made = self.items.get(frame.items as usize..).unwrap_or_default();
@@ -690,7 +889,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                 count: made.len() as u32,
             });
         }
-        self.memo.insert(frame.key, Stored { result });
+        let made = self.serial;
+        self.memo.insert(frame.key, Stored { result, made });
         Ok(())
     }
 
@@ -731,6 +931,17 @@ impl<'p, 'i> Machine<'p, 'i> {
                     None
                 }
                 Entry::Frame => {
+                    let recursion = self.frames.last().and_then(|frame| frame.recursion);
+                    if let (Some(&frame), Some(recursion)) = (self.frames.last(), recursion)
+                        && let Some(seed) = recursion.seed
+                    {
+                        // A pass that fails leaves the seed as the result of the call.
+                        self.end_failed_token(Some(self.stack.len()));
+                        self.back_to_seed(frame, seed, recursion.seed_nodes);
+                        self.end_frame(true)?;
+                        self.pc = frame.ret;
+                        return Ok(());
+                    }
                     self.end_frame(false)?;
                     None
                 }
