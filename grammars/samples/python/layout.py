@@ -24,6 +24,9 @@ class Empty: ...
 
 x = 1 \
     + 2
+\
+
+y = 3
 if x:
     pass
 elif x > 1:  # trailing comment

@@ -244,7 +244,7 @@ slices: items=(slice ++ ",") ","?
 
 ?star_targets: items=star_target "," (items=star_target ** ",") ","? -> tuple_expression
              | star_target
-?star_target: "*" value=star_target -> starred
+?star_target: "*" !"*" value=star_target -> starred
             | primary
 ?single_target: primary
 
@@ -317,4 +317,4 @@ AUGMENTED: "**=" | "//=" | ">>=" | "<<=" | "+=" | "-=" | "*=" | "/=" | "%=" | "@
 COMMENT: "#" [^\r\n]*
 _LINE_BREAK: "\r\n" | "\n" | "\r"
 _NEWLINE: _LINE_BREAK _BLANK_LINES?
-_BLANK_LINES: ([ \t\x0C]* COMMENT? _LINE_BREAK)+
+_BLANK_LINES: (([ \t\x0C] | "\\" _LINE_BREAK)* COMMENT? _LINE_BREAK)+
