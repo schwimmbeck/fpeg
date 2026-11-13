@@ -16,6 +16,11 @@ ports = [
   8002,
 ]
 limits = { cpu = 2, memory = "1G" }
+point = {
+  x = 1, # the first
+  y = 2,
+}
+colour = "\e[1m\x41\e[0m"
 
 [[plugins]]
 name = "a"
