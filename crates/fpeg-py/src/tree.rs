@@ -9,9 +9,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use fpeg::{LineIndex, Position};
+use fpeg::{FieldCount, LineIndex, Position};
 use pyo3::PyTypeInfo;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::PyList;
@@ -307,5 +307,45 @@ impl Tree {
         let (parsed, index) = self.origin()?;
         let (start, end) = parsed.tree.node(index as usize)?.span();
         Some(parsed.text(start, end).to_owned())
+    }
+
+    /// The field `name` of the node: its item or `None` for a field of at most one item, a list
+    /// for a field that can hold several.
+    fn field(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
+        let Inner::View { parsed, index } = &self.inner else {
+            return Err(PyTypeError::new_err(
+                "fields belong to trees of a parse, and this tree was built in Python",
+            ));
+        };
+        let node = (parsed.tree.node(*index as usize))
+            .ok_or_else(|| PyValueError::new_err("a bug in fpeg: a view past the end of a tree"))?;
+        let grammar = &parsed.grammar;
+        let fields = &grammar.name_fields[node.kind().0 as usize];
+        let field = grammar.field_ids.get(name).copied();
+        let count = field
+            .and_then(|f| fields.iter().find(|&&(id, _)| id == f))
+            .map(|&(_, c)| c);
+        let (Some(field), Some(count)) = (field, count) else {
+            let names: Vec<String> = (fields.iter())
+                .map(|&(id, _)| grammar.field_names[usize::from(id.0)].bind(py).to_string())
+                .collect();
+            let known = if names.is_empty() {
+                "it has no fields".to_owned()
+            } else {
+                format!("its fields are {}", names.join(", "))
+            };
+            let message = format!("{} has no field {name}, {known}", node.kind_name());
+            return Err(PyKeyError::new_err(message));
+        };
+        let mut items = Vec::new();
+        for child in node.children() {
+            if !child.is_hidden() && child.field() == field {
+                items.push(item(py, parsed, child.index())?);
+            }
+        }
+        match count {
+            FieldCount::One => Ok(items.into_iter().next().unwrap_or_else(|| py.None())),
+            FieldCount::Many => Ok(PyList::new(py, items)?.into_any().unbind()),
+        }
     }
 }

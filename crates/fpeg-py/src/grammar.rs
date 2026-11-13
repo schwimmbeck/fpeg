@@ -3,11 +3,12 @@
 
 //! `Grammar`: a grammar compiled for the parsing machine, and parses with it.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use fpeg::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limits, Parser};
+use fpeg::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, FieldCount, FieldId, Limits, Parser};
 use pyo3::exceptions::{PyRuntimeError, PyUnicodeDecodeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
@@ -29,6 +30,12 @@ pub struct GrammarCore {
     pub serial: u64,
     /// The name of each kind, interned, by kind id.
     pub kind_names: Vec<Py<PyString>>,
+    /// The name of each field, by field id.
+    pub field_names: Vec<Py<PyString>>,
+    pub field_ids: HashMap<String, FieldId>,
+    /// For each kind, the fields of all kinds of its name with the largest count of each, which
+    /// is what a node of that name shows by field.
+    pub name_fields: Vec<Vec<(FieldId, FieldCount)>>,
 }
 
 impl GrammarCore {
@@ -37,10 +44,38 @@ impl GrammarCore {
         let kind_names = (kinds.iter())
             .map(|kind| PyString::intern(py, &kind.name).unbind())
             .collect();
+        let names = parser.names();
+        let field_names = (names.fields.iter())
+            .map(|name| PyString::intern(py, name).unbind())
+            .collect();
+        let field_ids = (names.fields.iter().enumerate())
+            .skip(1)
+            .filter_map(|(id, name)| Some((name.clone(), FieldId(u16::try_from(id).ok()?))))
+            .collect();
+        let mut by_name: HashMap<&str, HashMap<FieldId, FieldCount>> = HashMap::new();
+        for kind in kinds {
+            let fields = by_name.entry(&kind.name).or_default();
+            for &(field, count) in &kind.fields {
+                let held = fields.entry(field).or_insert(count);
+                *held = (*held).max(count);
+            }
+        }
+        let name_fields = (kinds.iter())
+            .map(|kind| {
+                let mut fields: Vec<(FieldId, FieldCount)> = (by_name.get(kind.name.as_str()))
+                    .map(|fields| fields.iter().map(|(&f, &c)| (f, c)).collect())
+                    .unwrap_or_default();
+                fields.sort();
+                fields
+            })
+            .collect();
         GrammarCore {
             parser,
             serial: NEXT_SERIAL.fetch_add(1, Ordering::Relaxed),
             kind_names,
+            field_names,
+            field_ids,
+            name_fields,
         }
     }
 }

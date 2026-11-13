@@ -17,6 +17,8 @@ tree = grammar.parse("x = 1, y = 22")
 assert tree.data == "start"
 pair = tree.children[1]
 assert pair.children == ["y", "22"]
+assert pair.field("value") == "22"
+assert pair.field("value").type == "NUMBER"
 assert (pair.meta.line, pair.meta.column, pair.meta.end_column) == (1, 8, 14)
 ```
 
@@ -50,7 +52,7 @@ A grammar is immutable, so one grammar serves any number of parses from any thre
 
 ## Tree
 
-A `Tree` is a node: `data` is the name of its rule or alias, `children` its visible items, and `meta` where it spans. Hidden tokens, such as the `=` above, stay in the native tree but not among the children.
+A `Tree` is a node: `data` is the name of its rule or alias, `children` its visible items, and `meta` where it spans. Hidden tokens, such as the `=` above, stay in the native tree but not among the children. `field(name)` gives a field of the node by how many items the grammar lets it hold: the item, or `None` when it is absent, for a field of at most one item, and a list for a field that can hold several.
 
 ```python
 calls = fpeg.Grammar(r"""
@@ -59,7 +61,8 @@ NAME: [a-z]+
 %ignore " "+
 """)
 call = calls.parse("f(a, b)")
-assert call.children == ["f", "a", "b"]
+assert call.field("name") == "f"
+assert call.field("args") == ["a", "b"]
 assert call.text == "f(a, b)"
 ```
 
@@ -78,7 +81,7 @@ assert call.text == "f(a, b)"
 A `Token` is a `str` with the name of its kind in `type` and its place in Lark's attributes: `start_pos` and `end_pos` count code points, `line` and `column` count from 1, and `end_column` is the column after the last character. Tokens compare and hash as their text. Their attributes are read-only, and `update()` makes a token with another type or text at the same place.
 
 ```python
-number = pair.children[1]
+number = pair.field("value")
 assert isinstance(number, str) and number == "22"
 assert (number.type, number.start_pos, number.end_pos) == ("NUMBER", 11, 13)
 assert number.update(type="INT").type == "INT"

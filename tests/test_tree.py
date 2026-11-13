@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 import fpeg
+import pytest
 
 CALLS = r"""
 start: call ("," call)*
@@ -45,6 +46,20 @@ def test_meta_and_token_positions_count_code_points() -> None:
     b = call.children[1]
     assert isinstance(b, fpeg.Token)
     assert (b.start_pos, b.end_pos, b.line, b.column, b.end_column) == (2, 3, 1, 3, 4)
+
+
+def test_a_field_gives_one_item_or_a_list_by_how_many_it_can_hold() -> None:
+    call = first_call("f(a, b) ! k")
+    assert call.field("name") == "f"
+    assert call.field("args") == ["a", "b"]
+    kw = call.field("kw")
+    assert isinstance(kw, fpeg.Tree)
+    assert kw.data == "kw"
+    bare = first_call("g()")
+    assert bare.field("args") == []
+    assert bare.field("kw") is None
+    with pytest.raises(KeyError, match="call has no field nope, its fields are"):
+        bare.field("nope")
 
 
 def test_text_is_the_input_a_node_spans() -> None:
