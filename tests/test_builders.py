@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import gc
+import random
+from dataclasses import dataclass
+from typing import Any
+
+import fpeg
+import pytest
+
+
+def values(grammar: fpeg.Grammar, text: str) -> Any:
+    return fpeg.Transformer().transform(grammar.parse(text))
+
+
+def test_int_and_float_give_python_s_numbers() -> None:
+    grammar = fpeg.Grammar(r"""
+start: (number ** ",") => list
+?number: FLOAT | UNDERSCORED | INT
+INT: [+-]? [0-9]+ => int
+FLOAT: [+-]? [0-9]+ "." [0-9]* ([eE] [+-]? [0-9]+)? => float
+UNDERSCORED: [0-9]+ ("_" [0-9]+)+ "u" => int
+%ignore " "+
+""")
+    numbers = values(grammar, "7, -12, +3, 123456789012345678901234567890, 2.5, -0.0, 1.e400")
+    assert numbers == [7, -12, 3, 123456789012345678901234567890, 2.5, -0.0, float("inf")]
+    assert [type(n) for n in numbers[:4]] == [int] * 4
+    with pytest.raises(ValueError, match="invalid literal for int"):
+        values(grammar, "1_000u")
+
+
+def test_the_fast_float_path_agrees_with_python_on_many_numbers() -> None:
+    rng = random.Random(20261113)
+    texts = []
+    for _ in range(20_000):
+        digits = "".join(rng.choice("0123456789") for _ in range(rng.randint(1, 25)))
+        point = rng.randint(0, len(digits))
+        text = f"{digits[:point]}.{digits[point:]}" if point < len(digits) else digits + ".0"
+        if rng.random() < 0.5:
+            text += f"e{rng.randint(-330, 310)}"
+        texts.append(text)
+    grammar = fpeg.Grammar(r"""
+start: (NUMBER ** ",") => list
+NUMBER: [0-9]* "." [0-9]* ([eE] [+-]? [0-9]+)? => float
+""")
+    assert values(grammar, ",".join(texts)) == [float(t) for t in texts]
+
+
+def test_text_gives_a_plain_str_and_unquote_decodes_json_escapes() -> None:
+    grammar = fpeg.Grammar(r"""
+start: (item ** ",") => list
+?item: NAME | STRING
+NAME: [a-z]+ => text
+STRING: "\"" ([^"\\] | "\\" .)* "\"" => unquote
+%ignore " "+
+""")
+    name, plain, escaped, pair, lone = values(
+        grammar, r'abc, "x", "\" \\ \/ \' \b\f\n\r\t", "😀", "\udc00 \ud800x"'
+    )
+    assert (name, type(name)) == ("abc", str)
+    assert plain == "x"
+    assert escaped == "\" \\ / ' \b\f\n\r\t"
+    assert pair == "\U0001f600"
+    assert lone == "\udc00 \ud800x"
+    with pytest.raises(ValueError, match="does not know the escape") as raised:
+        values(grammar, r'"\q"')
+    assert raised.value.__notes__ == [
+        "fpeg: in the builder unquote of STRING, for the token at line 1, column 1"
+    ]
+
+
+def test_list_tuple_dict_and_constants_make_json_s_values() -> None:
+    grammar = fpeg.Grammar(r"""
+?start: value
+?value: object | array | STRING | INT
+      | "true" => True | "false" => False | "null" => None
+      | "pi" => 3.25 | "answer" => 42 | "name" => "fpeg"
+object: "{" (member ** ",") "}" => dict
+member: key=STRING ":" value=value => tuple
+array: "[" (value ** ",") "]" => list
+STRING: "\"" [a-z]* "\"" => unquote
+INT: [0-9]+ => int
+%ignore " "+
+""")
+    text = '{"a": [1, true, false, null], "b": {}, "c": [pi, answer, name]}'
+    assert values(grammar, text) == {
+        "a": [1, True, False, None],
+        "b": {},
+        "c": [3.25, 42, "fpeg"],
+    }
+
+
+@dataclass
+class Point:
+    x: Any
+    y: Any
+    label: str
+    rest: list[Any]
+
+
+def test_a_method_comes_before_a_builder_and_a_builder_before_default() -> None:
+    grammar = fpeg.Grammar(r"""
+start: pair+ => list
+pair: NAME "=" NUMBER => tuple
+NAME: [a-z]+ => text
+NUMBER: [0-9]+ => int
+%ignore " "+
+""")
+
+    class Override(fpeg.Transformer):
+        def NUMBER(self, token: fpeg.Token) -> str:
+            return f"#{token}"
+
+        def __default__(self, data: Any, children: list[Any], meta: Any) -> str:
+            return "default"
+
+    assert Override().transform(grammar.parse("a = 1 b = 2")) == [("a", "#1"), ("b", "#2")]
+
+
+def test_a_lone_token_gets_the_builder_of_its_grammar_while_the_grammar_lives() -> None:
+    grammar = fpeg.Grammar('?start: NUMBER | "[" start "]"\nNUMBER: [0-9]+ => int')
+    token = grammar.parse("7")
+    assert isinstance(token, fpeg.Token)
+    assert fpeg.Transformer().transform(token) == 7
+    del grammar
+    gc.collect()
+    assert fpeg.Transformer().transform(token) is token

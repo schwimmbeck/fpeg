@@ -59,6 +59,27 @@ unsafe fn data(obj: *mut ffi::PyObject) -> *mut TokenData {
     unsafe { obj.byte_offset(DATA_OFFSET.load(Ordering::Relaxed)).cast() }
 }
 
+/// Whether `obj` is a token.
+fn is_token(obj: &Bound<'_, PyAny>) -> bool {
+    let ty = TOKEN_TYPE.load(Ordering::Relaxed);
+    // SAFETY: `obj` is a live object and `ty` the token type, made before any token exists.
+    !ty.is_null() && unsafe { ffi::PyObject_TypeCheck(obj.as_ptr(), ty) } != 0
+}
+
+/// The serial of the grammar that made a token and its kind there, `None` for a token made
+/// in Python or for anything else.
+pub fn origin(obj: &Bound<'_, PyAny>) -> Option<(u64, u32)> {
+    if !is_token(obj) {
+        return None;
+    }
+    // SAFETY: `obj` is a token, whose serial and kind never change after it is made.
+    let (serial, kind) = unsafe {
+        let d = data(obj.as_ptr());
+        ((*d).serial, (*d).kind)
+    };
+    (serial != 0).then_some((serial, kind))
+}
+
 /// An instance of a `str` subtype made by `str`'s own `tp_new`, as `subtype(value)` would make
 /// it, with its token fields zeroed.
 fn new_str_subtype<'py>(

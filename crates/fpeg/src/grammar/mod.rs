@@ -15,6 +15,11 @@ mod meta;
 pub(crate) mod print;
 mod text;
 
+/// The value builders the language defines. Any other name after `=>` is a function given
+/// with the grammar.
+pub const BUILT_IN_BUILDERS: [&str; 7] =
+    ["int", "float", "text", "unquote", "list", "tuple", "dict"];
+
 /// How deeply the expressions of a grammar may nest. Passes over an expression recurse, so a
 /// deeper grammar is rejected before they run.
 pub const MAX_EXPRESSION_DEPTH: usize = 100;

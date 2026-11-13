@@ -10,8 +10,8 @@ use std::sync::Arc;
 use crate::diag::DiagnosticCode;
 use crate::grammar::print::{builder_text, expr_text};
 use crate::grammar::{
-    Alternative, BuilderValue, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Level,
-    MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
+    Alternative, BUILT_IN_BUILDERS, BuilderValue, ClassItem, ErrorLabel, Expr, ExprKind, Grammar,
+    GrammarError, Level, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
 use crate::tree::{FieldId, KindId, Names};
@@ -38,9 +38,6 @@ pub(crate) const MAX_ERRORS: usize = 100;
 
 /// The attributes a rule may carry.
 const ATTRIBUTES: [&str; 5] = ["lexical", "reserved", "sync", "memo", "nomemo"];
-
-/// The value builders the language defines. Any other name is a function given with the grammar.
-const BUILT_IN_BUILDERS: [&str; 7] = ["int", "float", "text", "unquote", "list", "tuple", "dict"];
 
 /// The built-in builders that make a value of a node's children, which a token does not have.
 const CHILDREN_BUILDERS: [&str; 3] = ["list", "tuple", "dict"];

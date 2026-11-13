@@ -175,6 +175,27 @@ except ValueError as error:
 .. autofunction:: fpeg.v_args
 ```
 
+## Value builders
+
+A grammar can say itself what its nodes and tokens are worth: `=> builder` after an alternative, as the [grammar reference](grammar.md#values) describes. A transformer without a method for a node uses its builder, so a bare `fpeg.Transformer()` turns a tree into values with no Python method called, and a method still overrides a builder.
+
+```python
+json = fpeg.Grammar(r"""
+?start: value
+?value: object | array | STRING | NUMBER
+      | "true" => True | "false" => False | "null" => None
+object: "{" (member ** ",") "}" => dict
+member: STRING ":" value => tuple
+array: "[" (value ** ",") "]" => list
+STRING: "\"" ([^"\\] | "\\" .)* "\"" => unquote
+NUMBER: "-"? [0-9]+ ("." [0-9]+)? => float
+%ignore [ \t\r\n]+
+""")
+
+value = fpeg.Transformer().transform(json.parse('{"a": [1.5, true, null, "\\u00e9"]}'))
+assert value == {"a": [1.5, True, None, "\u00e9"]}
+```
+
 ## Errors
 
 A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.

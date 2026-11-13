@@ -15,12 +15,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 use fpeg::{FieldCount, FieldId, LineCursor, NodeRef};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
-use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyList, PyString, PyTuple, PyType};
+use pyo3::{PyTypeInfo, intern};
 
-use crate::grammar::GrammarCore;
+use crate::builders;
+use crate::grammar::{GrammarCore, grammar_of};
 use crate::token;
 use crate::tree::{Meta, Parsed, Tree, item, token_positions};
 
@@ -180,13 +181,20 @@ impl DiscardType {
     }
 }
 
-/// The one `Discard`.
+/// The one `Discard`, and the object that says a token has no builder.
 static DISCARD: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
+static NO_VALUE: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
 
 pub fn discard(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
     let discard =
         DISCARD.get_or_try_init(py, || Ok::<_, PyErr>(Py::new(py, DiscardType)?.into_any()))?;
     Ok(discard.bind(py))
+}
+
+pub fn no_value(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
+    let value =
+        NO_VALUE.get_or_try_init(py, || PyAny::type_object(py).call0().map(Bound::unbind))?;
+    Ok(value.bind(py))
 }
 
 /// A value on the stack: the entry it came from, the field that entry fills in its parent, and
@@ -290,6 +298,20 @@ impl<'py, 'p> Scan<'py, 'p> {
         error
     }
 
+    /// The error of a builder with a note saying which builder and which item.
+    fn noted_builder(&self, error: PyErr, builder: &str, node: NodeRef<'_>) -> PyErr {
+        let position = self.parsed.position(node.span().0);
+        let what = if node.is_token() { "token" } else { "node" };
+        let note = format!(
+            "fpeg: in the builder {builder} of {}, for the {what} at line {}, column {}",
+            node.kind_name(),
+            position.line,
+            position.column
+        );
+        let _ = error.add_note(self.py, note);
+        error
+    }
+
     /// Push what a method returned: nothing for `Discard`, each value of a generator, or the
     /// value.
     fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
@@ -334,6 +356,13 @@ impl<'py, 'p> Scan<'py, 'p> {
                 result.map_err(|e| self.noted(e, &name.bind(self.py).to_string(), node))?;
             return self.push(index, node.field(), result);
         }
+        let parsed = self.parsed;
+        if let Some(builder) = parsed.grammar.builders.get(kind).and_then(Option::as_ref) {
+            let (start, end) = node.span();
+            let result = builders::token_value(self.py, builder, parsed.text(start, end))
+                .map_err(|e| self.noted_builder(e, builder.name(), node))?;
+            return self.push(index, node.field(), result);
+        }
         if self.plan.default_token {
             let token = self.make_token(node)?;
             let result = (self.transformer)
@@ -362,7 +391,20 @@ impl<'py, 'p> Scan<'py, 'p> {
             let result = self.call(node, kind, handler, children)?;
             return self.push(index, node.field(), result);
         }
-        let data = self.parsed.grammar.kind_names[kind].clone_ref(self.py);
+        let parsed = self.parsed;
+        if let Some(builder) = parsed.grammar.builders.get(kind).and_then(Option::as_ref) {
+            let mut values = Vec::with_capacity(children.len());
+            for child in children {
+                let field = child.field;
+                values.push((field, self.object(child)?));
+            }
+            let (start, end) = node.span();
+            let text = parsed.text(start, end);
+            let result = builders::node_value(self.py, builder, text, &values)
+                .map_err(|e| self.noted_builder(e, builder.name(), node))?;
+            return self.push(index, node.field(), result);
+        }
+        let data = parsed.grammar.kind_names[kind].clone_ref(self.py);
         if self.plan.default_node {
             let children = PyList::new(self.py, self.objects(children)?)?;
             let meta = self.meta(node)?;
@@ -564,4 +606,19 @@ pub fn scan<'py>(
         return PyTuple::new(py, [view.clone().into_any()]);
     }
     PyTuple::new(py, scan.objects(values)?)
+}
+
+/// The value the builder of a token's terminal gives it, or `NO_VALUE` when it has none: a
+/// token made in Python, or by a grammar that is gone, has no builder.
+#[pyfunction]
+pub fn token_value<'py>(py: Python<'py>, token: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let grammar = token::origin(token).and_then(|(serial, kind)| Some((grammar_of(serial)?, kind)));
+    let Some((grammar, kind)) = grammar else {
+        return Ok(no_value(py)?.clone());
+    };
+    let Some(builder) = grammar.builders.get(kind as usize).and_then(Option::as_ref) else {
+        return Ok(no_value(py)?.clone());
+    };
+    let text = token.cast::<PyString>()?.to_cow()?;
+    builders::token_value(py, builder, &text)
 }

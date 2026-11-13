@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 
 use fpeg::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, FieldCount, FieldId, Limits, Parser};
 use pyo3::exceptions::{PyRuntimeError, PyUnicodeDecodeError, PyValueError};
@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyString, PyType};
 
+use crate::builders::{self, Builder};
 use crate::errors::{grammar_error, parse_error};
 use crate::transform::Plans;
 use crate::tree::{Parsed, item};
@@ -24,6 +25,16 @@ const DETACH_MIN_BYTES: usize = 4096;
 
 /// The serial of the next grammar. Tokens carry the serial of the grammar that made them.
 static NEXT_SERIAL: AtomicU64 = AtomicU64::new(1);
+
+/// The live grammars by serial, for the builder of a token on its own.
+static GRAMMARS: LazyLock<Mutex<HashMap<u64, Weak<GrammarCore>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The live grammar with this serial.
+pub fn grammar_of(serial: u64) -> Option<Arc<GrammarCore>> {
+    let grammars = GRAMMARS.lock().unwrap_or_else(PoisonError::into_inner);
+    grammars.get(&serial).and_then(Weak::upgrade)
+}
 
 /// What a compiled grammar holds for its parses and their views.
 pub struct GrammarCore {
@@ -39,10 +50,19 @@ pub struct GrammarCore {
     pub name_fields: Vec<Vec<(FieldId, FieldCount)>>,
     /// The plans of the transformer classes that met the grammar.
     pub plans: Plans,
+    /// The value builder of each kind, by kind id.
+    pub builders: Vec<Option<Builder>>,
+}
+
+impl Drop for GrammarCore {
+    fn drop(&mut self) {
+        let mut grammars = GRAMMARS.lock().unwrap_or_else(PoisonError::into_inner);
+        grammars.remove(&self.serial);
+    }
 }
 
 impl GrammarCore {
-    fn new(py: Python<'_>, parser: Parser) -> GrammarCore {
+    fn new(py: Python<'_>, parser: Parser) -> PyResult<GrammarCore> {
         let kinds = parser.kinds();
         let kind_names = (kinds.iter())
             .map(|kind| PyString::intern(py, &kind.name).unbind())
@@ -51,7 +71,7 @@ impl GrammarCore {
         let field_names = (names.fields.iter())
             .map(|name| PyString::intern(py, name).unbind())
             .collect();
-        let field_ids = (names.fields.iter().enumerate())
+        let field_ids: HashMap<String, FieldId> = (names.fields.iter().enumerate())
             .skip(1)
             .filter_map(|(id, name)| Some((name.clone(), FieldId(u16::try_from(id).ok()?))))
             .collect();
@@ -72,7 +92,14 @@ impl GrammarCore {
                 fields
             })
             .collect();
-        GrammarCore {
+        let mut resolved = Vec::new();
+        for kind in kinds {
+            resolved.push(match &kind.builder {
+                Some(builder) => Some(builders::resolve(py, builder)?),
+                None => None,
+            });
+        }
+        Ok(GrammarCore {
             parser,
             serial: NEXT_SERIAL.fetch_add(1, Ordering::Relaxed),
             kind_names,
@@ -80,7 +107,8 @@ impl GrammarCore {
             field_ids,
             name_fields,
             plans: Plans::default(),
-        }
+            builders: resolved,
+        })
     }
 }
 
@@ -98,9 +126,11 @@ impl Grammar {
             .map_err(|errors| grammar_error(py, text, path, &errors))?;
         let parser =
             Parser::new(&grammar).map_err(|errors| grammar_error(py, text, path, &errors))?;
-        Ok(Grammar {
-            core: Arc::new(GrammarCore::new(py, parser)),
-        })
+        let core = Arc::new(GrammarCore::new(py, parser)?);
+        let mut grammars = GRAMMARS.lock().unwrap_or_else(PoisonError::into_inner);
+        grammars.insert(core.serial, Arc::downgrade(&core));
+        drop(grammars);
+        Ok(Grammar { core })
     }
 }
 

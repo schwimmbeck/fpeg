@@ -31,9 +31,9 @@ mod vm;
 pub use diag::DiagnosticCode;
 pub use grammar::builder;
 pub use grammar::{
-    Alternative, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel, Expr,
-    ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property, Recover,
-    Rule, RuleBody, RuleKind, Span, Text, ValueBuilder,
+    Alternative, BUILT_IN_BUILDERS, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count,
+    ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name,
+    Property, Recover, Rule, RuleBody, RuleKind, Span, Text, ValueBuilder,
 };
 pub use lines::{LineCursor, LineIndex, Position};
 pub use parse::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limit, Limits, ParseError, ParseErrorKind};

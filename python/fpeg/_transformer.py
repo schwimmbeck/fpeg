@@ -77,8 +77,8 @@ class Transformer:
     """Turn a tree into values, with methods named like the rules and terminals of a grammar.
 
     A method gives the value of the nodes or tokens of its name, called children first. A
-    node without a method gets the value of `__default__` when a subclass overrides it, else
-    it stays a tree. The signature of a method
+    node without a method gets the value of its rule's builder (`=>` in the grammar), else of
+    `__default__` when a subclass overrides it, else it stays a tree. The signature of a method
     says what it gets: the fields of the node by name, `*children` for the children, one other
     parameter for the list of children, and keyword-only `meta`, `node` or `children` beside.
     `return fpeg.Discard` removes the node from its parent, and a method that yields puts each
@@ -108,11 +108,11 @@ class Transformer:
         return values[0] if len(values) == 1 else list(values)
 
     def __default__(self, data: Any, children: list[Any], meta: Any) -> Any:
-        """Make the value of a node without a method, when a subclass overrides it."""
+        """Make the value of a node without a method or builder, when a subclass overrides it."""
         return Tree(data, children, meta)
 
     def __default_token__(self, token: Token) -> Any:
-        """Make the value of a token without a method, when a subclass overrides it."""
+        """Make the value of a token without a method or builder, when a subclass overrides it."""
         return token
 
     def _values(self, item: Any) -> tuple[Any, ...]:
@@ -135,6 +135,9 @@ class Transformer:
                 (lambda: method()) if mode == NOTHING else (lambda: method(token))
             )
             return _results(_noted(call, f"in {cls.__qualname__}.{name}, for the token {name}"))
+        built = _noted(lambda: _fpeg.token_value(token), f"in the builder of {name}, for a token")
+        if built is not _NO_VALUE:
+            return _results(built)
         if _overrides(cls, "__default_token__"):
             return _results(self.__default_token__(token))
         return (token,)
@@ -181,6 +184,9 @@ class Transformer:
             return (tree,)
         return (Tree(name, children, tree.meta),)
 
+
+# What `_fpeg._token_value` gives for a token without a builder.
+_NO_VALUE = _fpeg.NO_VALUE
 
 # The names a subclass cannot use as handlers, since the base class needs them.
 _BASE_NAMES = frozenset(vars(Transformer)) | frozenset(dir(object))

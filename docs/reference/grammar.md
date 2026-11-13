@@ -288,14 +288,17 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 
 ## Values
 
-`=> builder` after an alternative says how to turn its node into a value when no Python method handles it. Builders never affect parsing. Status: checked now, values with the Python binding (M3).
+`=> builder` after an alternative says how to turn its node or token into a value when no method of a transformer handles it. Builders never affect parsing.
 
-| Builder | Result |
+| Builder | Value |
 |---|---|
-| `=> int`, `=> float`, `=> text`, `=> unquote` | a value from a token |
-| `=> list`, `=> tuple`, `=> dict` | a value from the visible children |
-| `=> None`, `=> True`, `=> False`, a number, a string | a constant |
-| `=> Name(a, b, key=c, items=*, flag=None)` | a call of a registered function with fields, constants and `*` for all children |
+| `=> int`, `=> float` | Python's `int` or `float` of the text: a token's text, or the input a node spans |
+| `=> text` | the text as a plain string |
+| `=> unquote` | the text without its first and last character, its quotes, with the escapes of JSON decoded and `\'` too: `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t` and `\uXXXX`, where two escapes of a surrogate pair make one character and a lone surrogate stays one. Another escape is an error |
+| `=> list`, `=> tuple`, `=> dict` | of the values of the visible children, `dict` from pairs |
+| `=> None`, `=> True`, `=> False`, a number, a string | the constant, a number with a fraction or an exponent being a float |
+| `=> Name(a, b, key=c, items=*, flag=None)` | a call of the function `Name` given with the grammar: a field gives its value, or `None` when absent, for a field of at most one item and a list for a field of several, a constant gives itself and `*` the list of the values of all visible children |
+| `=> Name` alone | the function `Name` given with the grammar, called with the text of a token or the list of a node's children, as `int` and `list` are |
 
 - A builder belongs to its alternative. Each alternative with a builder makes nodes of a kind of their own, named like the rule or the alias, so a tree reads the same with builders and without. Alternatives with equal builders share that kind, across rules too.
 - A builder needs a node to make a value of. An alternative of a rule `_name`, or an alternative without `->` in a precedence level, makes none ([E309](diagnostics/E309.md)). In a transparent rule `?name` the builder applies when the node stays, and an alternative that gives way to its one visible child leaves its builder unused.
