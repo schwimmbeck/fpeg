@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
-// a line, and f-strings and t-strings nest replacement fields to any depth, with any quotes
-// inside them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
-// superset that a later check narrows: assignment and loop targets take primary expressions,
-// and comprehension clauses and starred items take any expression where Python takes one of
-// a tighter level.
+// a line, and f-strings and t-strings nest to any depth inside replacement fields, with any
+// quotes inside them. Hard keywords are reserved, soft keywords stay names. Three parts accept
+// a superset that a later check narrows: indentation may mix tabs and spaces where Python
+// finds it ambiguous, assignment and loop targets take primary expressions, and comprehension
+// clauses and starred items take any expression where Python takes one of a tighter level.
 
 // In a replacement field, outside any bracket in it, a colon starts the format. Format specs
 // count how deeply they nest within one f-string or t-string.
 %flag bracket replacement spec nested_spec
 %word [\p{XID_Continue}]
 %keywords soft "match" "case" "_" "type" "lazy"
-%ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK | %if(bracket) _LINE_BREAK
+%ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK &. | %if(bracket) _LINE_BREAK
 
 start: _BLANK_LINES? statements=(%same statement)*
 
