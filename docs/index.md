@@ -24,6 +24,7 @@ print(fpeg.__version__)
 ## Tutorials
 
 - [Your first grammar](tutorial/first-grammar.md): JSON from nothing to Python objects.
+- [From a tree to your own objects](tutorial/transformer.md): a `Transformer` that builds a syntax tree and computes values.
 
 ## Reference
 
@@ -39,6 +40,7 @@ print(fpeg.__version__)
 
 roadmap
 tutorial/first-grammar
+tutorial/transformer
 reference/grammar
 reference/semantics
 reference/tree

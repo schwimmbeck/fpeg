@@ -184,4 +184,5 @@ assert value == json.loads(text)
 
 ## Where next
 
+- [From a tree to your own objects](transformer.md) writes a `Transformer` with a method per rule, to build objects that builders cannot.
 - The [grammar language](../reference/grammar.md) describes every form a grammar can use, and the [Python API](../reference/python-api.md) everything the package offers.
