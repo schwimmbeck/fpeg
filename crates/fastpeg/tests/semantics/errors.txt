@@ -62,8 +62,3 @@ other: "match"
 %ignore " "+
 --- "match x"
 (start NAME"match" NAME"x")
-
-=== an unknown start rule is reported
-start: "a"
---- "a"
-(start ~"a")

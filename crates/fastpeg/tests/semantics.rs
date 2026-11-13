@@ -16,7 +16,7 @@ use std::fmt::Write;
 use std::path::Path;
 
 use fastpeg::grammar::Grammar;
-use fastpeg::reference::Reference;
+use fastpeg::reference::{ParseErrorKind, Reference};
 
 struct Check {
     line: usize,
@@ -265,5 +265,17 @@ fn case_files_match_the_reference_interpreter() {
         "{} failing checks:\n{}",
         failures.len(),
         failures.join("\n")
+    );
+}
+
+// The case files always start from `start`, so this case is written out.
+#[test]
+fn a_parse_from_an_unknown_rule_is_an_error() {
+    let grammar = Grammar::from_text("start: \"a\"\n").expect("the grammar reads");
+    let reference = Reference::new(&grammar).expect("the grammar resolves");
+    let error = reference.parse("a", "missing").expect_err("no such rule");
+    assert_eq!(
+        error.kind,
+        ParseErrorKind::UnknownStart("missing".to_owned())
     );
 }
