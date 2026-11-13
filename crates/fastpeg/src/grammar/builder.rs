@@ -4,7 +4,7 @@
 //! Build grammars in code.
 //!
 //! ```
-//! use fastpeg::grammar::builder::*;
+//! use fastpeg::builder::*;
 //!
 //! let mut g = GrammarBuilder::new();
 //! g.rule("start", seq([r("NUMBER"), many(seq([lit("+"), r("NUMBER")]))]));

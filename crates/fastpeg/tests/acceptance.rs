@@ -14,8 +14,7 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use common::check_printing;
-use fastpeg::grammar::Grammar;
-use fastpeg::reference::Reference;
+use fastpeg::{Grammar, Reference};
 
 fn files_in(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {

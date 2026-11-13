@@ -3,7 +3,7 @@
 
 //! Checks that several test files share.
 
-use fastpeg::grammar::Grammar;
+use fastpeg::Grammar;
 
 /// The grammar's debug form without source spans, so that two readings of different texts
 /// compare equal when they mean the same grammar.

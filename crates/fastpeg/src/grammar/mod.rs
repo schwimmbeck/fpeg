@@ -6,19 +6,39 @@
 //! The text front end and the programmatic [`builder`] both produce this model. Resolving it
 //! checks the names and translates it into the core language that engines run.
 
+use std::fmt;
+
 pub mod builder;
 #[cfg(feature = "reference")]
 mod meta;
-mod print;
-pub(crate) mod resolve;
+pub(crate) mod print;
 #[cfg(feature = "reference")]
 mod text;
-
-pub use resolve::GrammarError;
 
 /// How deeply the expressions of a grammar may nest. Passes over an expression recurse, so a
 /// deeper grammar is rejected before they run.
 pub const MAX_EXPRESSION_DEPTH: usize = 100;
+
+/// A problem that makes a grammar unusable.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GrammarError {
+    /// What is wrong.
+    pub message: String,
+    /// Where in the grammar source. Empty for grammars built in code.
+    pub span: Span,
+}
+
+impl fmt::Display for GrammarError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} at {}..{}",
+            self.message, self.span.start, self.span.end
+        )
+    }
+}
+
+impl std::error::Error for GrammarError {}
 
 /// A byte range in the grammar's source text. Grammars built in code have empty spans.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -169,7 +189,7 @@ pub struct Alternative {
     /// `-> name`: the kind of node the alternative produces.
     pub alias: Option<Name>,
     /// `=> builder`: how a transform turns the node into a value.
-    pub builder: Option<Builder>,
+    pub builder: Option<ValueBuilder>,
 }
 
 /// An expression with its source span.
@@ -495,7 +515,7 @@ impl Property {
 
 /// A value builder written after `=>`.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Builder {
+pub enum ValueBuilder {
     /// A named builder such as `int`, `list` or `dict`, or a registered function used bare.
     Name(Name),
     /// A constant value.

@@ -13,13 +13,12 @@
 )]
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt;
 use std::sync::Arc;
 
-use super::print::expr_text;
-use super::{
-    ClassItem, ErrorLabel, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody,
-    RuleKind, Span,
+use crate::grammar::print::expr_text;
+use crate::grammar::{
+    Alternative, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Level,
+    MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
 use crate::tree::{FieldId, KindId, Names};
@@ -46,27 +45,6 @@ const MAX_ERRORS: usize = 100;
 
 /// The attributes a rule may carry.
 const ATTRIBUTES: [&str; 5] = ["lexical", "reserved", "sync", "memo", "nomemo"];
-
-/// A problem that makes a grammar unusable.
-#[derive(Clone, Debug, PartialEq)]
-pub struct GrammarError {
-    /// What is wrong.
-    pub message: String,
-    /// Where in the grammar source. Empty for grammars built in code.
-    pub span: Span,
-}
-
-impl fmt::Display for GrammarError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} at {}..{}",
-            self.message, self.span.start, self.span.end
-        )
-    }
-}
-
-impl std::error::Error for GrammarError {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -132,7 +110,7 @@ struct Resolver<'g> {
     by_name: HashMap<&'g str, &'g Rule>,
     /// The levels of the precedence blocks, which every rule may call, with the level that owns
     /// each name.
-    levels: HashMap<&'g str, (RuleId, &'g super::Level)>,
+    levels: HashMap<&'g str, (RuleId, &'g Level)>,
     rules: Vec<Option<ir::Rule>>,
     instances: HashMap<(String, String), RuleId>,
     /// Instances of rules without parameters, one per name, made before any template instance.
@@ -557,7 +535,7 @@ impl<'g> Resolver<'g> {
                 .zip(args.iter().map(|a| a.measure().0))
                 .collect();
             // A precedence block with parameters is an error, but each instance lowers it all.
-            let alternatives: Vec<&super::Alternative> = match &rule.body {
+            let alternatives: Vec<&Alternative> = match &rule.body {
                 RuleBody::Alternatives(alternatives) => alternatives.iter().collect(),
                 RuleBody::Precedence(levels) => {
                     levels.iter().flat_map(|l| &l.alternatives).collect()
@@ -788,12 +766,7 @@ impl<'g> Resolver<'g> {
         }
     }
 
-    fn lower_precedence(
-        &mut self,
-        rule: &Rule,
-        kind: RuleKind,
-        levels: &[super::Level],
-    ) -> ir::Expr {
+    fn lower_precedence(&mut self, rule: &Rule, kind: RuleKind, levels: &[Level]) -> ir::Expr {
         if kind != RuleKind::Syntactic || rule.transparent || rule.is_underscored() {
             let message = format!(
                 "the precedence block {} must be a plain syntactic rule",

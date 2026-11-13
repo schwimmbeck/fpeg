@@ -7,8 +7,8 @@
 use std::fmt::{self, Display, Formatter, Write};
 
 use super::{
-    Alternative, Builder, BuilderArg, BuilderValue, Class, ClassItem, Constant, ErrorLabel, Expr,
-    ExprKind, Grammar, Rule, RuleBody,
+    Alternative, BuilderArg, BuilderValue, Class, ClassItem, Constant, ErrorLabel, Expr, ExprKind,
+    Grammar, Rule, RuleBody, ValueBuilder,
 };
 
 /// How tightly an expression form binds, loosest first. A part that binds looser than its
@@ -369,14 +369,14 @@ fn module_name(module: &str) -> String {
     }
 }
 
-struct BuilderText<'a>(&'a Builder);
+struct BuilderText<'a>(&'a ValueBuilder);
 
 impl Display for BuilderText<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
-            Builder::Name(name) => f.write_str(&name.text),
-            Builder::Constant(constant) => f.write_str(&constant_text(constant)),
-            Builder::Call { name, args } => {
+            ValueBuilder::Name(name) => f.write_str(&name.text),
+            ValueBuilder::Constant(constant) => f.write_str(&constant_text(constant)),
+            ValueBuilder::Call { name, args } => {
                 write!(f, "{}(", name.text)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {

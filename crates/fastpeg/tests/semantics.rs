@@ -18,8 +18,7 @@ use std::fmt::Write;
 use std::path::Path;
 
 use common::check_printing;
-use fastpeg::grammar::{Grammar, GrammarError};
-use fastpeg::reference::{ParseErrorKind, Reference};
+use fastpeg::{Grammar, GrammarError, ParseErrorKind, Reference};
 
 struct Check {
     line: usize,

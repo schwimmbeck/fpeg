@@ -14,10 +14,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 
 use common::check_printing;
-use fastpeg::grammar::builder::*;
-use fastpeg::grammar::{ClassItem, Expr, ExprKind, Grammar, Level, RuleBody, Span, Text};
-use fastpeg::reference::{Limits, ParseError, ParseErrorKind, Reference};
-use fastpeg::tree::Tree;
+use fastpeg::builder::*;
+use fastpeg::{
+    Alternative, ClassItem, Expr, ExprKind, Grammar, Level, Limits, ParseError, ParseErrorKind,
+    Reference, RuleBody, Span, Text, Tree,
+};
 
 /// Grammars a normal test run tries.
 const DEFAULT_CASES: u64 = 400;
@@ -220,7 +221,7 @@ impl Generator {
         }
     }
 
-    fn alternatives(&mut self) -> Vec<fastpeg::grammar::Alternative> {
+    fn alternatives(&mut self) -> Vec<Alternative> {
         (0..1 + self.rng.below(3))
             .map(|_| {
                 let expr = self.expr(0, false);

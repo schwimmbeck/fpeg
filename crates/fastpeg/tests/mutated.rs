@@ -16,8 +16,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::check_printing;
-use fastpeg::grammar::Grammar;
-use fastpeg::reference::{Limits, Reference};
+use fastpeg::{Grammar, Limits, Reference};
 
 /// Edits each grammar gets in a normal test run.
 const DEFAULT_MUTANTS: u64 = 12;

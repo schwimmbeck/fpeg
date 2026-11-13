@@ -7,12 +7,13 @@
 use std::sync::OnceLock;
 
 use super::{
-    Alternative, Builder, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel,
-    Expr, ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property,
-    Recover, Rule, RuleBody, Span, Text, meta,
+    Alternative, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel, Expr,
+    ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property, Recover,
+    Rule, RuleBody, Span, Text, ValueBuilder, meta,
 };
 use crate::lines::LineIndex;
-use crate::reference::{Limit, ParseErrorKind, Reference};
+use crate::parse::{Limit, ParseErrorKind};
+use crate::reference::Reference;
 use crate::tree::NodeRef;
 
 impl Grammar {
@@ -638,12 +639,12 @@ impl<'t> Converter<'t> {
         }
     }
 
-    fn builder(&mut self, node: &NodeRef<'_>) -> Builder {
+    fn builder(&mut self, node: &NodeRef<'_>) -> ValueBuilder {
         let Some(child) = visible(node).into_iter().next() else {
-            return Builder::Constant(Constant::None);
+            return ValueBuilder::Constant(Constant::None);
         };
         match child.kind_name() {
-            "call" => Builder::Call {
+            "call" => ValueBuilder::Call {
                 name: self.field_name(&child, "name"),
                 args: fields(&child, "args")
                     .iter()
@@ -663,10 +664,10 @@ impl<'t> Converter<'t> {
                     })
                     .collect(),
             },
-            "constant" => Builder::Constant(self.constant(&child)),
+            "constant" => ValueBuilder::Constant(self.constant(&child)),
             _ => match named_constant(self.text_of(&child)) {
-                Some(constant) => Builder::Constant(constant),
-                None => Builder::Name(self.name(&child)),
+                Some(constant) => ValueBuilder::Constant(constant),
+                None => ValueBuilder::Name(self.name(&child)),
             },
         }
     }

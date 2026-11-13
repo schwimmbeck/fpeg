@@ -3,9 +3,10 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
-use fastpeg::grammar::builder::{GrammarBuilder, def, empty, field, lit, on, r, r_args};
-use fastpeg::grammar::{Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH};
-use fastpeg::reference::{Limit, Limits, ParseErrorKind, Reference};
+use fastpeg::builder::{GrammarBuilder, def, empty, field, lit, on, r, r_args};
+use fastpeg::{
+    Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH, ParseErrorKind, Reference,
+};
 
 /// A stack too small for printing that recursed once per level of a deep tree.
 const PRINT_STACK_BYTES: usize = 64 * 1024;

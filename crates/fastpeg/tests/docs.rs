@@ -6,8 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use fastpeg::grammar::Grammar;
-use fastpeg::reference::Reference;
+use fastpeg::{Grammar, Reference};
 
 fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("the docs directory is readable") {

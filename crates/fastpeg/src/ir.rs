@@ -41,7 +41,7 @@ pub(crate) struct LabelId(pub u32);
 pub(crate) struct Grammar {
     pub rules: Vec<Rule>,
     /// For every rule that can start a parse, by name, a reference to it in syntactic mode:
-    /// every rule except templates and precedence levels.
+    /// every rule except templates, and every level of a precedence block.
     pub entry: HashMap<String, Expr>,
     pub names: Arc<Names>,
     /// What an expected set shows for each kind: the display name, the name, or the literal.

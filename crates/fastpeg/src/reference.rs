@@ -20,16 +20,8 @@ use std::fmt;
 use crate::grammar::{Grammar, GrammarError};
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
+use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
 use crate::tree::{FieldId, Item, KindId, Tree};
-
-/// Rule activations that may be nested before a parse stops.
-pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
-
-/// Evaluation steps a parse may take before it stops. Work beyond a plain step counts too, so
-/// the limit bounds the time a parse takes: copying a remembered result counts one step per
-/// item, and capturing, comparing, looking up or scanning text counts one per byte. About ten
-/// seconds, enough for a megabyte of Python.
-pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
 const STACK_BYTES: usize = 256 * 1024 * 1024;
@@ -45,77 +37,6 @@ const INDENTATION: &str = "indentation";
 
 /// What a parse that stopped before the end of the input expects, in an expected set.
 const END_OF_INPUT: &str = "end of input";
-
-/// How far a parse may go before it stops with [`ParseErrorKind::Limit`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Limits {
-    /// The deepest nesting of rule activations. A fixed cap on nested matches, which keeps the
-    /// interpreter within its own stack, stops a parse with the same limit whatever this allows.
-    pub max_depth: u32,
-    /// The number of evaluation steps, counted as for [`DEFAULT_MAX_STEPS`].
-    pub max_steps: u64,
-}
-
-impl Default for Limits {
-    fn default() -> Limits {
-        Limits {
-            max_depth: DEFAULT_MAX_DEPTH,
-            max_steps: DEFAULT_MAX_STEPS,
-        }
-    }
-}
-
-/// Why a parse did not produce a tree.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ParseError {
-    /// The byte offset the error refers to.
-    pub position: usize,
-    /// What went wrong.
-    pub kind: ParseErrorKind,
-}
-
-/// The kinds of parse errors.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ParseErrorKind {
-    /// The input does not match. `expected` holds what failed at the farthest position.
-    NoMatch {
-        /// What the grammar expected there, sorted.
-        expected: Vec<String>,
-    },
-    /// A labeled error occurred.
-    Label(String),
-    /// The parse hit a limit.
-    Limit(Limit),
-    /// The start rule does not exist or cannot start a parse.
-    UnknownStart(String),
-}
-
-/// The limits a parse can hit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Limit {
-    /// Too deeply nested rule activations, or matches nested deeper than the interpreter's
-    /// stack allows. Also when the interpreter's thread, which has that stack, cannot start.
-    Depth,
-    /// Too many evaluation steps.
-    Steps,
-    /// An input too large for 32-bit offsets.
-    InputSize,
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error at {}: ", self.position)?;
-        match &self.kind {
-            ParseErrorKind::NoMatch { expected } if expected.is_empty() => f.write_str("no match"),
-            ParseErrorKind::NoMatch { expected } => write!(f, "expected {}", expected.join(", ")),
-            ParseErrorKind::Label(label) => f.write_str(label),
-            ParseErrorKind::Limit(limit) => write!(f, "{limit:?} limit exceeded"),
-            ParseErrorKind::UnknownStart(name) => write!(f, "no rule {name} to start from"),
-        }
-    }
-}
-
-impl std::error::Error for ParseError {}
 
 /// A grammar resolved for the reference interpreter.
 pub struct Reference {
@@ -135,7 +56,7 @@ impl fmt::Debug for Reference {
 impl Reference {
     /// Resolve a grammar, or report the problems in it, the first hundred at most.
     pub fn new(grammar: &Grammar) -> Result<Reference, Vec<GrammarError>> {
-        crate::grammar::resolve::resolve(grammar).map(|grammar| Reference { grammar })
+        crate::resolve::resolve(grammar).map(|grammar| Reference { grammar })
     }
 
     /// Parse the whole input from the rule `start`, with the default limits.
