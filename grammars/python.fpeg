@@ -8,7 +8,8 @@
 // and comprehension clauses and starred items take any expression where Python takes one of
 // a tighter level.
 
-%flag bracket
+// In a replacement field, outside any bracket in it, a colon starts the format.
+%flag bracket replacement
 %word [\p{XID_Continue}]
 %keywords soft "match" "case" "_" "type" "lazy"
 %ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK | %if(bracket) _LINE_BREAK
@@ -189,7 +190,7 @@ yield_expression: "yield" "from" value=expression -> yield_from
                 | "yield" value=star_expressions? -> yield
 
 expression: %precedence {
-    lambda: "lambda" parameters=lambda_parameters? ":" body=lambda -> lambda
+    lambda: %if(!replacement) "lambda" parameters=lambda_parameters? ":" body=lambda -> lambda
         | body=or "if" test=or "else" orelse=lambda -> if_expression
     or: values=and ("or" values=and)+ -> bool_or
     and: values=not ("and" values=not)+ -> bool_and
@@ -212,8 +213,8 @@ expression: %precedence {
               | primary
 
 ?primary: func=primary arguments=generator_expression -> call
-        | func=primary "(" %on(bracket, arguments=arguments? ")") -> call
-        | value=primary "[" %on(bracket, slices=slices "]") -> subscript
+        | func=primary "(" %on(bracket, %off(replacement, arguments=arguments? ")")) -> call
+        | value=primary "[" %on(bracket, %off(replacement, slices=slices "]")) -> subscript
         | value=primary "." attribute=NAME -> attribute
         | atom
 
@@ -234,17 +235,17 @@ expression: %precedence {
      | set_comprehension
      | "..." -> ellipsis
 
-tuple: "(" %on(bracket, (items=star_named_expression "," (items=star_named_expression ** ",") ","?)? ")")
-group: "(" %on(bracket, value=(yield_expression | named_expression) ")")
-generator_expression: "(" %on(bracket, element=named_expression clauses=comprehension ")")
-list: "[" %on(bracket, items=(star_named_expression ** ",") ","? "]")
-list_comprehension: "[" %on(bracket, element=named_expression clauses=comprehension "]")
-dict: "{" %on(bracket, items=(dict_item ** ",") ","? "}")
+tuple: "(" %on(bracket, %off(replacement, (items=star_named_expression "," (items=star_named_expression ** ",") ","?)? ")"))
+group: "(" %on(bracket, %off(replacement, value=(yield_expression | named_expression) ")"))
+generator_expression: "(" %on(bracket, %off(replacement, element=named_expression clauses=comprehension ")"))
+list: "[" %on(bracket, %off(replacement, items=(star_named_expression ** ",") ","? "]"))
+list_comprehension: "[" %on(bracket, %off(replacement, element=named_expression clauses=comprehension "]"))
+dict: "{" %on(bracket, %off(replacement, items=(dict_item ** ",") ","? "}"))
 ?dict_item: "**" value=expression -> double_starred
           | key=expression ":" value=expression -> pair
-set: "{" %on(bracket, items=(star_named_expression ++ ",") ","? "}")
-dict_comprehension: "{" %on(bracket, key=expression ":" value=expression clauses=comprehension "}")
-set_comprehension: "{" %on(bracket, element=named_expression clauses=comprehension "}")
+set: "{" %on(bracket, %off(replacement, items=(star_named_expression ++ ",") ","? "}"))
+dict_comprehension: "{" %on(bracket, %off(replacement, key=expression ":" value=expression clauses=comprehension "}"))
+set_comprehension: "{" %on(bracket, %off(replacement, element=named_expression clauses=comprehension "}"))
 comprehension: clauses=for_if+
 for_if: async="async"? "for" targets=star_targets "in" iter=expression conditions=("if" expression)*
 
@@ -277,7 +278,7 @@ fstring<raw, plain>: prefix=raw (
 @lexical
 _f_body<quote, line_break, escape>: quote %off(bracket, parts=(F_TEXT<quote, line_break, escape> | replacement_field)*) quote
 
-replacement_field: "{" %on(bracket, value=(yield_expression | star_expressions) debug="="? conversion=conversion? format=format_spec? "}")
+replacement_field: "{" %on(bracket, value=%on(replacement, yield_expression | star_expressions) debug="="? conversion=conversion? format=format_spec? "}")
 
 @lexical
 conversion: "!" name=CONVERSION
