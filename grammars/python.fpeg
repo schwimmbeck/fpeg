@@ -3,11 +3,11 @@
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
 // a line, and f-strings and t-strings nest inside replacement fields, with any quotes inside
-// them. Hard keywords are reserved, soft keywords stay names. Three parts accept
-// a superset that a later check narrows: indentation may mix tabs and spaces where Python
-// finds it ambiguous, the targets of assignments, deletions and loops take primary
-// expressions, and comprehension clauses and starred items take any expression where Python
-// takes one of a tighter level.
+// them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
+// superset that a later check narrows: indentation may mix tabs and spaces where Python finds
+// it ambiguous, and the targets of assignments, deletions and loops take primary expressions.
+// Starred items and comprehension clauses call the levels of the expression block that Python
+// takes there.
 
 // In a replacement field, outside any bracket in it, a colon starts the format. Format specs
 // count how deeply they nest within one f-string or t-string, and a triple-quoted one lets
@@ -162,7 +162,7 @@ bare_star: "*" -> var_positional
 parameter: name=NAME (":" annotation=expression)? !"="
 default_parameter: name=NAME (":" annotation=expression)? "=" default=expression -> parameter
 star_parameter: "*" name=NAME (":" annotation=star_annotation)? -> var_positional
-?star_annotation: "*" value=expression -> starred
+?star_annotation: "*" value=bitor -> starred
                 | expression
 double_star_parameter: "**" name=NAME (":" annotation=expression)? -> var_keyword
 lambda_parameter: name=NAME !"=" -> parameter
@@ -171,7 +171,7 @@ lambda_star: "*" name=NAME -> var_positional
 lambda_double_star: "**" name=NAME -> var_keyword
 type_params: "[" %on(bracket, items=(type_param ++ ",") ","? "]")
 ?type_param: "**" name=NAME ("=" default=expression)? -> param_spec
-           | "*" name=NAME ("=" default=expression)? -> type_var_tuple
+           | "*" name=NAME ("=" default=star_expression)? -> type_var_tuple
            | name=NAME (":" bound=expression)? ("=" default=expression)? -> type_var
 arguments: (items=(positional_argument ++ ",") ("," _keyword_arguments)? | _keyword_arguments) ","?
 _keyword_arguments: items=(keyword_or_starred ++ ",") ("," items=(keyword_or_double_starred ++ ","))?
@@ -188,9 +188,9 @@ keyword: name=NAME "=" !"=" value=expression
 
 ?star_expressions: items=star_expression "," (items=(star_expression ++ ",") ","?)? -> tuple_expression
                  | star_expression
-?star_expression: "*" value=expression -> starred
+?star_expression: "*" value=bitor -> starred
                 | expression
-?star_named_expression: "*" value=expression -> starred
+?star_named_expression: "*" value=bitor -> starred
                       | named_expression
 ?named_expression: target=NAME ":=" value=expression -> named_expression
                  | expression !":="
@@ -247,18 +247,22 @@ expression: %precedence {
 
 tuple: "(" %on(bracket, %off(replacement, (items=star_named_expression "," (items=(star_named_expression ++ ",") ","?)?)? ")"))
 group: "(" %on(bracket, %off(replacement, value=(yield_expression | named_expression) ")"))
-generator_expression: "(" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension ")"))
+// A generator unpacks any expression, where list and set comprehensions take the bitor level.
+generator_expression: "(" %on(bracket, %off(replacement, element=generator_element clauses=comprehension ")"))
+?generator_element: "*" value=expression -> starred
+                  | named_expression
 list: "[" %on(bracket, %off(replacement, (items=(star_named_expression ++ ",") ","?)? "]"))
 list_comprehension: "[" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension "]"))
 dict: "{" %on(bracket, %off(replacement, (items=(dict_item ++ ",") ","?)? "}"))
-?dict_item: "**" value=expression -> double_starred
+?dict_item: "**" value=bitor -> double_starred
           | key=expression ":" value=expression -> pair
 set: "{" %on(bracket, %off(replacement, items=(star_named_expression ++ ",") ","? "}"))
 dict_comprehension: "{" %on(bracket, %off(replacement, (key=expression ":" value=expression | element=double_starred) clauses=comprehension "}"))
+// In a comprehension "**" takes any expression, in a dict display the bitor level.
 double_starred: "**" value=expression
 set_comprehension: "{" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension "}"))
 comprehension: clauses=for_if+
-for_if: async="async"? "for" targets=star_targets "in" iter=expression conditions=("if" expression)*
+for_if: async="async"? "for" targets=star_targets "in" iter=or conditions=("if" or)*
 
 slices: items=(slice ++ ",") ","?
 ?slice: lower=expression? ":" !"=" upper=expression? (":" step=expression?)? -> slice

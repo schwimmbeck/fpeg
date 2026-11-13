@@ -88,6 +88,9 @@ del rest[0], first
 assert isinstance(value, int), "must be an int"
 global counter
 type Alias[K, V] = dict[K, list[V]]
+class Shape[*Ts = *tuple[int, int]]: pass
+rows = (*row or [] for row in grid)
+merged = {**layer for layer in layers}
 x = 1; y = 2; z = x if y else \
     3
 print(x, y, z, sep="\n", end="")
