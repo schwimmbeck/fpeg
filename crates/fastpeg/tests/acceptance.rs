@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT
 
-//! Every acceptance grammar in `grammars/` reads from its text and parses its samples.
+//! Every acceptance grammar in `grammars/` reads from its text, prints back to the same grammar
+//! and parses its samples.
 //!
 //! The samples of `grammars/<name>.fpeg` are the files in `grammars/samples/<name>/`. Each must
 //! parse from the rule `start`, and where a file `<sample>.tree` sits beside it, the tree must
 //! equal its content. The files in `grammars/samples/<name>/invalid/` must fail to parse.
 //! `FASTPEG_BLESS=1` writes the `.tree` files of samples that have one.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 
+use common::check_printing;
 use fastpeg::grammar::Grammar;
 use fastpeg::reference::Reference;
 
@@ -43,9 +47,19 @@ fn acceptance_grammars_parse_their_samples() {
             .and_then(|s| s.to_str())
             .unwrap_or_default();
         let text = std::fs::read_to_string(path).expect("the grammar is readable");
-        let reference = match Grammar::from_text(&text).map(|g| Reference::new(&g)) {
-            Ok(Ok(reference)) => reference,
-            Ok(Err(errors)) | Err(errors) => {
+        let grammar = match Grammar::from_text(&text) {
+            Ok(grammar) => grammar,
+            Err(errors) => {
+                failures.push(format!("{name}: {errors:?}"));
+                continue;
+            }
+        };
+        if let Some(problem) = check_printing(&grammar) {
+            failures.push(format!("{name}: {problem}"));
+        }
+        let reference = match Reference::new(&grammar) {
+            Ok(reference) => reference,
+            Err(errors) => {
                 failures.push(format!("{name}: {errors:?}"));
                 continue;
             }

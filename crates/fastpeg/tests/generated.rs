@@ -8,9 +8,12 @@
 //! `FASTPEG_GENERATED_CASES` sets how many grammars to try and `FASTPEG_GENERATED_SEED` the first
 //! seed, for longer runs than the default and to replay a reported failure.
 
+mod common;
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 
+use common::check_printing;
 use fastpeg::grammar::builder::*;
 use fastpeg::grammar::{ClassItem, Expr, ExprKind, Grammar, Level, RuleBody, Span, Text};
 use fastpeg::reference::{Limits, ParseError, ParseErrorKind, Reference};
@@ -487,20 +490,6 @@ fn contains(item: &ClassItem, c: char) -> bool {
     }
 }
 
-fn shape(grammar: &Grammar) -> String {
-    let debug = format!("{grammar:?}");
-    let mut out = String::with_capacity(debug.len());
-    let mut rest = debug.as_str();
-    while let Some(at) = rest.find("Span { start: ") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at..];
-        let end = after.find(" }").map_or(after.len(), |e| e + 2);
-        rest = &after[end..];
-    }
-    out.push_str(rest);
-    out
-}
-
 fn env_number(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
@@ -554,13 +543,11 @@ fn limits() -> Limits {
 /// Resolving and parsing do not panic, and the grammar prints to text that reads back the same.
 fn check_robust(seed: u64) -> Option<String> {
     let (grammar, inputs) = generate(seed);
-    let printed = grammar.to_string();
     // The text front end runs on the reference interpreter too.
-    match catch_unwind(|| Grammar::from_text(&printed)) {
-        Ok(Ok(again)) if shape(&again) == shape(&grammar) => {}
-        Ok(Ok(_)) => return Some(format!("reads back differently:\n{printed}")),
-        Ok(Err(errors)) => return Some(format!("does not read back: {errors:?}\n{printed}")),
-        Err(_) => return Some(format!("panicked reading back:\n{printed}")),
+    match catch_unwind(|| check_printing(&grammar)) {
+        Ok(None) => {}
+        Ok(Some(problem)) => return Some(problem),
+        Err(_) => return Some(format!("panicked reading back:\n{grammar}")),
     }
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         if let Ok(reference) = Reference::new(&grammar) {
@@ -571,7 +558,7 @@ fn check_robust(seed: u64) -> Option<String> {
     }));
     outcome
         .err()
-        .map(|_| format!("panicked on one of {inputs:?}:\n{printed}"))
+        .map(|_| format!("panicked on one of {inputs:?}:\n{grammar}"))
 }
 
 /// Parsing with and without the memo gives the same tree or the same error.

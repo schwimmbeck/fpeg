@@ -1,17 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT
 
-//! Grammar texts with one random edit never panic the text front end or the resolver, and the
-//! grammars that still resolve parse their samples or fail, without panicking either.
+//! Grammar texts with one random edit never panic the text front end or the resolver, every
+//! edited text that still reads prints back to the same grammar, and the grammars that still
+//! resolve parse their samples or fail, without panicking either.
 //!
 //! The edits start from the grammars in `grammars/`. `FASTPEG_MUTANTS` sets how many edits each
 //! grammar gets and `FASTPEG_MUTANT_SEED` the first seed.
+
+mod common;
 
 use std::panic::catch_unwind;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use common::check_printing;
 use fastpeg::grammar::Grammar;
 use fastpeg::reference::{Limits, Reference};
 
@@ -145,15 +149,23 @@ fn grammar_texts_with_one_edit_never_panic() {
                     let mutant = mutate(text, &mut Rng(seed));
                     let outcome = catch_unwind(|| {
                         let grammar = Grammar::from_text(&mutant).ok()?;
-                        let reference = Reference::new(&grammar).ok()?;
-                        for sample in samples {
-                            let _ = reference.parse_with(sample, "start", limits);
+                        if let Some(problem) = check_printing(&grammar) {
+                            return Some(problem);
                         }
-                        Some(())
+                        if let Ok(reference) = Reference::new(&grammar) {
+                            for sample in samples {
+                                let _ = reference.parse_with(sample, "start", limits);
+                            }
+                        }
+                        None
                     });
-                    if outcome.is_err() {
+                    let problem = match outcome {
+                        Ok(problem) => problem,
+                        Err(_) => Some("panicked".to_owned()),
+                    };
+                    if let Some(problem) = problem {
                         let mut failures = failures.lock().expect("no thread panics holding it");
-                        failures.push(format!("{name}, seed {seed}:\n{mutant}"));
+                        failures.push(format!("{name}, seed {seed}: {problem}\n{mutant}"));
                     }
                 }
             });

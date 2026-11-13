@@ -12,9 +12,12 @@
 //! `FASTPEG_BLESS=1 cargo test` rewrites the expectations with the actual results, to review
 //! as a diff.
 
+mod common;
+
 use std::fmt::Write;
 use std::path::Path;
 
+use common::check_printing;
 use fastpeg::grammar::{Grammar, GrammarError};
 use fastpeg::reference::{ParseErrorKind, Reference};
 
@@ -158,36 +161,6 @@ fn matches(expected: &[String], actual: &[String], grammar_error: bool) -> bool 
                 .all(|e| actual.iter().any(|a| a.contains(e.trim())));
     }
     expected == actual
-}
-
-/// The grammar's debug form without source spans, so that two readings of different texts
-/// compare equal when they mean the same grammar.
-fn shape(grammar: &Grammar) -> String {
-    let debug = format!("{grammar:?}");
-    let mut out = String::with_capacity(debug.len());
-    let mut rest = debug.as_str();
-    while let Some(at) = rest.find("Span { start: ") {
-        out.push_str(&rest[..at]);
-        let after = &rest[at..];
-        let end = after.find(" }").map_or(after.len(), |e| e + 2);
-        rest = &after[end..];
-    }
-    out.push_str(rest);
-    out
-}
-
-/// Printing must give text that reads back to the same grammar.
-fn check_printing(grammar: &Grammar) -> Option<String> {
-    let printed = grammar.to_string();
-    match Grammar::from_text(&printed) {
-        Ok(again) if shape(&again) == shape(grammar) => None,
-        Ok(_) => Some(format!(
-            "the printed grammar reads back differently:\n{printed}"
-        )),
-        Err(errors) => Some(format!(
-            "the printed grammar does not read back: {errors:?}\n{printed}"
-        )),
-    }
 }
 
 fn run_file(path: &Path, bless: bool) -> Vec<String> {
