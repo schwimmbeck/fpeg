@@ -143,6 +143,11 @@ impl Tree {
         self.kinds.is_empty()
     }
 
+    /// The node or token at a position of the postorder, or `None` past the end.
+    pub fn node(&self, index: usize) -> Option<NodeRef<'_>> {
+        (index < self.len()).then_some(NodeRef { tree: self, index })
+    }
+
     /// The top-level items, in input order.
     pub fn roots(&self) -> Vec<NodeRef<'_>> {
         self.siblings_in(0, self.len())
@@ -241,6 +246,17 @@ pub struct NodeRef<'t> {
 }
 
 impl<'t> NodeRef<'t> {
+    /// The position in the postorder, which [`Tree::node`] takes.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// The number of entries of the subtree, this one included. They are the entries right
+    /// before this one and this one.
+    pub fn size(&self) -> usize {
+        self.tree.sizes[self.index] as usize
+    }
+
     /// The kind.
     pub fn kind(&self) -> KindId {
         self.tree.kinds[self.index]

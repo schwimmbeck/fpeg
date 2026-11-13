@@ -35,7 +35,7 @@ pub use grammar::{
     ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property, Recover,
     Rule, RuleBody, RuleKind, Span, Text, ValueBuilder,
 };
-pub use lines::LineIndex;
+pub use lines::{LineCursor, LineIndex, Position};
 pub use parse::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limit, Limits, ParseError, ParseErrorKind};
 #[cfg(feature = "reference")]
 pub use reference::Reference;

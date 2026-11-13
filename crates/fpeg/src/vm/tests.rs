@@ -27,6 +27,30 @@ fn errors(text: &str) -> Vec<String> {
 }
 
 #[test]
+fn parsers_and_trees_cross_threads_and_entries_read_by_position() {
+    fn shared<T: Send + Sync>() {}
+    shared::<Parser>();
+    shared::<crate::Tree>();
+    let parser = parser(
+        "start: A \"+\" A
+A: \"a\"",
+    );
+    let tree = parser
+        .parse("a+a", "start")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    // Postorder: the two tokens A and the hidden "+" come before their node.
+    let root = tree
+        .node(tree.len() - 1)
+        .unwrap_or_else(|| panic!("a root"));
+    assert_eq!(
+        (root.index(), root.size(), root.kind_name()),
+        (3, 4, "start")
+    );
+    assert_eq!(tree.node(1).map(|plus| plus.is_hidden()), Some(true));
+    assert!(tree.node(4).is_none());
+}
+
+#[test]
 fn a_failed_alternative_gives_back_the_nodes_it_made() {
     // The first alternative builds the whole nested tree and then fails, at every level.
     let parser = parser("start: s\ns: \"(\" s \")\" \"x\" | \"(\" s \")\" | \"a\"\n");
