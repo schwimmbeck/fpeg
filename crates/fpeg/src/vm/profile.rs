@@ -49,6 +49,9 @@ pub struct ProfileRow {
     pub failures: u64,
     /// Steps spent in the rule's own code, not in the rules it called.
     pub steps: u64,
+    /// Steps from the calls that ran the rule to their ends, the rules it called included.
+    /// Where a rule calls itself, the outermost call counts.
+    pub steps_with_callees: u64,
     /// Bytes that failed calls had matched and gave back.
     pub backtracked_bytes: u64,
     /// Calls at a position where the rule had been called before, with the same flags and the
@@ -69,8 +72,11 @@ type Seen = (u32, u32, u64, bool);
 pub(super) struct Profiler {
     /// A row per rule of the program, then the skip routine's, then the parse's own.
     rows: Vec<ProfileRow>,
-    /// The rules being matched, innermost last, each with where its call started.
-    active: Vec<(u32, u32)>,
+    /// The rules being matched, innermost last, each with where its call started and the
+    /// steps of the parse then.
+    active: Vec<(u32, u32, u64)>,
+    /// How many calls of each rule are in progress.
+    nesting: Vec<u32>,
     /// The row that the steps since `mark` belong to, and the steps of the parse at the last
     /// change of that row.
     current: u32,
@@ -103,6 +109,7 @@ impl Profiler {
         });
         let parse = (rows.len() - 1) as u32;
         Profiler {
+            nesting: vec![0; rows.len()],
             rows,
             active: Vec::new(),
             current: parse,
@@ -132,7 +139,7 @@ impl Profiler {
     /// The row of the rule around the newest call, or of the parse itself.
     fn outer(&self) -> u32 {
         let parse = (self.rows.len() - 1) as u32;
-        self.active.last().map_or(parse, |&(rule, _)| rule)
+        self.active.last().map_or(parse, |&(rule, ..)| rule)
     }
 
     /// A rule is called: count the call, and whether it repeats one.
@@ -147,7 +154,10 @@ impl Profiler {
     /// The call just counted runs the rule's routine.
     pub fn entered(&mut self, rule: u32, pos: u32, steps: u64, stack: usize, nodes: usize) {
         self.switch(steps, rule);
-        self.active.push((rule, pos));
+        self.active.push((rule, pos, steps));
+        if let Some(nesting) = self.nesting.get_mut(rule as usize) {
+            *nesting += 1;
+        }
         self.peak_stack = self.peak_stack.max(stack as u64);
         self.peak_nodes = self.peak_nodes.max(nodes as u64);
     }
@@ -155,12 +165,22 @@ impl Profiler {
     /// The routine of the newest call is over: it returned, or with `failed_at` it failed
     /// there, or an error passed it.
     pub fn left(&mut self, steps: u64, failed_at: Option<u32>) {
-        let Some((rule, start)) = self.active.pop() else {
+        let Some((rule, start, entered)) = self.active.pop() else {
             return;
         };
-        if let (Some(pos), Some(row)) = (failed_at, self.row(rule)) {
-            row.failures += 1;
-            row.backtracked_bytes += u64::from(pos.saturating_sub(start));
+        let outermost = match self.nesting.get_mut(rule as usize) {
+            Some(nesting) => {
+                *nesting = nesting.saturating_sub(1);
+                *nesting == 0
+            }
+            None => false,
+        };
+        if let Some(row) = self.row(rule) {
+            row.steps_with_callees += if outermost { steps - entered } else { 0 };
+            if let Some(pos) = failed_at {
+                row.failures += 1;
+                row.backtracked_bytes += u64::from(pos.saturating_sub(start));
+            }
         }
         let outer = self.outer();
         self.switch(steps, outer);
@@ -217,6 +237,7 @@ impl Profiler {
                     known.calls += row.calls;
                     known.failures += row.failures;
                     known.steps += row.steps;
+                    known.steps_with_callees += row.steps_with_callees;
                     known.backtracked_bytes += row.backtracked_bytes;
                     known.repeats += row.repeats;
                     known.memo_hits += row.memo_hits;

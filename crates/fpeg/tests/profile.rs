@@ -73,6 +73,10 @@ fn a_profile_counts_failed_calls_and_the_bytes_they_give_back() {
         (1, 1, 1)
     );
     assert_eq!(row(&profile, "start").failures, 0);
+    // Everything but the code around the parse happens inside the call of start.
+    let (start, around) = (row(&profile, "start"), row(&profile, "(parse)"));
+    assert_eq!(start.steps_with_callees, profile.steps - around.steps);
+    assert_eq!(start.steps_with_callees, start.steps + pair.steps);
 }
 
 #[test]
