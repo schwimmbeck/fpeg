@@ -61,6 +61,13 @@ fn the_step_limit_stops_a_parse_also_inside_a_lookahead() {
 }
 
 #[test]
+fn a_grammar_reports_at_most_a_hundred_errors() {
+    let names: Vec<String> = (0..1_000).map(|i| format!("missing{i}")).collect();
+    let errors = grammar_errors(&format!("start: {}\n", names.join(" ")));
+    assert_eq!(errors.len(), 100);
+}
+
+#[test]
 fn copying_results_counts_against_the_step_limit() {
     // Left recursion copies its growing result in every step, quadratic in the input length.
     let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
@@ -111,7 +118,16 @@ fn templates_that_expand_too_far_are_errors_before_they_take_the_memory() {
     }
     uses.push_str("d11<p>: x<(p p)>\n");
     uses.push_str(&format!("x<p>: {}\n", ["p"; 1_000].join(" ")));
-    for text in [doubling, copies, uses] {
+    // A parameter given arguments is an error, but each use still counts as a copy.
+    let with_arguments = uses.replace(&["p"; 1_000].join(" "), &["p<\"a\">"; 200].join(" "));
+    // A precedence block cannot take parameters, but each instance would lower all of it.
+    let alternatives = (0..400).map(|i| format!("p<\"{i}\">")).collect::<Vec<_>>();
+    let block = format!(
+        "start: {}\np<x>: %precedence {{\n    sum: {} -> sum\n    atom: \"b\"\n}}\n",
+        alternatives.join(" | "),
+        ["\"a\""; 2_000].join(" ")
+    );
+    for text in [doubling, copies, uses, with_arguments, block] {
         let errors = grammar_errors(&text);
         assert!(
             errors.iter().any(|e| e.contains("too many expressions")),

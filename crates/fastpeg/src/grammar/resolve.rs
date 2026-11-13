@@ -38,6 +38,9 @@ const DEFAULT_TAB_WIDTH: u32 = 8;
 /// The widest tab a grammar may set, far beyond any real layout, which keeps columns countable.
 const MAX_TAB_WIDTH: u32 = 1_000;
 
+/// Errors resolving reports at most. More would not help a reader fix the first ones.
+const MAX_ERRORS: usize = 100;
+
 /// The attributes a rule may carry.
 const ATTRIBUTES: [&str; 5] = ["lexical", "reserved", "sync", "memo", "nomemo"];
 
@@ -279,6 +282,7 @@ fn unfielded_items(expr: &ir::Expr, rules: &[u8]) -> u8 {
         | E::Indent { expr, .. }
         | E::Def { expr, .. }
         | E::Label { expr, .. } => unfielded_items(expr, rules),
+        E::Shared(expr) => unfielded_items(expr, rules),
         // An inner field keeps its items, and lookahead adds none.
         _ => 0,
     }
@@ -290,8 +294,8 @@ fn substituted_size(expr: &Expr, sizes: &HashMap<String, usize>) -> usize {
     let mut pending = vec![expr];
     let mut size = 0usize;
     while let Some(expr) = pending.pop() {
-        if let ExprKind::Reference { name, args } = &expr.kind
-            && args.is_empty()
+        // A parameter given arguments is an error, but it is counted as a use all the same.
+        if let ExprKind::Reference { name, .. } = &expr.kind
             && let Some(&argument) = sizes.get(&name.text)
         {
             size = size.saturating_add(argument);
@@ -301,6 +305,21 @@ fn substituted_size(expr: &Expr, sizes: &HashMap<String, usize>) -> usize {
         pending.extend(expr.children());
     }
     size
+}
+
+/// A parameter that `expr` uses with arguments, which parameters do not take.
+fn misused_parameter<'e>(expr: &'e Expr, params: &HashMap<String, Expr>) -> Option<&'e Name> {
+    let mut pending = vec![expr];
+    while let Some(expr) = pending.pop() {
+        if let ExprKind::Reference { name, args } = &expr.kind
+            && !args.is_empty()
+            && params.contains_key(&name.text)
+        {
+            return Some(name);
+        }
+        pending.extend(expr.children());
+    }
+    None
 }
 
 /// Replace references to parameters by their arguments.
@@ -319,9 +338,10 @@ fn substitute(expr: &Expr, params: &HashMap<String, Expr>) -> Expr {
 
 impl<'g> Resolver<'g> {
     fn error(&mut self, message: String, span: Span) {
-        // Each instance of a template reports the errors of its body again.
+        // Each instance of a template reports the errors of its body again. The cap keeps the
+        // check for those repeats cheap.
         let error = GrammarError { message, span };
-        if !self.errors.contains(&error) {
+        if self.errors.len() < MAX_ERRORS && !self.errors.contains(&error) {
             self.errors.push(error);
         }
     }
@@ -439,12 +459,16 @@ impl<'g> Resolver<'g> {
                 .map(|p| p.text.clone())
                 .zip(args.iter().map(|a| a.measure().0))
                 .collect();
-            let expanded = match &rule.body {
-                RuleBody::Alternatives(alternatives) => (alternatives.iter())
-                    .map(|a| substituted_size(&a.expr, &sizes))
-                    .fold(0, usize::saturating_add),
-                RuleBody::Precedence(_) => 0,
+            // A precedence block with parameters is an error, but each instance lowers it all.
+            let alternatives: Vec<&super::Alternative> = match &rule.body {
+                RuleBody::Alternatives(alternatives) => alternatives.iter().collect(),
+                RuleBody::Precedence(levels) => {
+                    levels.iter().flat_map(|l| &l.alternatives).collect()
+                }
             };
+            let expanded = (alternatives.iter())
+                .map(|a| substituted_size(&a.expr, &sizes))
+                .fold(0, usize::saturating_add);
             self.instance_expressions = self.instance_expressions.saturating_add(expanded);
             if self.instance_expressions > MAX_INSTANCE_EXPRESSIONS {
                 self.too_large(&rule.name.text, span);
@@ -788,6 +812,7 @@ impl<'g> Resolver<'g> {
                     if !args.is_empty() {
                         let message = format!("the parameter {} takes no arguments", name.text);
                         self.error(message, expr.span);
+                        return E::Empty;
                     }
                     let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
                     let closed = Scope {
@@ -836,7 +861,7 @@ impl<'g> Resolver<'g> {
                 separator,
                 at_least_one,
             } => {
-                let item = self.lower_parts(item, scope, parts.as_deref_mut());
+                let item = Arc::new(self.lower_parts(item, scope, parts.as_deref_mut()));
                 let unfielded = Scope {
                     in_field: false,
                     ..scope
@@ -846,11 +871,11 @@ impl<'g> Resolver<'g> {
                     parts.push(separator.clone());
                 }
                 let tail = E::Repeat {
-                    expr: Box::new(E::Seq(vec![separator, item.clone()])),
+                    expr: Box::new(E::Seq(vec![separator, E::Shared(Arc::clone(&item))])),
                     min: 0,
                     max: None,
                 };
-                let some = E::Seq(vec![item, tail]);
+                let some = E::Seq(vec![E::Shared(item), tail]);
                 if *at_least_one {
                     return some;
                 }
@@ -1007,6 +1032,12 @@ impl<'g> Resolver<'g> {
             self.error(message, span);
             return ir::Expr::Empty;
         }
+        // Substituting would leave the arguments in place and take the name for a rule's.
+        if let Some(param) = args.iter().find_map(|a| misused_parameter(a, scope.params)) {
+            let message = format!("the parameter {} takes no arguments", param.text);
+            self.error(message, param.span);
+            return ir::Expr::Empty;
+        }
         // Arguments that take in parameters grow with every instance, so their size is known
         // before they are built.
         let size = (args.iter())
@@ -1058,5 +1089,67 @@ impl<'g> Resolver<'g> {
             }
             _ => ir::Expr::Call(id),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    use super::resolve;
+    use crate::grammar::builder::{GrammarBuilder, lit, sep_many};
+    use crate::ir;
+
+    fn children(expr: &ir::Expr) -> Vec<&ir::Expr> {
+        use ir::Expr as E;
+        match expr {
+            E::Seq(items) | E::Choice(items) => items.iter().collect(),
+            E::Repeat { expr, .. }
+            | E::Token { expr, .. }
+            | E::Node { expr, .. }
+            | E::Transparent { expr, .. }
+            | E::Field { expr, .. }
+            | E::FlagOn { expr, .. }
+            | E::FlagOff { expr, .. }
+            | E::Indent { expr, .. }
+            | E::Def { expr, .. }
+            | E::Label { expr, .. }
+            | E::And(expr)
+            | E::Not(expr)
+            | E::Unreserved(expr) => vec![expr],
+            E::Shared(expr) => vec![expr],
+            _ => Vec::new(),
+        }
+    }
+
+    /// The expressions of all rules, counting a shared one once.
+    fn size(grammar: &ir::Grammar) -> usize {
+        let mut seen = HashSet::new();
+        let mut pending: Vec<&ir::Expr> = grammar.rules.iter().map(|r| &r.body).collect();
+        let mut size = 0;
+        while let Some(expr) = pending.pop() {
+            size += 1;
+            if let ir::Expr::Shared(inner) = expr
+                && !seen.insert(Arc::as_ptr(inner))
+            {
+                continue;
+            }
+            pending.extend(children(expr));
+        }
+        size
+    }
+
+    #[test]
+    fn nested_separated_repetitions_lower_their_item_once() {
+        let mut expr = lit("a");
+        for _ in 0..20 {
+            expr = sep_many(expr, lit(","));
+        }
+        let mut g = GrammarBuilder::new();
+        g.rule("start", expr);
+        let grammar = resolve(&g.build()).expect("the grammar resolves");
+        // Twenty levels that each copied their item would hold more than a million.
+        assert!(size(&grammar) < 1_000, "{}", size(&grammar));
     }
 }

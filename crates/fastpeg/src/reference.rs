@@ -800,6 +800,7 @@ impl<'a> Interp<'a> {
                 success => Ok(success),
             },
             E::ErrorAlternative => Interp::fail(),
+            E::Shared(expr) => self.eval(expr, pos, ctx),
         }
     }
 

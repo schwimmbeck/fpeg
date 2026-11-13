@@ -171,4 +171,7 @@ pub(crate) enum Expr {
         skip: bool,
     },
     ErrorAlternative,
+    /// An expression that the translation uses twice, the item of a separated repetition,
+    /// shared so that nesting them does not double the grammar at every level.
+    Shared(Arc<Expr>),
 }

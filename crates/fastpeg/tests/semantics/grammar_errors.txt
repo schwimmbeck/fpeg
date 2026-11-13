@@ -16,6 +16,14 @@ t<x>: x
 --- grammar
 the rule start is defined twice
 
+=== a parameter given arguments inside an argument is an error, not a rule of that name
+start: t<"a">
+t<x>: u<x<"b">>
+u<y>: y
+x<z>: z
+--- grammar
+the parameter x takes no arguments
+
 === a template used with the wrong number of arguments is an error
 start: list<N>
 list<item, sep>: item (sep item)*
