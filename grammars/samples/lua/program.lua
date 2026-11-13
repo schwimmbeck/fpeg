@@ -7,6 +7,7 @@ Stack.__index = Stack
 
 function Stack.new(...)
   local self = setmetatable({items = {...}, size = select("#", ...)}, Stack)
+  self.label = "stack of " .. ...
   return self
 end
 
@@ -16,8 +17,8 @@ function Stack:push(value)
 end
 
 local function sum(list)
-  local total <const> = 0
-  for i = 1, #list, 1 do total = total + list[i] end
+  local total, step <const> = 0, 1
+  for i = 1, #list, step do total = total + list[i] end
   return total
 end
 
@@ -29,7 +30,7 @@ local codes = "\x41\65\255\0000\u{20AC}\u{7FFFFFFF}\u{0}\\\
 next line"
 local s = Stack.new(1, 2, 3)
 s:push(2 ^ -1)
-print(sum{1, 2; 3}, text .. escaped, 0x1F, 0xA.8p1, 3e-2, .5)
+print(sum{1, 2; 3}, text .. escaped, 0x1F, 0xA.8p1, 3e-2, .5, escaped .. .5)
 for k, v in pairs({a = 1, [2] = "b", 'c'}) do
   if k == "a" and not v ~= 1 then goto continue
   elseif type(k) == "number" then print(k // 2, k % 2, -k ^ 2)

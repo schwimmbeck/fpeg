@@ -4,6 +4,8 @@
 // Lua 5.4. Long brackets match their closing level through a capture, keywords are reserved,
 // and the operators follow the twelve precedence levels of the language. Assignment targets
 // and call statements accept any prefix expression, a superset that a later check narrows.
+// The checks Lua makes while compiling, of labels, goto, break, <const>, <close> and "...",
+// are left to later as well.
 
 %word [A-Za-z0-9_]
 %keywords soft "const" "close"
@@ -40,7 +42,7 @@ function_statement: "function" name=function_name body=function_body
 function_name: parts=(NAME ++ ".") (":" method=NAME)?
 local_function: "local" "function" name=NAME body=function_body
 local: "local" names=(attribute_name ++ ",") ("=" values=(exp ++ ","))?
-attribute_name: name=NAME ("<" &("const" | "close") attribute=NAME ">")?
+attribute_name: name=NAME ("<" &("const" | "close") attribute=NAME _ATTRIBUTE_END)?
 assign: targets=(prefix ++ ",") "=" values=(exp ++ ",")
 call_statement: call=prefix
 return_statement: "return" values=(exp ** ",") ";"?
@@ -57,7 +59,7 @@ exp: %precedence {
     bxor: left=bxor op="~" !"=" right=band -> binary
     band: left=band op="&" right=shift -> binary
     shift: left=shift op=("<<" | ">>") right=concat -> binary
-    concat: left=sum op=".." !"." right=concat -> binary
+    concat: left=sum op=CONCAT right=concat -> binary
     sum: left=sum op=("+" | "-") right=product -> binary
     product: left=product op=("*" | "//" | "/" | "%") right=unary -> binary
     unary: op=("not" | "#" | "-" | "~") operand=unary -> unary
@@ -84,7 +86,7 @@ args: "(" items=(exp ** ",") ")"
     | table
     | STRING
 function_expression: "function" body=function_body
-table: "{" fields=(field ** _separator) _separator? "}"
+table: "{" (fields=(field ++ _separator) _separator?)? "}"
 _separator: "," | ";"
 field: "[" key=exp "]" "=" value=exp -> keyed
      | name=NAME "=" !"=" value=exp -> named
@@ -92,6 +94,10 @@ field: "[" key=exp "]" "=" value=exp -> keyed
 
 @reserved
 NAME: [A-Za-z_] [A-Za-z0-9_]*
+// Lua reads "..." and ">=" as one token each, so ".." is the operator only where no dot follows
+// at once, and an attribute ends with a ">" that no "=" follows at once.
+CONCAT: ".." !"."
+_ATTRIBUTE_END: ">" !"="
 // Lua reads a numeral on through letters, digits and dots, so one that touches them is malformed.
 NUMBER: ("0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
         | (DIGIT+ ("." !"." DIGIT*)? | "." DIGIT+) ([eE] [+\-]? DIGIT+)?) ![0-9A-Za-z_.]
