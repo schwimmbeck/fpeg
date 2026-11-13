@@ -25,9 +25,10 @@ use crate::tree::{FieldId, Item, KindId, Tree};
 /// Rule activations that may be nested before a parse stops.
 pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
 
-/// Evaluation steps a parse may take before it stops. Copying a remembered result counts one
-/// step per item copied, so the limit bounds the time a parse takes. About ten seconds, enough
-/// for a megabyte of Python.
+/// Evaluation steps a parse may take before it stops. Work beyond a plain step counts too, so
+/// the limit bounds the time a parse takes: copying a remembered result counts one step per
+/// item, and capturing, comparing, looking up or scanning text counts one per byte. About ten
+/// seconds, enough for a megabyte of Python.
 pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
@@ -49,7 +50,7 @@ const END_OF_INPUT: &str = "end of input";
 pub struct Limits {
     /// The deepest nesting of rule activations.
     pub max_depth: u32,
-    /// The number of evaluation steps, where copying a remembered result counts one per item.
+    /// The number of evaluation steps, counted as for [`DEFAULT_MAX_STEPS`].
     pub max_steps: u64,
 }
 
@@ -360,8 +361,10 @@ impl<'a> Interp<'a> {
         self.input.get(pos..).and_then(|rest| rest.chars().next())
     }
 
-    fn column(&self, pos: usize) -> u32 {
-        self.lines.column(self.input, pos, self.g.tab_width)
+    /// The column of `pos`, counting the scan from the start of its line as steps.
+    fn column(&mut self, pos: usize) -> Result<u32, Abort> {
+        self.spend((pos - self.lines.line_start(pos)) as u64)?;
+        Ok(self.lines.column(self.input, pos, self.g.tab_width))
     }
 
     fn ok(pos: usize, ctx: &Ctx) -> Eval {
@@ -705,6 +708,8 @@ impl<'a> Interp<'a> {
             },
             E::Unreserved(inner) => match self.eval(inner, pos, ctx)? {
                 Outcome::Ok(success) => {
+                    // Looking a match up is work of its length.
+                    self.spend((success.end - pos) as u64)?;
                     let text = self.input.get(pos..success.end).unwrap_or_default();
                     if self.g.reserved.contains(text) {
                         Interp::fail()
@@ -733,7 +738,7 @@ impl<'a> Interp<'a> {
             }
             E::Indent { expr, skip } => {
                 let at = if *skip { self.skip_end(pos, ctx)? } else { pos };
-                let column = self.column(at);
+                let column = self.column(at)?;
                 if column > ctx.column {
                     let inner = Ctx {
                         column,
@@ -747,7 +752,7 @@ impl<'a> Interp<'a> {
             }
             E::Same { skip } => {
                 let at = if *skip { self.skip_end(pos, ctx)? } else { pos };
-                if self.column(at) == ctx.column {
+                if self.column(at)? == ctx.column {
                     Interp::ok(pos, ctx)
                 } else {
                     self.record_expected(at, INDENTATION.to_owned());

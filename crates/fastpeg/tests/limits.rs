@@ -61,6 +61,41 @@ fn the_step_limit_stops_a_parse_also_inside_a_lookahead() {
 }
 
 #[test]
+fn scanning_text_counts_against_the_step_limit() {
+    let limits = Limits {
+        max_steps: 2_000_000,
+        ..Limits::default()
+    };
+    let compared = format!(
+        "{}-{}",
+        "a".repeat(1_000),
+        ("a".repeat(999) + "b").repeat(200)
+    );
+    let cases = [
+        // Every column check scans its line from the start.
+        ("start: S\nS: \"a\" (!%same \"a\")*\n", "a".repeat(20_000)),
+        // A reserved terminal looks up its match in every growing step.
+        (
+            "start: T | \"kw\"\n@reserved\nT: T \"x\" | \"x\"\n",
+            "x".repeat(5_000),
+        ),
+        // A %ref compares a long captured text at every position.
+        (
+            "start: %def(c, A) \"-\" (%ref(c) | \"a\" | \"b\")*\nA: \"a\"*\n",
+            compared,
+        ),
+    ];
+    for (text, input) in cases {
+        let grammar = Grammar::from_text(text).expect("the grammar reads");
+        let error = Reference::new(&grammar)
+            .expect("the grammar resolves")
+            .parse_with(&input, "start", limits)
+            .expect_err("too much scanning");
+        assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps), "{text}");
+    }
+}
+
+#[test]
 fn a_grammar_reports_at_most_a_hundred_errors() {
     let names: Vec<String> = (0..1_000).map(|i| format!("missing{i}")).collect();
     let errors = grammar_errors(&format!("start: {}\n", names.join(" ")));
