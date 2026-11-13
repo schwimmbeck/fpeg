@@ -1,6 +1,6 @@
 # fastpeg
 
-A general-purpose PEG parsing library with a native engine and a Lark-style `Transformer`.
+A general-purpose PEG parsing library with a native engine and a `Transformer` that turns parse trees into your own objects.
 
 > fastpeg is at an early stage and cannot be used yet. This page describes what is being built.
 
@@ -47,7 +47,7 @@ print(Calculate().transform(grammar.parse("1 + 2 * 3")))  # 7.0
 
 - **Parsing Expression Grammars**: ordered choice, lookahead and one parse tree for every input, never an ambiguity to resolve.
 - **Grammars at runtime**: a grammar is a string or a file. Loading one takes milliseconds.
-- **A familiar notation**: close to Lark's, with named fields, operator precedence, grammar modules and indentation-sensitive syntax built in.
+- **A familiar notation**: rules written much like EBNF, with named fields, operator precedence, grammar modules and indentation-sensitive syntax built in.
 - **A native core**: the grammar is compiled to bytecode for a parsing machine. The tree stays in native memory until you ask for a part of it.
 - **Transformers and visitors** in Python, called once per node after the parse.
 - **Errors that help**: what was expected and where, custom messages in the grammar, and a tree even for broken input.

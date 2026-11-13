@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT
 
-"""A PEG parsing library with a native engine and a Lark-style Transformer.
+"""A PEG parsing library with a native engine and a Transformer for parse trees.
 
 The package holds no parser yet.
 """

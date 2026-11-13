@@ -7,7 +7,7 @@ build-backend = "maturin"
 
 [project]
 name = "fastpeg"
-description = "A PEG parsing library with a native engine and a Lark-style Transformer"
+description = "A PEG parsing library with a native engine and a Transformer for parse trees"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

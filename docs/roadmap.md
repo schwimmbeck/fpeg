@@ -46,7 +46,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 ## M7 Modules
 
 - `%import` and `%extends`, with the bundled grammars as a base for your own.
-- A large grammar extension as acceptance test, and a converter for Lark grammars.
+- A large grammar extension as acceptance test, and a converter for grammars written for other parsing tools.
 
 ## M8 Errors, complete
 
