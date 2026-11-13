@@ -6,7 +6,7 @@
 use fpeg::builder::{GrammarBuilder, any, choice, def, empty, field, lit, many, on, r, r_args};
 use fpeg::{
     Class, ClassItem, DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH,
-    ParseErrorKind, Parser, Reference,
+    Memo, Options, ParseErrorKind, Parser, Reference,
 };
 
 /// A stack too small for printing that recursed once per level of a deep tree.
@@ -318,6 +318,33 @@ fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
             "{errors:?}"
         );
     }
+}
+
+#[test]
+fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
+    // Every rule matches the one before it twice, at one position, since nothing is consumed.
+    // The second match is the remembered first, so each level takes a few steps and doubles
+    // the tree.
+    let doubling = |levels: usize| {
+        let mut text = format!("start: x{levels}\nx0: ()\n");
+        for level in 1..=levels {
+            text += &format!("x{level}: x{} x{}\n", level - 1, level - 1);
+        }
+        let grammar = Grammar::from_text(&text).expect("the grammar reads");
+        Parser::with_options(&grammar, &Options { memo: Memo::All }).expect("it compiles")
+    };
+    let tree = doubling(10).parse("", "start").expect("the input parses");
+    assert_eq!(tree.len(), 1 << 11);
+    // Twenty levels are two million nodes, from a parse of a few hundred steps. Few enough to
+    // build, should the limit ever fail to stop it.
+    let limits = Limits {
+        max_steps: 100_000,
+        ..Limits::default()
+    };
+    let error = doubling(20)
+        .parse_with("", "start", limits)
+        .expect_err("a larger tree than the steps allow");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
 }
 
 #[test]

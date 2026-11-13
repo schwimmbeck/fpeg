@@ -122,7 +122,10 @@ impl Parser {
         let farthest = machine.farthest();
         let position = farthest.unwrap_or(0) as usize;
         match outcome {
-            Ok(()) => Ok(machine.tree()),
+            Ok(()) => machine.tree().map_err(|limit| ParseError {
+                position,
+                kind: ParseErrorKind::Limit(limit),
+            }),
             Err(Stop::NoMatch) => {
                 let expected = match farthest {
                     Some(at) => {

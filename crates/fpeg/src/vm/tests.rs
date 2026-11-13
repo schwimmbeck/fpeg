@@ -57,7 +57,7 @@ fn a_failed_alternative_gives_back_the_nodes_it_made() {
     let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
     let mut machine = Machine::new(&parser.program, &input, Limits::default(), None);
     assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
-    let tree = machine.tree();
+    let tree = machine.tree().expect("the tree fits");
     // Keeping them would hold the nodes of every one of the 2^12 failed attempts.
     assert!(
         machine.arena_len() <= tree.len(),

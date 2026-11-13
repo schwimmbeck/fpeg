@@ -185,6 +185,8 @@ pub(crate) struct Machine<'p, 'i> {
     /// The length of the arena at the newest remembered match that holds a node. The nodes
     /// below it stay, since remembered items point at them.
     protected: u32,
+    /// Whether a remembered match was given again, so that two parents may hold one node.
+    shared: bool,
     token: Option<OpenToken>,
     flags: u64,
     /// Failures are recorded only while this is 0: outside lookahead and the skip routine.
@@ -220,6 +222,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             memo: HashMap::new(),
             memo_items: Vec::new(),
             protected: 0,
+            shared: false,
             token: None,
             flags: 0,
             quiet: 0,
@@ -445,6 +448,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         Some(Stored::Match { end, first, count }) => {
                             // Giving a result again is work of its length.
                             self.steps += u64::from(count);
+                            self.shared = true;
                             let range = first as usize..(first + count) as usize;
                             let items = self.memo_items.get(range).unwrap_or_default();
                             self.items.extend_from_slice(items);
@@ -841,8 +845,35 @@ impl<'p, 'i> Machine<'p, 'i> {
         Ok(())
     }
 
-    /// Lay out the items of a successful parse as the top level of a tree, in postorder.
-    pub fn tree(&self) -> Tree {
+    /// How many entries the tree of the parse has. A remembered match can be given to several
+    /// parents, and the tree repeats such a node under each, so the tree can be far larger than
+    /// the arena. Children lie before their parents in the arena, so one pass sizes every node.
+    fn tree_entries(&self) -> u64 {
+        let mut sizes: Vec<u64> = Vec::with_capacity(self.nodes.len());
+        let size = |sizes: &[u64], item: &Item| match item.flags & TOKEN {
+            0 => sizes.get(item.value as usize).copied().unwrap_or(0),
+            _ => 1,
+        };
+        for node in &self.nodes {
+            let children = (node.first as usize..(node.first + node.count) as usize)
+                .filter_map(|index| self.children.get(index));
+            let entries = children.fold(1u64, |sum, child| sum.saturating_add(size(&sizes, child)));
+            sizes.push(entries);
+        }
+        let roots = self.items.iter();
+        roots.fold(0, |sum, item| sum.saturating_add(size(&sizes, item)))
+    }
+
+    /// Lay out the items of a successful parse as the top level of a tree, in postorder. Each
+    /// entry counts as a step, so a tree that repeats shared nodes beyond the steps the parse
+    /// has left is refused before any of it is built.
+    pub fn tree(&self) -> Result<Tree, Limit> {
+        if self.shared {
+            let left = self.limits.max_steps.saturating_sub(self.steps);
+            if self.tree_entries() > left.min(u64::from(u32::MAX)) {
+                return Err(Limit::Steps);
+            }
+        }
         let mut tree = Tree::empty(Arc::clone(&self.program.names));
         // The nodes being laid out, with the index of the next child of each and the length of
         // the tree when it started. An explicit stack, since trees can be as deep as long.
@@ -874,6 +905,6 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
             }
         }
-        tree
+        Ok(tree)
     }
 }
