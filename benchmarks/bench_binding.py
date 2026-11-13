@@ -8,9 +8,9 @@ concerns. A tree of the first records of the JSON file, parsed once, is transfor
 method, which is the scan alone, and with a trivial method on every node, taking its children
 as a list or as arguments, then with members by field. A trivial method on every token taking
 the token, against one taking nothing, gives what making a token costs. Both return `Discard`,
-so that no node changes. A parse with a walk over all its views, against the parse alone, gives
-what views cost. Beside them: many small CSV parses one call each against `csv.reader`. Run
-through ``run.py``, or directly with pyperf options.
+which removes every token and so rebuilds every node, alike in both. A parse with a walk over all
+its views, against the parse alone, gives what views cost. Beside them: many small CSV parses one
+call each against `csv.reader`. Run through ``run.py``, or directly with pyperf options.
 """
 
 import csv
