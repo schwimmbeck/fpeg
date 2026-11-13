@@ -135,7 +135,9 @@ class Transformer:
             call: Callable[[], Any] = (
                 (lambda: method()) if mode == NOTHING else (lambda: method(token))
             )
-            return _results(_noted(call, f"in {cls.__qualname__}.{name}, for the token {name}"))
+            where = f"in {cls.__qualname__}.{name}, for the token {name}"
+            # A method that yields runs while its values are taken.
+            return _noted(lambda: _results(call()), where)
         built = _noted(lambda: _fpeg.token_value(token), f"in the builder of {name}, for a token")
         if built is not _NO_VALUE:
             return _results(built)
@@ -176,7 +178,7 @@ class Transformer:
             args = _arguments(mode, children, tree)
             kwargs = _extras(extras, tree, children)
             where = f"in {cls.__qualname__}.{name}, for the tree {name}"
-            return _results(_noted(lambda: method(*args, **kwargs), where))
+            return _noted(lambda: _results(method(*args, **kwargs)), where)
         if _overrides(cls, "__default__"):
             return _results(self.__default__(name, children, tree.meta))
         if len(children) == len(tree.children) and all(

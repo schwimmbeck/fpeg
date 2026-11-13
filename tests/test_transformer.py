@@ -289,6 +289,29 @@ def test_an_error_in_a_method_keeps_its_type_and_gets_a_note_with_the_place() ->
     ]
 
 
+def test_an_error_while_a_method_yields_gets_its_note_too() -> None:
+    class Late(fpeg.Transformer):
+        def group(self, *items: Any) -> Iterator[Any]:
+            yield from items
+            raise ValueError("late")
+
+    class LateToken(fpeg.Transformer):
+        def NUMBER(self, token: fpeg.Token) -> Iterator[Any]:
+            yield int(token)
+            raise ValueError("late")
+
+    tree = parse("f([a, b])")
+    copy = pickle.loads(pickle.dumps(tree))
+    for transformer, item, where in [
+        (Late(), tree, "Late.group, for the node group at line 1, column 3"),
+        (Late(), copy, "Late.group, for the tree group"),
+        (LateToken(), parse("f(1)"), "LateToken.NUMBER, for the token NUMBER"),
+    ]:
+        with pytest.raises(ValueError, match="late") as raised:
+            transformer.transform(item)
+        assert where in raised.value.__notes__[-1]
+
+
 def test_strict_transformers_name_only_rules_and_terminals() -> None:
     class Typo(fpeg.Transformer, strict=True):
         def calls(self, children: list[Any]) -> None: ...

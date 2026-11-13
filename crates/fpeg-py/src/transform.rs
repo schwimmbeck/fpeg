@@ -358,23 +358,27 @@ impl<'py, 'p> Scan<'py, 'p> {
                 Mode::Nothing => vectorcall(&method, &[], &[]),
                 _ => vectorcall(&method, &[self.make_token(node)?.unbind()], &[]),
             };
-            let result =
-                result.map_err(|e| self.noted(e, &handler.name.bind(self.py).to_string(), node))?;
-            return self.push(index, node.field(), result);
+            let name = handler.name.bind(self.py).to_string();
+            let result = result.map_err(|e| self.noted(e, &name, node))?;
+            // A method that yields runs while its values are taken.
+            return (self.push(index, node.field(), result))
+                .map_err(|e| self.noted(e, &name, node));
         }
         let parsed = self.parsed;
         if let Some(builder) = parsed.grammar.builders.get(kind).and_then(Option::as_ref) {
             let (start, end) = node.span();
             let result = builders::token_value(self.py, builder, parsed.text(start, end))
                 .map_err(|e| self.noted_builder(e, builder.name(), node))?;
-            return self.push(index, node.field(), result);
+            return (self.push(index, node.field(), result))
+                .map_err(|e| self.noted_builder(e, builder.name(), node));
         }
         if self.plan.default_token {
             let token = self.make_token(node)?;
             let result = (self.transformer)
                 .call_method1(intern!(self.py, "__default_token__"), (token,))
                 .map_err(|e| self.noted(e, "__default_token__", node))?;
-            return self.push(index, node.field(), result);
+            return (self.push(index, node.field(), result))
+                .map_err(|e| self.noted(e, "__default_token__", node));
         }
         self.stack.push(Value {
             entry: index as u32,
@@ -412,7 +416,12 @@ impl<'py, 'p> Scan<'py, 'p> {
         let result = self.value(node, kind, handler, builder, &children);
         children.clear();
         self.children = children;
-        self.push(index, node.field(), result?)
+        // A method or builder that yields runs while its values are taken.
+        (self.push(index, node.field(), result?)).map_err(|e| match (handler, builder) {
+            (Some(handler), _) => self.noted(e, &handler.name.bind(self.py).to_string(), node),
+            (None, Some(builder)) => self.noted_builder(e, builder.name(), node),
+            (None, None) => self.noted(e, "__default__", node),
+        })
     }
 
     /// Take the values from `base` on off the stack as objects with their fields, into the space
