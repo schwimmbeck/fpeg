@@ -151,6 +151,16 @@ start: "a" |
 error[E101]: expected "!", "%def", "%error"
 at 12..12
 
+=== a separator must follow ** and ++, and two stars apart repeat twice
+start: "a"**
+--- grammar
+error[E101]: expected a separator after ** or ++
+
+=== two stars apart are a repetition of a repetition
+start: "a"* *
+--- "aa"
+(start ~"a" ~"a")
+
 === imports are not supported yet
 %import common (WS)
 start: "a"

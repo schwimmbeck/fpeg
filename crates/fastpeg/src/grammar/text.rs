@@ -30,6 +30,8 @@ impl Grammar {
                     DiagnosticCode::Syntax,
                     format!("expected {}", expected.join(", ")),
                 ),
+                // The grammar of grammars labels what must follow, such as a separator.
+                ParseErrorKind::Label(what) => (DiagnosticCode::Syntax, format!("expected {what}")),
                 ParseErrorKind::Limit(Limit::Depth) => (
                     DiagnosticCode::TooDeep,
                     "the grammar text nests too deeply to read".to_owned(),

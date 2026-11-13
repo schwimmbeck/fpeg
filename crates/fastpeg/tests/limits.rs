@@ -5,7 +5,8 @@
 
 use fastpeg::builder::{GrammarBuilder, def, empty, field, lit, on, r, r_args};
 use fastpeg::{
-    Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH, ParseErrorKind, Reference,
+    DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH, ParseErrorKind,
+    Reference,
 };
 
 /// A stack too small for printing that recursed once per level of a deep tree.
@@ -94,6 +95,15 @@ fn scanning_text_counts_against_the_step_limit() {
             .expect_err("too much scanning");
         assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps), "{text}");
     }
+}
+
+#[test]
+fn grammar_text_with_failing_separators_reads_in_linear_time() {
+    // A separator after ** is required, so one that fails is an error at once, instead of a
+    // second reading of the same text at every level of nesting.
+    let text = format!("start: {}", "a**(".repeat(40));
+    let errors = Grammar::from_text(&text).expect_err("the text does not read");
+    assert_eq!(errors[0].code, DiagnosticCode::Syntax, "{errors:?}");
 }
 
 #[test]

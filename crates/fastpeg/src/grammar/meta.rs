@@ -163,7 +163,10 @@ pub(crate) fn grammar() -> Grammar {
         "separated",
         seq([
             field("op", choice([lit("**"), lit("++")])),
-            field("separator", r("primary")),
+            label_message(
+                field("separator", r("primary")),
+                "a separator after ** or ++",
+            ),
         ]),
     );
     g.rule("optional", lit("?"));

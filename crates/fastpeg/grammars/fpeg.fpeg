@@ -32,7 +32,7 @@ lookahead: op=("&" | "!") expr=prefix
 field: name=NAME "=" !">" expr=suffix
 suffix: base=primary ops=suffix_op*
 ?suffix_op: separated | optional | many | some | bounds
-separated: op=("**" | "++") separator=primary
+separated: op=("**" | "++") separator=primary ^ "a separator after ** or ++"
 optional: "?"
 many: "*"
 some: "+"

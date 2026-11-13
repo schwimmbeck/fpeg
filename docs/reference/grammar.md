@@ -141,6 +141,7 @@ From loosest to tightest:
 
 - Repetition is greedy and never gives back what it matched.
 - In `e ** s` and `e ++ s` the separator `s` is a primary, so a compound separator needs parentheses. A trailing separator is not matched.
+- `**` and `++` must be followed by their separator. A repetition of a repetition is written `(e*)*` or `e* *`.
 - `()` matches the empty string.
 - Expressions nest at most 100 levels deep, counting every operator and group. A deeper grammar is an error. So are more than 1000 instances of templates, and instances that expand into more than 100,000 expressions together, counting a copy of an argument for every use of its parameter.
 - `~` is a cut: once the sequence it stands in has passed it, a failure later in that sequence makes the innermost choice or repetition fail at once, without trying its remaining alternatives.
@@ -340,7 +341,7 @@ lookahead: op=("&" | "!") expr=prefix
 field: name=NAME "=" !">" expr=suffix
 suffix: base=primary ops=suffix_op*
 ?suffix_op: separated | optional | many | some | bounds
-separated: op=("**" | "++") separator=primary
+separated: op=("**" | "++") separator=primary ^ "a separator after ** or ++"
 optional: "?"
 many: "*"
 some: "+"
