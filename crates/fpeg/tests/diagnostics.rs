@@ -13,7 +13,7 @@
 
 use std::path::Path;
 
-use fpeg::{DiagnosticCode, Grammar, GrammarError, LineIndex, Parser};
+use fpeg::{Diagnostic, DiagnosticCode, Grammar, LineIndex, Parser};
 
 /// A fenced block of a page: its info string, its body, and the lines it spans.
 struct Block {
@@ -51,14 +51,14 @@ fn blocks(text: &str) -> Vec<Block> {
 }
 
 /// The problems of a grammar as `fpeg check` prints them for a file `grammar.fpeg`.
-fn problems(text: &str) -> Vec<GrammarError> {
+fn problems(text: &str) -> Vec<Diagnostic> {
     match Grammar::from_text(text) {
         Err(errors) => errors,
         Ok(grammar) => Parser::new(&grammar).err().unwrap_or_default(),
     }
 }
 
-fn rendered(text: &str, errors: &[GrammarError]) -> String {
+fn rendered(text: &str, errors: &[Diagnostic]) -> String {
     let lines = LineIndex::new(text);
     let mut out = String::new();
     for error in errors {

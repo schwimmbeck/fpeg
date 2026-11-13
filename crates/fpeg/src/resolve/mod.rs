@@ -7,11 +7,11 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-use crate::diag::DiagnosticCode;
+use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::print::{builder_text, expr_text};
 use crate::grammar::{
     Alternative, BUILT_IN_BUILDERS, BuilderValue, ClassItem, ErrorLabel, Expr, ExprKind, Grammar,
-    GrammarError, Level, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
+    Level, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
 use crate::items::TooLarge;
@@ -139,12 +139,12 @@ struct Resolver<'g> {
     builder_checks: Vec<BuilderCheck>,
     /// Expressions in the arguments and bodies of the template instances made so far.
     instance_expressions: usize,
-    errors: Vec<GrammarError>,
+    errors: Vec<Diagnostic>,
 }
 
 /// Resolve a grammar into the core language, or report the problems found, the first hundred at
 /// most.
-pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError>> {
+pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>> {
     let mut r = Resolver {
         grammar,
         by_name: HashMap::new(),
@@ -472,7 +472,7 @@ impl<'g> Resolver<'g> {
     fn error(&mut self, code: DiagnosticCode, message: String, span: Span) {
         // Each instance of a template reports the errors of its body again. The cap keeps the
         // check for those repeats cheap.
-        let error = GrammarError {
+        let error = Diagnostic {
             code,
             message,
             span,

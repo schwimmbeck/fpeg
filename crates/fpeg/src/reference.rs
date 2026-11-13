@@ -18,7 +18,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use crate::grammar::{Grammar, GrammarError};
+use crate::diag::Diagnostic;
+use crate::grammar::Grammar;
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
 use crate::parse::{END_OF_INPUT, Limit, Limits, ParseError, ParseErrorKind};
@@ -182,7 +183,7 @@ impl Reference {
     pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 
     /// Resolve a grammar, or report the problems in it, the first hundred at most.
-    pub fn new(grammar: &Grammar) -> Result<Reference, Vec<GrammarError>> {
+    pub fn new(grammar: &Grammar) -> Result<Reference, Vec<Diagnostic>> {
         crate::resolve::resolve(grammar).map(|grammar| Reference { grammar })
     }
 

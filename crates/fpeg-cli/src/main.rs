@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fpeg::{Grammar, GrammarError, LineIndex, NodeRef, ParseError, ParseErrorKind, Parser, Tree};
+use fpeg::{Diagnostic, Grammar, LineIndex, NodeRef, ParseError, ParseErrorKind, Parser, Tree};
 
 mod profile;
 
@@ -110,7 +110,7 @@ fn read(path: &Path) -> Result<String, Failure> {
 }
 
 /// Print the problems of a grammar, each with its place in the grammar text.
-fn report(path: &Path, text: &str, errors: &[GrammarError]) {
+fn report(path: &Path, text: &str, errors: &[Diagnostic]) {
     let lines = LineIndex::new(text);
     for error in errors {
         let (line, column) = lines.line_column(text, error.span.start as usize);

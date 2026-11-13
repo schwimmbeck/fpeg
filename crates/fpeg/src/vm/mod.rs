@@ -17,7 +17,8 @@ mod tests;
 
 use std::fmt;
 
-use crate::grammar::{Grammar, GrammarError};
+use crate::diag::Diagnostic;
+use crate::grammar::Grammar;
 use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
 use crate::tree::{Kind, Names, Tree};
 use machine::{Machine, Stop};
@@ -79,17 +80,17 @@ impl Parser {
     /// Compile a grammar, or report the problems in it, the first hundred at most. Columns
     /// and captures are reported as problems until the milestone of the roadmap brings them
     /// to the machine.
-    pub fn new(grammar: &Grammar) -> Result<Parser, Vec<GrammarError>> {
+    pub fn new(grammar: &Grammar) -> Result<Parser, Vec<Diagnostic>> {
         Parser::with_options(grammar, &Options::default())
     }
 
     /// Compile a grammar as [`Parser::new`] does, with parts of the engine turned off or on.
-    pub fn with_options(grammar: &Grammar, options: &Options) -> Result<Parser, Vec<GrammarError>> {
+    pub fn with_options(grammar: &Grammar, options: &Options) -> Result<Parser, Vec<Diagnostic>> {
         let resolved = crate::resolve::resolve(grammar)?;
         let program = compile::compile(&resolved, options)?;
         #[cfg(feature = "reference")]
         if let Err(problem) = verify::verify(&program) {
-            return Err(vec![GrammarError {
+            return Err(vec![Diagnostic {
                 code: crate::diag::DiagnosticCode::Internal,
                 message: format!("the compiler made a program that fails verification: {problem}"),
                 span: crate::grammar::Span::default(),

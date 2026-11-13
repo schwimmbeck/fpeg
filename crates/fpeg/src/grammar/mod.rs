@@ -6,10 +6,6 @@
 //! The text front end and the programmatic [`builder`] both produce this model. Resolving it
 //! checks the names and translates it into the core language that engines run.
 
-use std::fmt;
-
-use crate::diag::DiagnosticCode;
-
 pub mod builder;
 mod meta;
 pub(crate) mod print;
@@ -23,29 +19,6 @@ pub const BUILT_IN_BUILDERS: [&str; 7] =
 /// How deeply the expressions of a grammar may nest. Passes over an expression recurse, so a
 /// deeper grammar is rejected before they run.
 pub const MAX_EXPRESSION_DEPTH: usize = 100;
-
-/// A problem that makes a grammar unusable.
-#[derive(Clone, Debug, PartialEq)]
-pub struct GrammarError {
-    /// The kind of problem, whose page in the documentation explains it.
-    pub code: DiagnosticCode,
-    /// What exactly is wrong.
-    pub message: String,
-    /// Where in the grammar source. Empty for grammars built in code.
-    pub span: Span,
-}
-
-impl fmt::Display for GrammarError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "error[{}]: {} at {}..{}",
-            self.code, self.message, self.span.start, self.span.end
-        )
-    }
-}
-
-impl std::error::Error for GrammarError {}
 
 /// A byte range in the grammar's source text. Grammars built in code have empty spans.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

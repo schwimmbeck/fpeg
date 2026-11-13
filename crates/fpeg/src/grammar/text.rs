@@ -8,18 +8,18 @@ use std::sync::OnceLock;
 
 use super::{
     Alternative, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel, Expr,
-    ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property, Recover,
-    Rule, RuleBody, Span, Text, ValueBuilder, meta,
+    ExprKind, Grammar, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property, Recover, Rule,
+    RuleBody, Span, Text, ValueBuilder, meta,
 };
-use crate::diag::DiagnosticCode;
+use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::parse::{Limit, ParseErrorKind};
 use crate::tree::NodeRef;
 use crate::vm::Parser;
 
 impl Grammar {
     /// Read a grammar from its text.
-    pub fn from_text(text: &str) -> Result<Grammar, Vec<GrammarError>> {
-        static META: OnceLock<Result<Parser, Vec<GrammarError>>> = OnceLock::new();
+    pub fn from_text(text: &str) -> Result<Grammar, Vec<Diagnostic>> {
+        static META: OnceLock<Result<Parser, Vec<Diagnostic>>> = OnceLock::new();
         let meta = META
             .get_or_init(|| Parser::new(&meta::grammar()))
             .as_ref()
@@ -47,7 +47,7 @@ impl Grammar {
                 other => (DiagnosticCode::Internal, format!("{other:?}")),
             };
             let at = error.position as u32;
-            vec![GrammarError {
+            vec![Diagnostic {
                 code,
                 message,
                 span: Span { start: at, end: at },
@@ -113,12 +113,12 @@ struct Converter<'t> {
     text: &'t str,
     /// How many choices, lookaheads and suffixes enclose the node being converted.
     depth: usize,
-    errors: Vec<GrammarError>,
+    errors: Vec<Diagnostic>,
 }
 
 impl<'t> Converter<'t> {
     fn error(&mut self, code: DiagnosticCode, message: String, span: Span) {
-        self.errors.push(GrammarError {
+        self.errors.push(Diagnostic {
             code,
             message,
             span,

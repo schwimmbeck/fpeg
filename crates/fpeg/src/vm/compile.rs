@@ -13,8 +13,8 @@ use std::sync::Arc;
 use super::program::{Class, Inst, Program, RuleInfo};
 use super::{Memo, Options};
 use crate::analysis;
-use crate::diag::DiagnosticCode;
-use crate::grammar::{GrammarError, Span};
+use crate::diag::{Diagnostic, DiagnosticCode};
+use crate::grammar::Span;
 use crate::ir::{self, RuleId};
 use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
 
@@ -22,7 +22,7 @@ use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
 pub(crate) fn compile(
     grammar: &ir::Grammar,
     options: &Options,
-) -> Result<Program, Vec<GrammarError>> {
+) -> Result<Program, Vec<Diagnostic>> {
     let errors = unsupported(grammar);
     if !errors.is_empty() {
         return Err(errors);
@@ -113,7 +113,7 @@ pub(crate) fn compile(
     }
     if u32::try_from(c.code.len()).is_err() {
         let message = "the grammar is too large to compile".to_owned();
-        return Err(vec![GrammarError {
+        return Err(vec![Diagnostic {
             code: DiagnosticCode::TooLarge,
             message,
             span: Span::default(),
@@ -229,11 +229,11 @@ impl Uses {
 }
 
 /// Report what the machine does not run yet: columns and captures, the first hundred at most.
-fn unsupported(grammar: &ir::Grammar) -> Vec<GrammarError> {
-    let mut errors: Vec<GrammarError> = Vec::new();
+fn unsupported(grammar: &ir::Grammar) -> Vec<Diagnostic> {
+    let mut errors: Vec<Diagnostic> = Vec::new();
     let mut add = |message: String, span: Span| {
         // The instances of a template repeat the messages of their template.
-        let error = GrammarError {
+        let error = Diagnostic {
             code: DiagnosticCode::NotYet,
             message,
             span,

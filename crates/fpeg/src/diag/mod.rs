@@ -10,6 +10,31 @@
 
 use std::fmt;
 
+use crate::grammar::Span;
+
+/// A problem that makes a grammar unusable.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Diagnostic {
+    /// The kind of problem, whose page in the documentation explains it.
+    pub code: DiagnosticCode,
+    /// What exactly is wrong.
+    pub message: String,
+    /// Where in the grammar source. Empty for grammars built in code.
+    pub span: Span,
+}
+
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "error[{}]: {} at {}..{}",
+            self.code, self.message, self.span.start, self.span.end
+        )
+    }
+}
+
+impl std::error::Error for Diagnostic {}
+
 /// The kinds of problems a grammar can have. Each has a stable code, and its message says what
 /// exactly is wrong.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

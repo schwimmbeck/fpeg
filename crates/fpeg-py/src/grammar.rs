@@ -158,11 +158,11 @@ impl Grammar {
         let parser =
             Parser::new(&grammar).map_err(|errors| grammar_error(py, text, path, &errors))?;
         let functions = given_functions(functions)?;
-        let mut missing: Vec<fpeg::GrammarError> = Vec::new();
+        let mut missing: Vec<fpeg::Diagnostic> = Vec::new();
         for kind in parser.kinds() {
             let name = kind.builder.as_ref().and_then(builders::function_name);
             if let Some(name) = name.filter(|name| !functions.contains_key(&name.text)) {
-                let error = fpeg::GrammarError {
+                let error = fpeg::Diagnostic {
                     code: DiagnosticCode::BuilderFunction,
                     message: format!(
                         "the builder calls {}, which is not among the functions given",

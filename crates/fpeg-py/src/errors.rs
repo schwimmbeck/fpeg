@@ -111,7 +111,7 @@ pub fn grammar_error(
     py: Python<'_>,
     text: &str,
     path: Option<&str>,
-    errors: &[fpeg::GrammarError],
+    errors: &[fpeg::Diagnostic],
 ) -> PyErr {
     let lines = LineIndex::new(text);
     let mut diagnostics = Vec::new();

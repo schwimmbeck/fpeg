@@ -15,7 +15,7 @@ use std::path::Path;
 
 use common::cases::{Check, CheckKind, case_files, parse_cases};
 use common::check_printing;
-use fpeg::{Grammar, GrammarError, ParseErrorKind, Parser, Reference};
+use fpeg::{Diagnostic, Grammar, ParseErrorKind, Parser, Reference};
 
 /// What a check produces, as the lines the case file holds.
 fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> {
@@ -43,7 +43,7 @@ fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> 
 /// The grammar if it resolves, else the errors, and the grammar as read, if it reads, since a
 /// grammar that does not resolve must still print back.
 fn load(text: &str) -> (Result<Grammar, Vec<String>>, Option<Grammar>) {
-    let strings = |errors: Vec<GrammarError>| errors.iter().map(ToString::to_string).collect();
+    let strings = |errors: Vec<Diagnostic>| errors.iter().map(ToString::to_string).collect();
     match Grammar::from_text(text) {
         Err(errors) => (Err(strings(errors)), None),
         Ok(grammar) => match Reference::new(&grammar) {
