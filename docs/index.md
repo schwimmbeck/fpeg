@@ -21,6 +21,10 @@ import fpeg
 print(fpeg.__version__)
 ```
 
+## Tutorials
+
+- [Your first grammar](tutorial/first-grammar.md): JSON from nothing to Python objects.
+
 ## Reference
 
 - [Grammar language](reference/grammar.md): the syntax of grammars.
@@ -34,6 +38,7 @@ print(fpeg.__version__)
 :hidden:
 
 roadmap
+tutorial/first-grammar
 reference/grammar
 reference/semantics
 reference/tree
