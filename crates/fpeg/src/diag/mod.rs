@@ -61,7 +61,8 @@ pub enum DiagnosticCode {
     BuilderArguments,
     /// E401: an expression or a grammar text that nests too deeply.
     TooDeep,
-    /// E402: a grammar too large: too many template instances, expressions, names or flags.
+    /// E402: a grammar too large: too many template instances, expressions, names, flags or
+    /// fields passed on to one node.
     TooLarge,
     /// E501: a form that a later milestone of the roadmap brings.
     NotYet,

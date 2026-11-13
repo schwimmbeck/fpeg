@@ -179,6 +179,7 @@ binary: left=term op=("+" | "-") right=term
 - A field captures the token of a literal, class, property, `.`, `%ref` or hidden terminal when that token is the field's whole match, as `op` above shows: directly, or through choices, repetitions, `^`, `%on`, `%off`, `%indent` and `%def`. Tokens that stand in a sequence with others, a separator or a lookahead stay hidden, so `args=(expr ** ",")` holds the expressions and not the commas. Hidden tokens never carry a field, so the commas are not labelled `args` either.
 - The cardinality of a field is fixed by the grammar: one value for `x=e`, a value or none for `x=e?`, a list for `x=e*`, `x=e+`, `x=e{n,m}`, a separated repetition, or a label used more than once in the rule.
 - A field captures one item per match. A field whose expression may produce several visible items in one match, such as `x=(A B)`, is an error.
+- A rule without a node of its own passes its fields on to the node around it, together with those the rules it calls pass on. One rule may pass on at most 1000 fields ([E402](diagnostics/E402.md)).
 
 ### Spans
 

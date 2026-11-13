@@ -229,6 +229,20 @@ fn templates_that_expand_too_far_are_errors_before_they_take_the_memory() {
 }
 
 #[test]
+fn a_chain_of_rules_that_passes_on_too_many_fields_is_an_error() {
+    // Each rule without a node of its own passes its field and all below on to the one above.
+    let mut text = String::from("start: _r0\nA: \"a\"\n_r2000: A\n");
+    for i in 0..2_000 {
+        text.push_str(&format!("_r{i}: f{i}=A _r{} | A\n", i + 1));
+    }
+    let errors = grammar_errors(&text);
+    assert!(
+        errors.iter().any(|e| e.contains("more than 1000 fields")),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
     // Each activation nests almost as deeply as a rule body may, so matches nest much deeper
     // than rule activations do.

@@ -26,6 +26,11 @@ use crate::tree::{FieldCount, FieldId, KindId};
 /// The count that stands for several items.
 const SEVERAL: u8 = 2;
 
+/// The most fields that a rule without a node of its own may pass on to the node around it.
+/// A chain of such rules passes on the fields of all below, so counting them takes time and
+/// memory that grow with the square of the chain, and a grammar beyond this is refused.
+pub(crate) const MAX_NODE_FIELDS: usize = 1_000;
+
 /// What one match of an expression adds to the node it lies in, at most.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Items {
@@ -251,11 +256,12 @@ pub(crate) struct Counts {
 }
 
 impl Counts {
-    /// Count the rules, callees first.
-    pub fn new(rules: &[Option<ir::Rule>]) -> Counts {
-        Counts {
-            summaries: summarize(rules),
-        }
+    /// Count the rules, callees first, or give the first rule found to pass on more than
+    /// [`MAX_NODE_FIELDS`] fields.
+    pub fn new(rules: &[Option<ir::Rule>]) -> Result<Counts, usize> {
+        Ok(Counts {
+            summaries: summarize(rules)?,
+        })
     }
 
     /// The fields that one match of `expr` can give items to, in the node around it.
@@ -387,7 +393,7 @@ impl KindItems {
 
 /// What each rule adds where it is called, rules that call each other counted together until
 /// their counts stop growing. Counts only grow from `never`, so this ends.
-fn summarize(rules: &[Option<ir::Rule>]) -> Vec<Items> {
+fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, usize> {
     let calls: Vec<Vec<usize>> = rules
         .iter()
         .map(|rule| {
@@ -407,7 +413,7 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Vec<Items> {
             &mut summaries,
             recursive,
             Items::same_most,
-        );
+        )?;
         if recursive {
             // The fields every match fills, from all a match can fill down, while the most items
             // stay as they are and with them the alternatives that can match.
@@ -417,21 +423,21 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Vec<Items> {
                 summary.present = filled.map(|(&field, _)| field).collect();
                 summary.unfielded_present = summary.unfielded > 0;
             }
-            count_until_stable(&component, rules, &mut summaries, true, Items::eq);
+            count_until_stable(&component, rules, &mut summaries, true, Items::eq)?;
         }
     }
-    summaries
+    Ok(summaries)
 }
 
 /// Count the rules of a component again and again, while `same` finds a count changed, or once
-/// unless `repeat`.
+/// unless `repeat`. Stops at a rule that passes on more than [`MAX_NODE_FIELDS`] fields.
 fn count_until_stable(
     component: &[usize],
     rules: &[Option<ir::Rule>],
     summaries: &mut [Items],
     repeat: bool,
     same: fn(&Items, &Items) -> bool,
-) {
+) -> Result<(), usize> {
     loop {
         let mut changed = false;
         for &rule in component {
@@ -439,11 +445,14 @@ fn count_until_stable(
                 continue;
             };
             let items = Counter::new(summaries).of(body);
+            if items.fields.len() > MAX_NODE_FIELDS {
+                return Err(rule);
+            }
             changed |= !same(&items, &summaries[rule]);
             summaries[rule] = items;
         }
         if !changed || !repeat {
-            break;
+            return Ok(());
         }
     }
 }

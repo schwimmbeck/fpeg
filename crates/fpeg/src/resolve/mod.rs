@@ -272,7 +272,20 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         r.lower_rule(pending);
     }
     r.check_fields();
-    let counts = crate::items::Counts::new(&r.rules);
+    let counts = match crate::items::Counts::new(&r.rules) {
+        Ok(counts) => counts,
+        Err(rule) => {
+            let (name, span) = (r.rules[rule].as_ref()).map_or(("", Span::default()), |rule| {
+                (rule.name.as_str(), rule.span)
+            });
+            let message = format!(
+                "the rule {name} passes on more than {} fields to a node",
+                crate::items::MAX_NODE_FIELDS
+            );
+            r.error(DiagnosticCode::TooLarge, message, span);
+            return Err(r.errors);
+        }
+    };
     r.check_builders(&counts);
     if !r.errors.is_empty() {
         return Err(r.errors);
