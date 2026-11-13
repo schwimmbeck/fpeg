@@ -106,10 +106,10 @@ start: \p{XID_Start} [^a]
 
 === each property matches the code points that have it
 start: \p{Alphabetic} \p{White_Space} \p{Uppercase} \p{Lowercase} \P{Alphabetic}
---- "ä\tÄß1"
-(start ~"ä" ~"\t" ~"Ä" ~"ß" ~"1")
---- "ä\tßß1"
-error at 3: expected \p{Uppercase}
+--- "中\tÄß1"
+(start ~"中" ~"\t" ~"Ä" ~"ß" ~"1")
+--- "中\tßß1"
+error at 4: expected \p{Uppercase}
 
 === a literal takes every escape of the table
 start: "\\" "\"" '\'' "\n" "\r" "\t" "\0" "\x41" "\u{e9}"
