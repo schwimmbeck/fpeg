@@ -274,7 +274,8 @@ fn unfielded_items(expr: &ir::Expr, rules: &[u8]) -> u8 {
         | E::FlagOn { expr, .. }
         | E::FlagOff { expr, .. }
         | E::Indent { expr, .. }
-        | E::Def { expr, .. } => unfielded_items(expr, rules),
+        | E::Def { expr, .. }
+        | E::Label { expr, .. } => unfielded_items(expr, rules),
         // An inner field keeps its items, and lookahead adds none.
         _ => 0,
     }
@@ -853,7 +854,11 @@ impl<'g> Resolver<'g> {
                     ErrorLabel::Named(name) => ir::Label::Named(name.text.clone()),
                 };
                 let label = self.label(label);
-                return E::Choice(vec![self.lower_parts(inner, scope, parts), E::Throw(label)]);
+                return E::Label {
+                    label,
+                    expr: Box::new(self.lower_parts(inner, scope, parts)),
+                    skip: scope.mode == Mode::Syntactic,
+                };
             }
             ExprKind::FlagOn { flag, expr: inner } => E::FlagOn {
                 flag: self.flag(flag),
@@ -877,6 +882,7 @@ impl<'g> Resolver<'g> {
             ExprKind::Def { name, expr: inner } => E::Def {
                 capture: self.capture(name),
                 expr: Box::new(self.lower(inner, scope)),
+                skip: scope.mode == Mode::Syntactic,
             },
             ExprKind::Ref { name } => {
                 // The text it matches is a token like a literal's, so the tree stays lossless.

@@ -34,8 +34,8 @@ The definition has two steps. First, every grammar is translated into a small co
 | `unreserved(e)` | match `e`, fail when its text is a reserved word |
 | `on(a, e)`, `off(a, e)`, `if(a)`, `if_not(a)` | flags |
 | `indent(e, s)`, `same(s)` | columns, `s` says whether to skip before the check |
-| `def(x, e)`, `ref(x)` | captures |
-| `throw(l)` | stop the parse with the labeled error `l` |
+| `def(x, e, s)`, `ref(x)` | captures |
+| `label(e, l, s)` | match `e`, and stop the parse with the labeled error `l` if it fails |
 | `error_alternative(m)` | fail. Reserved for explaining errors |
 
 ## Translation into the core
@@ -44,14 +44,14 @@ The translation runs in this order.
 
 1. **Parameters.** Every use `r<a1, ..., an>` of a rule with parameters becomes a call of a rule instance whose body is the template with each parameter replaced by its argument. Uses with structurally equal arguments share one instance. All instances carry the name of the template.
 2. **Precedence blocks.** A rule `r: %precedence { L1 ... Ln }` becomes one rule per level. The rule of level `Lk` is `choice(A1, ..., Aj, call(Lk+1))`, with the alternatives `A` of that level and the fall-through to the next level, which the last level does not have. A reference to a level name inside the block calls that level's rule. The rule `r` itself becomes `call(L1)`.
-3. **Sugar.** `e?` is `rep(e, 0, 1)`, `e*` is `rep(e, 0, ∞)`, `e+` is `rep(e, 1, ∞)`. `e ** s` is `rep(seq(e, rep(seq(s, e), 0, ∞)), 0, 1)` and `e ++ s` is `seq(e, rep(seq(s, e), 0, ∞))`. `e ^ l` is `choice(e, throw(l))`, where a message forms a label of its own. `()` is `ε`.
+3. **Sugar.** `e?` is `rep(e, 0, 1)`, `e*` is `rep(e, 0, ∞)`, `e+` is `rep(e, 1, ∞)`. `e ** s` is `rep(seq(e, rep(seq(s, e), 0, ∞)), 0, 1)` and `e ++ s` is `seq(e, rep(seq(s, e), 0, ∞))`. `e ^ l` is `label(e, l, s)`, where a message forms a label of its own. `()` is `ε`.
 4. **Modes.** Every expression is translated in the mode of the rule whose body it ends up in: *syntactic* for syntactic rules, *lexical* for lexical rules, *plain* for terminals and the skip expression.
    - In syntactic mode, a literal, class, property, `.` or `ref(x)` becomes `seq(skip, token(k, h, a))` with the atom `a`, a reference to a terminal `T` becomes `seq(skip, token(T, h, call(T)))`, and a reference to a lexical rule becomes `seq(skip, call(R))`.
    - In lexical mode the same holds without the `skip`.
    - In plain mode atoms stay atoms and a reference to a terminal is `call(T)`. References to syntactic or lexical rules are errors.
-   - The kind `k` of an anonymous token is the atom as written, normalized: `"+"`, `[0-9]`, `.`. A token is hidden (`h`) if it comes from an atom or a hidden terminal and is not captured by a field. A field captures the atoms and terminal references that are its whole match: reached from the field through choices, repetitions and the items of separated repetitions only, not through a sequence of several parts, a separator or a lookahead.
+   - The kind `k` of an anonymous token is the atom as written, normalized: `"+"`, `[0-9]`, `.`. A token is hidden (`h`) if it comes from an atom or a hidden terminal and is not captured by a field. A field captures the atoms and terminal references that are its whole match: reached from the field through choices, repetitions, the items of separated repetitions, labels, flags, `%indent` and `%def`, not through a sequence of several parts, a separator or a lookahead.
    - In a grammar with `%word`, a literal token whose last character is a word character becomes `token(k, h, seq(a, word_end))`.
-   - `%indent` and `%same` carry `s = true` in syntactic mode and `s = false` otherwise.
+   - `%indent`, `%same`, `%def` and `e ^ l` carry `s = true` in syntactic mode and `s = false` otherwise.
 5. **Rules.** The body of a terminal marked `@reserved` becomes `unreserved(body)`. In a syntactic or lexical rule `r`, each top-level alternative `A` becomes `node(alias, A)` when it has an alias, and otherwise `node(r, A)`, `transparent(r, A)` for a transparent rule, or `A` alone for an inlined rule or a precedence level.
 6. **Fields.** `label=e` becomes `field(f, e)`.
 
@@ -79,7 +79,7 @@ Unless a rule below says otherwise, an error result of a part is the error resul
 | `not(e)` | match `e` at `i`: success `(i, [], Γ, false)` if it fails or ends in an error, failure `(false)` if it succeeds |
 | `and(e)` | success `(i, [], Γ, false)` if `e` succeeds, failure `(false)` if it fails or ends in an error |
 | `cut` | success `(i, [], Γ, true)` |
-| `throw(l)` | error `(l, i)` |
+| `label(e, l, s)` | the result of `e` if it succeeds or ends in an error. If `e` fails, with `c` true or not, the error `(l, p)`, where `p` is where `skip` ends at `i` if `s`, otherwise `i`. A label is no choice point, so a cut that `e` passes reaches the enclosing one |
 | `error_alternative(m)` | failure `(false)` |
 
 The captures do not change inside a `not` or `and`: what `e` captures there is dropped.
@@ -113,7 +113,7 @@ A rule that is not left recursive gives the same result as matching its body onc
 | `if(a)`, `if_not(a)` | success `(i, [], Γ, false)` if flag `a` is on, or off, otherwise failure `(false)` |
 | `indent(e, s)` | let `p` be where `skip` ends at `i` if `s`, otherwise `i`. If the column of `p` is greater than the reference column, the result of `e` at `i` with the column of `p` as the reference column, otherwise failure `(false)` |
 | `same(s)` | with `p` as above: success `(i, [], Γ, false)` if the column of `p` equals the reference column, otherwise failure `(false)` |
-| `def(x, e)` | the result of `e`. On success, the captures it leaves map `x` to the text from `i` to the end of the match, in place of any text before |
+| `def(x, e, s)` | the result of `e`. On success, the captures it leaves map `x` to the text from `p` to the end of the match, in place of any text before, where `p` is where `skip` ends at `i` if `s`, otherwise `i`, and at most the end of the match |
 | `ref(x)` | success after the text `x` maps to if the input continues with it at `i`. Failure if it does not, or if `x` maps to nothing |
 
 Flags and the reference column hold for the extent of their expression, including the rules it calls. Captures hold until the rule activation that made them ends.
@@ -134,7 +134,7 @@ To parse an input with a start rule `S`, the expression for a reference to `S` i
 A parse that does not succeed fails at the *farthest failure position*, with an *expected set*:
 
 - A `token` expression that fails at position `p` records `p`, outside of `not`, `and` and the skip expression. Of all recorded positions the largest is the farthest failure position. The expected set holds the kinds of the tokens that failed there, by display name where the grammar gives one.
-- An `indent` or `same` that fails records the position it checked, expecting indentation.
+- An `indent` or `same` whose column check fails records the position it checked, expecting indentation.
 - If the input does not end where the parse ended, that position counts as a failure that expects the end of the input.
 - A parse that ends in an error fails with that error instead.
 

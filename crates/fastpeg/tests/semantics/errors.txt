@@ -15,6 +15,19 @@ start: "a" ("b" ^ "need b") | "a" "c"
 --- "ac"
 error at 1: need b
 
+=== a cut inside a labeled expression does not cancel the label
+start: ("if" ~ "(" "x" ")") ^ "bad if" | "if" "y"
+--- "if(z)"
+error at 0: bad if
+--- "ify"
+error at 0: bad if
+
+=== a labeled error points past ignored text
+start: "a" ("b" ^ "b is missing")
+%ignore " "+
+--- "a   c"
+error at 4: b is missing
+
 === a labeled error inside a lookahead is a failure of the lookahead
 start: !("a" ^ "never") "b"
 --- "b"

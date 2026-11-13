@@ -64,6 +64,13 @@ TEXT: [^<]*
 --- "b>x</c"
 error at 5: expected %ref(tag)
 
+=== a capture in a syntactic rule starts after ignored text
+start: "<" %def(tag, NAME) ">" "</" %ref(tag) ">"
+NAME: [a-z]+
+%ignore " "+
+--- "< b></ b>"
+(start ~"<" NAME"b" ~">" ~"</" ~"b" ~">")
+
 === a capture ends with the rule activation that made it
 start: open close
 open: %def(tag, NAME) ">"

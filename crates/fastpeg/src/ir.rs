@@ -160,10 +160,15 @@ pub(crate) enum Expr {
     Def {
         capture: CaptureId,
         expr: Box<Expr>,
+        skip: bool,
     },
     Ref {
         capture: CaptureId,
     },
-    Throw(LabelId),
+    Label {
+        label: LabelId,
+        expr: Box<Expr>,
+        skip: bool,
+    },
     ErrorAlternative,
 }

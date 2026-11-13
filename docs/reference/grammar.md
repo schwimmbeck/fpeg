@@ -175,7 +175,7 @@ call: func=NAME "(" args=(expr ** ",") ")"
 binary: left=term op=("+" | "-") right=term
 ```
 
-- A field captures the token of a literal, class, property, `.` or hidden terminal when that token is the field's whole match, as `op` above shows: directly, or through choices and repetitions. Tokens that stand in a sequence with others, a separator or a lookahead stay hidden, so `args=(expr ** ",")` holds the expressions and not the commas.
+- A field captures the token of a literal, class, property, `.` or hidden terminal when that token is the field's whole match, as `op` above shows: directly, or through choices, repetitions, `^`, `%on`, `%off`, `%indent` and `%def`. Tokens that stand in a sequence with others, a separator or a lookahead stay hidden, so `args=(expr ** ",")` holds the expressions and not the commas.
 - The cardinality of a field is fixed by the grammar: one value for `x=e`, a value or none for `x=e?`, a list for `x=e*`, `x=e+`, `x=e{n,m}`, a separated repetition, or a label used more than once in the rule.
 - A field captures one item per match. A field whose expression may produce several visible items in one match, such as `x=(A B)`, is an error.
 
@@ -267,7 +267,7 @@ RAW_STRING: "r" %def(hashes, "#"*) "\"" (!("\"" %ref(hashes)) .)* "\"" %ref(hash
 
 | Form | Meaning |
 |---|---|
-| `%def(name, e)` | match `e` and remember the matched text under the name |
+| `%def(name, e)` | match `e` and remember the matched text under the name. In a syntactic rule the text starts after ignored text |
 | `%ref(name)` | match exactly the text last remembered under the name |
 
 A capture lasts until the rule activation that made it returns, and rules called from there see it. `%ref` fails when nothing is remembered under the name.
@@ -281,6 +281,8 @@ A capture lasts until the rule activation that made it returns, and rules called
 | `%recover label: e` | when the named error occurs, `e` skips to a place where parsing resumes | M8 |
 | `%error("message")` at the end of an alternative | an error alternative, tried only when a failed parse is explained | M8 |
 | `@sync` | recovery may resume before this rule | M8 |
+
+A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text.
 
 ## Values
 

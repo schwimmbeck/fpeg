@@ -737,9 +737,15 @@ impl<'a> Interp<'a> {
                     Interp::fail()
                 }
             }
-            E::Def { capture, expr } => match self.eval(expr, pos, ctx)? {
+            E::Def {
+                capture,
+                expr,
+                skip,
+            } => match self.eval(expr, pos, ctx)? {
                 Outcome::Ok(mut success) => {
-                    let text = self.input.get(pos..success.end).unwrap_or_default();
+                    let start = if *skip { self.skip_end(pos, ctx)? } else { pos };
+                    let start = start.min(success.end);
+                    let text = self.input.get(start..success.end).unwrap_or_default();
                     success.captures.insert(*capture, text.to_owned());
                     Ok(Outcome::Ok(success))
                 }
@@ -756,10 +762,17 @@ impl<'a> Interp<'a> {
                 }
                 _ => Interp::fail(),
             },
-            E::Throw(label) => Err(Abort::Error {
-                label: *label,
-                position: pos,
-            }),
+            E::Label { label, expr, skip } => match self.eval(expr, pos, ctx)? {
+                // Any failure, also one after a cut, since a label is no choice point.
+                Outcome::Fail { .. } => {
+                    let position = if *skip { self.skip_end(pos, ctx)? } else { pos };
+                    Err(Abort::Error {
+                        label: *label,
+                        position,
+                    })
+                }
+                success => Ok(success),
+            },
             E::ErrorAlternative => Interp::fail(),
         }
     }
