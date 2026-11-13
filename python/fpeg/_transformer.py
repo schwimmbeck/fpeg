@@ -9,10 +9,11 @@ grammar into a plan, and the native scan of `fpeg._fpeg` follows the plan over t
 
 from __future__ import annotations
 
+import difflib
 import inspect
 import types
 from collections.abc import Callable, Iterable
-from typing import Any, TypeVar, cast
+from typing import Any, ClassVar, TypeVar, cast
 
 from fpeg import _fpeg
 from fpeg._fpeg import Discard, Token, Tree
@@ -81,7 +82,16 @@ class Transformer:
     parameter for the list of children, and keyword-only `meta`, `node` or `children` beside.
     `return fpeg.Discard` removes the node from its parent, and a method that yields puts each
     value into the parent in the node's place.
+
+    `class T(Transformer, strict=True)` makes every public method of `T` name a rule or terminal
+    of the grammar it meets.
     """
+
+    __fpeg_strict__: ClassVar[bool] = False
+
+    def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.__fpeg_strict__ = strict
 
     def __init__(self, visit_tokens: bool = True) -> None:
         """Make a transformer. Without `visit_tokens` the methods of terminals are not called."""
@@ -121,7 +131,7 @@ class Transformer:
             call: Callable[[], Any] = (
                 (lambda: method()) if mode == NOTHING else (lambda: method(token))
             )
-            return _results(call())
+            return _results(_noted(call, f"in {cls.__qualname__}.{name}, for the token {name}"))
         if _overrides(cls, "__default_token__"):
             return _results(self.__default_token__(token))
         return (token,)
@@ -138,6 +148,14 @@ def _results(result: Any) -> tuple[Any, ...]:
     if isinstance(result, types.GeneratorType):
         return tuple(cast(Iterable[Any], result))
     return (result,)
+
+
+def _noted(call: Callable[[], Any], where: str) -> Any:
+    try:
+        return call()
+    except BaseException as error:
+        error.add_note(f"fpeg: {where}")
+        raise
 
 
 def _is_handler(cls: type, name: str) -> bool:
@@ -260,6 +278,9 @@ def _make_plan(
     It says for each kind with a method how the method is called. The native scan asks for
     it once per class and grammar.
     """
+    names = {name for name, _, _ in kinds}
+    if getattr(cls, "__fpeg_strict__", False):
+        _check_strict(cls, names)
     entries: list[tuple[int, str, int, tuple[str, ...], int]] = []
     conventions: dict[tuple[str, bool], tuple[int, tuple[str, ...], int]] = {}
     for kind, (name, token, fields) in enumerate(kinds):
@@ -273,3 +294,23 @@ def _make_plan(
         mode, field_names, extras = conventions[(name, token)]
         entries.append((kind, name, mode, field_names, extras))
     return entries, _overrides(cls, "__default__"), _overrides(cls, "__default_token__")
+
+
+def _check_strict(cls: type, names: Iterable[str]) -> None:
+    known = set(names)
+    for name in sorted(_public_methods(cls)):
+        if name not in known:
+            close = difflib.get_close_matches(name, known, n=1)
+            hint = f", did you mean {close[0]}?" if close else ""
+            raise TypeError(
+                f"{cls.__qualname__}.{name} names no rule or terminal of the grammar{hint}"
+            )
+
+
+def _public_methods(cls: type) -> set[str]:
+    methods: set[str] = set()
+    for base in cls.__mro__:
+        if base is Transformer or base is object:
+            continue
+        methods.update(n for n, v in vars(base).items() if not n.startswith("_") and callable(v))
+    return methods

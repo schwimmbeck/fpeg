@@ -219,6 +219,38 @@ def test_terminal_methods_wait_without_visit_tokens() -> None:
     assert Upper().transform(tree).children[0].children == ["F"]
 
 
+def test_an_error_in_a_method_keeps_its_type_and_gets_a_note_with_the_place() -> None:
+    class Failing(fpeg.Transformer):
+        def call(self, name: Any) -> None:
+            raise ValueError(f"no function {name}")
+
+    with pytest.raises(ValueError, match="no function f") as raised:
+        Failing().transform(parse("   f()"))
+    assert raised.value.__notes__ == [
+        "fpeg: in test_an_error_in_a_method_keeps_its_type_and_gets_a_note_with_the_place."
+        "<locals>.Failing.call, for the node call at line 1, column 4"
+    ]
+
+
+def test_strict_transformers_name_only_rules_and_terminals() -> None:
+    class Typo(fpeg.Transformer, strict=True):
+        def calls(self, children: list[Any]) -> None: ...
+
+    with pytest.raises(
+        TypeError, match=r"Typo\.calls names no rule or terminal of the grammar, did you mean call"
+    ):
+        Typo().transform(parse("f()"))
+
+    class Helper(fpeg.Transformer, strict=True):
+        def call(self, name: Any) -> str:
+            return self._shout(name)
+
+        def _shout(self, text: str) -> str:
+            return text.upper()
+
+    assert Helper().transform(parse("f()")).children == ["F"]
+
+
 def test_a_lone_token_and_any_other_value_transform_too() -> None:
     class Tokens(fpeg.Transformer):
         NUMBER = int

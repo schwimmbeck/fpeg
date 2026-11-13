@@ -274,6 +274,22 @@ impl<'py, 'p> Scan<'py, 'p> {
         Ok(Py::new(self.py, Meta::of(self.parsed, start, end))?.into_any())
     }
 
+    /// The error of a call with a note saying which method and which item.
+    fn noted(&self, error: PyErr, method: &str, node: NodeRef<'_>) -> PyErr {
+        let position = self.parsed.position(node.span().0);
+        let class = (self.transformer.get_type().qualname())
+            .map_or_else(|_| "Transformer".to_owned(), |name| name.to_string());
+        let what = if node.is_token() { "token" } else { "node" };
+        let note = format!(
+            "fpeg: in {class}.{method}, for the {what} {} at line {}, column {}",
+            node.kind_name(),
+            position.line,
+            position.column
+        );
+        let _ = error.add_note(self.py, note);
+        error
+    }
+
     /// Push what a method returned: nothing for `Discard`, each value of a generator, or the
     /// value.
     fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
@@ -314,13 +330,15 @@ impl<'py, 'p> Scan<'py, 'p> {
                 Mode::Nothing => method.call0(),
                 _ => method.call1((token,)),
             };
-            let result = result?;
+            let result =
+                result.map_err(|e| self.noted(e, &name.bind(self.py).to_string(), node))?;
             return self.push(index, node.field(), result);
         }
         if self.plan.default_token {
             let token = self.make_token(node)?;
-            let result =
-                (self.transformer).call_method1(intern!(self.py, "__default_token__"), (token,))?;
+            let result = (self.transformer)
+                .call_method1(intern!(self.py, "__default_token__"), (token,))
+                .map_err(|e| self.noted(e, "__default_token__", node))?;
             return self.push(index, node.field(), result);
         }
         self.stack.push(Value {
@@ -349,7 +367,8 @@ impl<'py, 'p> Scan<'py, 'p> {
             let children = PyList::new(self.py, self.objects(children)?)?;
             let meta = self.meta(node)?;
             let result = (self.transformer)
-                .call_method1(intern!(self.py, "__default__"), (data, children, meta))?;
+                .call_method1(intern!(self.py, "__default__"), (data, children, meta))
+                .map_err(|e| self.noted(e, "__default__", node))?;
             return self.push(index, node.field(), result);
         }
         if children.iter().all(|child| child.object.is_none()) {
@@ -413,7 +432,7 @@ impl<'py, 'p> Scan<'py, 'p> {
                             items.len()
                         );
                         let error = PyTypeError::new_err(message);
-                        return Err(error);
+                        return Err(self.noted(error, &name.bind(py).to_string(), node));
                     }
                     FieldCount::One => items.into_iter().next().unwrap_or_else(|| py.None()),
                 });
@@ -461,6 +480,7 @@ impl<'py, 'p> Scan<'py, 'p> {
             keywords.push(("children", PyList::new(py, items)?.into_any().unbind()));
         }
         vectorcall(&method, &args, &keywords)
+            .map_err(|error| self.noted(error, &name.bind(py).to_string(), node))
     }
 }
 

@@ -141,7 +141,30 @@ class Flatten(fpeg.Transformer):
 assert Flatten().transform(lists.parse("a, (b, (c, d)), e")) == ["a", "b", "c", "d", "e"]
 ```
 
-A wrong signature fails at the first transform with the fields of the node.
+An exception in a method keeps its type and gets a note with the method and where its node stands, which the traceback shows. A wrong signature fails at the first transform with the fields of the node. `class T(fpeg.Transformer, strict=True)` also makes every public method of `T` name a rule or terminal, so a misspelled method fails instead of never being called.
+
+```python
+class Strict(fpeg.Transformer, strict=True):
+    def pairs(self, children):
+        return children
+
+
+try:
+    Strict().transform(grammar.parse("x = 1"))
+except TypeError as error:
+    assert "did you mean pair" in str(error)
+
+
+class Failing(fpeg.Transformer):
+    def pair(self, key, value):
+        raise ValueError(f"no {key}")
+
+
+try:
+    Failing().transform(grammar.parse("x = 1, y = 2"))
+except ValueError as error:
+    assert error.__notes__ == ["fpeg: in Failing.pair, for the node pair at line 1, column 1"]
+```
 
 `fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children.
 
