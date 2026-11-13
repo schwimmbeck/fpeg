@@ -21,7 +21,7 @@ mod _fpeg {
     #[pymodule_export]
     use crate::grammar::Grammar;
     #[pymodule_export]
-    use crate::transform::scan;
+    use crate::transform::{DiscardType, scan};
     #[pymodule_export]
     use crate::tree::{Meta, Tree, rebuild_tree};
 
@@ -33,6 +33,7 @@ mod _fpeg {
         module.add("ParseError", py.get_type::<crate::errors::ParseError>())?;
         module.add("LimitError", py.get_type::<crate::errors::LimitError>())?;
         module.add("GrammarError", py.get_type::<crate::errors::GrammarError>())?;
+        module.add("Discard", crate::transform::discard(py)?)?;
         Ok(())
     }
 }

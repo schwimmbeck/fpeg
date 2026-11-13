@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+from collections.abc import Iterator
 from typing import Any
 
 import fpeg
@@ -145,6 +146,43 @@ def test_a_signature_that_fits_no_rule_fails_at_the_first_transform_naming_the_f
 
     with pytest.raises(TypeError, match="takes only meta, node, children by keyword"):
         Keyword().transform(parse("f()"))
+
+
+def test_discard_removes_a_node_from_its_parent_and_from_its_field() -> None:
+    class Drop(fpeg.Transformer):
+        def kw(self) -> Any:
+            return fpeg.Discard
+
+        def call(self, name: Any, kw: Any) -> tuple[Any, Any]:
+            return (name, kw)
+
+    assert Drop().transform(parse("f() ! k")).children == [("f", None)]
+    assert Drop().transform(parse("f() ! k").children[0].field("kw")) == []
+
+
+def test_a_generator_puts_its_values_into_the_parent_in_the_node_s_place() -> None:
+    class Splice(fpeg.Transformer):
+        def group(self, *items: Any) -> Iterator[Any]:
+            yield from items
+
+        def call(self, name: Any, args: list[Any]) -> list[Any]:
+            return [name, *args]
+
+    assert Splice().transform(parse("f(a, [b, [c]], d)")).children == [["f", "a", "b", "c", "d"]]
+    assert Splice().transform(parse("f([a, b])").children[0].field("args")[0]) == ["a", "b"]
+
+
+def test_several_values_in_a_field_of_one_item_are_an_error() -> None:
+    class Twice(fpeg.Transformer):
+        def kw(self, children: list[Any]) -> Iterator[Any]:
+            yield "one"
+            yield "two"
+
+        def call(self, kw: Any) -> Any:
+            return kw
+
+    with pytest.raises(TypeError, match="the field kw holds one item, and its children gave 2"):
+        Twice().transform(parse("f() ! k"))
 
 
 def test_a_subtree_no_method_reaches_stays_a_view_and_a_changed_one_a_new_tree() -> None:

@@ -10,6 +10,7 @@ values with one method per rule or terminal.
 
 from fpeg._fpeg import (
     Diagnostic,
+    Discard,
     Grammar,
     GrammarError,
     LimitError,
@@ -23,6 +24,7 @@ from fpeg._transformer import Transformer, v_args
 
 __all__ = [
     "Diagnostic",
+    "Discard",
     "Grammar",
     "GrammarError",
     "LimitError",

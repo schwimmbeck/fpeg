@@ -152,6 +152,12 @@ class Token(str):
     @classmethod
     def new_borrow_pos(cls, type: str, value: object, borrow_t: Token) -> Token: ...
 
+@final
+class DiscardType:
+    """The type of `Discard`."""
+
+Discard: DiscardType
+
 def rebuild_tree(shape: list[int], values: list[Any]) -> Tree: ...
 def scan(
     transformer: object,

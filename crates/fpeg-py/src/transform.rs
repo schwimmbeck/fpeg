@@ -17,6 +17,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::intern;
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyList, PyString, PyTuple, PyType};
 
 use crate::grammar::GrammarCore;
@@ -168,6 +169,26 @@ fn plan_for(
     Ok(core.plans.insert(class, plan))
 }
 
+/// `Discard`: returned by a method, it removes the node or token from its parent.
+#[pyclass(frozen, module = "fpeg", name = "DiscardType")]
+pub struct DiscardType;
+
+#[pymethods]
+impl DiscardType {
+    fn __repr__(&self) -> &'static str {
+        "Discard"
+    }
+}
+
+/// The one `Discard`.
+static DISCARD: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
+
+pub fn discard(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
+    let discard =
+        DISCARD.get_or_try_init(py, || Ok::<_, PyErr>(Py::new(py, DiscardType)?.into_any()))?;
+    Ok(discard.bind(py))
+}
+
 /// A value on the stack: the entry it came from, the field that entry fills in its parent, and
 /// the object, or none for an entry that no method reached.
 struct Value {
@@ -187,6 +208,7 @@ struct Scan<'py, 'p> {
     stack: Vec<Value>,
     /// Positions of the tokens the scan makes, which come in input order.
     cursor: Option<LineCursor<'p>>,
+    discard: Bound<'py, PyAny>,
 }
 
 impl<'py, 'p> Scan<'py, 'p> {
@@ -252,13 +274,29 @@ impl<'py, 'p> Scan<'py, 'p> {
         Ok(Py::new(self.py, Meta::of(self.parsed, start, end))?.into_any())
     }
 
-    /// Push what a method returned.
+    /// Push what a method returned: nothing for `Discard`, each value of a generator, or the
+    /// value.
     fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
-        self.stack.push(Value {
-            entry: entry as u32,
-            field,
-            object: Some(result.unbind()),
-        });
+        if result.is(&self.discard) {
+            return Ok(());
+        }
+        // SAFETY: `result` is a live object.
+        let generator = unsafe { ffi::PyGen_CheckExact(result.as_ptr()) } != 0;
+        if generator {
+            for value in result.try_iter()? {
+                self.stack.push(Value {
+                    entry: entry as u32,
+                    field,
+                    object: Some(value?.unbind()),
+                });
+            }
+        } else {
+            self.stack.push(Value {
+                entry: entry as u32,
+                field,
+                object: Some(result.unbind()),
+            });
+        }
         Ok(())
     }
 
@@ -460,8 +498,8 @@ fn vectorcall<'py>(
     unsafe { Bound::from_owned_ptr_or_err(py, result) }
 }
 
-/// Transform a view with the plan of the transformer's class, and return the value its node
-/// gives its parent, in a tuple.
+/// Transform a view with the plan of the transformer's class, and return the values its node
+/// gives its parent: one, none for `Discard`, or several from a generator.
 #[pyfunction]
 pub fn scan<'py>(
     py: Python<'py>,
@@ -488,6 +526,7 @@ pub fn scan<'py>(
         methods: (0..parsed.grammar.kind_names.len()).map(|_| None).collect(),
         stack: Vec::new(),
         cursor: None,
+        discard: discard(py)?.clone(),
     };
     scan.run(index as usize)?;
     let values = std::mem::take(&mut scan.stack);

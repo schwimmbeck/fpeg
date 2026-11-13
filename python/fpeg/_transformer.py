@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import inspect
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, TypeVar, cast
 
 from fpeg import _fpeg
-from fpeg._fpeg import Token, Tree
+from fpeg._fpeg import Discard, Token, Tree
 
 # How a plan calls a method, as the native scan reads it.
 LIST = 1
@@ -79,6 +79,8 @@ class Transformer:
     it stays a tree. The signature of a method
     says what it gets: the fields of the node by name, `*children` for the children, one other
     parameter for the list of children, and keyword-only `meta`, `node` or `children` beside.
+    `return fpeg.Discard` removes the node from its parent, and a method that yields puts each
+    value into the parent in the node's place.
     """
 
     def __init__(self, visit_tokens: bool = True) -> None:
@@ -86,8 +88,13 @@ class Transformer:
         self.__visit_tokens__ = visit_tokens
 
     def transform(self, tree: Any) -> Any:
-        """Return the value of a tree or token, or anything else as it is."""
-        return self._values(tree)[0]
+        """Return the value of a tree or token, or anything else as it is.
+
+        At the top, where no parent takes them, the values of a method that yields come back as
+        a list, and `Discard` as an empty list.
+        """
+        values = self._values(tree)
+        return values[0] if len(values) == 1 else list(values)
 
     def __default__(self, data: Any, children: list[Any], meta: Any) -> Any:
         """Make the value of a node without a method, when a subclass overrides it."""
@@ -98,7 +105,7 @@ class Transformer:
         return token
 
     def _values(self, item: Any) -> tuple[Any, ...]:
-        """Return the value an item gives its parent, in a tuple."""
+        """Return the values an item gives its parent: one, none for `Discard`, or several."""
         if isinstance(item, Tree):
             return _fpeg.scan(self, item, _make_plan)
         if isinstance(item, Token):
@@ -114,14 +121,23 @@ class Transformer:
             call: Callable[[], Any] = (
                 (lambda: method()) if mode == NOTHING else (lambda: method(token))
             )
-            return (call(),)
+            return _results(call())
         if _overrides(cls, "__default_token__"):
-            return (self.__default_token__(token),)
+            return _results(self.__default_token__(token))
         return (token,)
 
 
 # The names a subclass cannot use as handlers, since the base class needs them.
 _BASE_NAMES = frozenset(vars(Transformer)) | frozenset(dir(object))
+
+
+def _results(result: Any) -> tuple[Any, ...]:
+    """Return the values a result gives the parent."""
+    if result is Discard:
+        return ()
+    if isinstance(result, types.GeneratorType):
+        return tuple(cast(Iterable[Any], result))
+    return (result,)
 
 
 def _is_handler(cls: type, name: str) -> bool:

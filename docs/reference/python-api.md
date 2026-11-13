@@ -119,7 +119,27 @@ class Pairs(fpeg.Transformer):
 assert Pairs().transform(grammar.parse("x = 1, y = 22")) == {"x": 1, "y": 22}
 ```
 
-A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles.
+A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles. `return fpeg.Discard` removes a node from its parent, and a method that yields puts each value into the parent in the node's place, so the parent's list stays flat:
+
+```python
+lists = fpeg.Grammar(r"""
+start: (item ** ",")
+?item: NAME | "(" (item ** ",") ")" -> group
+NAME: [a-z]+
+%ignore " "+
+""")
+
+
+class Flatten(fpeg.Transformer):
+    def group(self, *items):
+        yield from items
+
+    def start(self, *items):
+        return list(items)
+
+
+assert Flatten().transform(lists.parse("a, (b, (c, d)), e")) == ["a", "b", "c", "d", "e"]
+```
 
 A wrong signature fails at the first transform with the fields of the node.
 
