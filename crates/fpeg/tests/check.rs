@@ -223,3 +223,24 @@ fn a_repetition_of_what_can_match_nothing_ends_at_an_empty_step() {
         assert_eq!(codes(text), expected, "{text}");
     }
 }
+
+#[test]
+fn a_rule_that_calls_itself_at_both_ends_of_an_alternative_groups_to_the_right() {
+    for (text, expected) in [
+        ("start: e\ne: e \"-\" e | \"1\"\n", vec!["W202"]),
+        (
+            "start: e\ne: left=e \"-\" right=e -> minus | \"1\"\n",
+            vec!["W202"],
+        ),
+        (
+            "start: x\nx: %precedence {\n    sum: sum \"+\" sum -> add\n    atom: \"1\"\n}\n",
+            vec!["W202"],
+        ),
+        // At one end only.
+        ("start: e\ne: e \"-\" \"1\" | \"1\"\n", vec![]),
+        ("start: e\ne: \"1\" \"-\" e | \"1\"\n", vec![]),
+        ("start: e\ne: \"(\" e \")\" | e \"!\" | \"1\"\n", vec![]),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
+}

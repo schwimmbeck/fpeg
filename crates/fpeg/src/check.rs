@@ -51,6 +51,7 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
             checker.warn(DiagnosticCode::UnreachableAlternative, message, next.span);
         }
         for alternative in &body.alternatives {
+            checker.recursion(body.name, alternative);
             checker.repetitions(alternative);
         }
     }
@@ -466,6 +467,23 @@ impl Checker<'_> {
         }
         for child in expr.children() {
             self.repetitions(child);
+        }
+    }
+
+    /// Warn about an alternative of `name` that begins and ends with `name` itself.
+    fn recursion(&mut self, name: &str, alternative: &Expr) {
+        let calls = |part: &&Expr| {
+            matches!(&bare(part).kind, ExprKind::Reference { name: called, args }
+                if called.text == name && args.is_empty())
+        };
+        let parts = parts(alternative);
+        if parts.len() > 1 && parts.first().is_some_and(calls) && parts.last().is_some_and(calls) {
+            let message = format!(
+                "{name} calls itself at both ends of this alternative, which groups to the \
+                 right"
+            );
+            let code = DiagnosticCode::LeftAndRightRecursion;
+            self.warn(code, message, alternative.span);
         }
     }
 

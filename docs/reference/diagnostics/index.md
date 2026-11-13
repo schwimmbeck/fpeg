@@ -22,7 +22,7 @@ The hundreds of a code tell its area.
 | E501 | what a later milestone of the roadmap brings |
 | E901 | a bug of fpeg itself |
 | W101 to W103 | alternatives that a choice never reaches |
-| W201 | repetitions that do not do what they seem to |
+| W201, W202 | repetition and recursion that do not do what they seem to |
 
 ```{toctree}
 :glob:
