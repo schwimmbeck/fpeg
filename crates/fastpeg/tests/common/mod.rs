@@ -1,7 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Checks that several test files share.
+//! Helpers that several test files share.
+
+// Each test file is its own crate and uses a different part of these helpers.
+#![allow(
+    dead_code,
+    reason = "every test file uses only some of the shared helpers"
+)]
+
+pub mod cases;
+pub mod generator;
 
 use fastpeg::Grammar;
 
