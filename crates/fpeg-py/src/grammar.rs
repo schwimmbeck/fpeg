@@ -303,7 +303,7 @@ impl Grammar {
         let core = &self.core;
         let kinds = core.parser.kinds();
         let mut out = format!(
-            "from typing import Any\n\nimport fpeg\n\n\nclass {name}(fpeg.Transformer, strict=True):\n    \"\"\"Values for the nodes and tokens of the grammar.\"\"\"\n"
+            "from __future__ import annotations\n\nfrom typing import Any\n\nimport fpeg\n\n\nclass {name}(fpeg.Transformer, strict=True):\n    \"\"\"Values for the nodes and tokens of the grammar.\"\"\"\n"
         );
         let mut seen = std::collections::HashSet::new();
         for (id, kind) in kinds.iter().enumerate() {
@@ -338,9 +338,11 @@ impl Grammar {
                     (field_name, count)
                 })
                 .collect();
-            // A field named like a keyword or `self` cannot be a parameter.
-            let fields_fit =
-                (fields.iter()).all(|(field, _)| !keywords.contains(field) && field != "self");
+            // A field named like a keyword or `self` cannot be a parameter, and one named
+            // `__x` would be mangled in the class.
+            let fields_fit = (fields.iter()).all(|(field, _)| {
+                !keywords.contains(field) && field != "self" && !field.starts_with("__")
+            });
             let signature = if kind.token {
                 lines.push(format!("Return the value of a token {kind_name}."));
                 "self, token: fpeg.Token".to_owned()

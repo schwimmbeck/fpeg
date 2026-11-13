@@ -56,6 +56,8 @@ print(grammar.transformer_template("ToAst"))
 ```
 
 ```output
+from __future__ import annotations
+
 from typing import Any
 
 import fpeg

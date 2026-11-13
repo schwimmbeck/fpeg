@@ -574,6 +574,14 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     start = namespace["Transformer"].start
     assert '=> "q\\"q\\u{7}\\n" applies.' in start.__doc__
     assert "def start(self, *children: Any)" in odd
+    # A field __x would be mangled in the class, and a method fpeg hides the module from the
+    # annotations after it, which Python evaluates at once before 3.14.
+    hidden = fpeg.Grammar('start: fpeg other\nfpeg: __x=A\nother: B\nA: "a"\nB: "b"')
+    source = hidden.transformer_template()
+    assert "    def fpeg(self, *children: Any) -> Any:" in source
+    namespace = {}
+    exec(compile(source, "<template>", "exec"), namespace)
+    assert namespace["Transformer"]().transform(hidden.parse("ab")) is None
 
 
 def test_deep_trees_transform_without_recursion() -> None:
