@@ -10,8 +10,9 @@
 // takes one of a tighter level.
 
 // In a replacement field, outside any bracket in it, a colon starts the format. Format specs
-// count how deeply they nest within one f-string or t-string.
-%flag bracket replacement spec nested_spec
+// count how deeply they nest within one f-string or t-string, and a triple-quoted one lets
+// them hold line breaks.
+%flag bracket replacement spec nested_spec long_string
 %word [\p{XID_Continue}]
 %keywords soft "match" "case" "_" "type" "lazy"
 %ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK &. | %if(bracket) _LINE_BREAK
@@ -279,16 +280,17 @@ strings: parts=BYTES+
 
 @lexical
 fstring<raw, plain>: prefix=raw (
-        _f_body<"\"\"\"", _LINE_BREAK, F_RAW_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_RAW_ESCAPE>
-        | !"\"\"\"" _f_body<"\"", NEVER, F_RAW_ESCAPE> | !"'''" _f_body<"'", NEVER, F_RAW_ESCAPE>)
+        %on(long_string, _f_body<"\"\"\"", _LINE_BREAK, F_RAW_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_RAW_ESCAPE>)
+        | %off(long_string, !"\"\"\"" _f_body<"\"", NEVER, F_RAW_ESCAPE> | !"'''" _f_body<"'", NEVER, F_RAW_ESCAPE>))
     | prefix=plain (
-        _f_body<"\"\"\"", _LINE_BREAK, F_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_ESCAPE>
-        | !"\"\"\"" _f_body<"\"", NEVER, F_ESCAPE> | !"'''" _f_body<"'", NEVER, F_ESCAPE>)
+        %on(long_string, _f_body<"\"\"\"", _LINE_BREAK, F_ESCAPE> | _f_body<"'''", _LINE_BREAK, F_ESCAPE>)
+        | %off(long_string, !"\"\"\"" _f_body<"\"", NEVER, F_ESCAPE> | !"'''" _f_body<"'", NEVER, F_ESCAPE>))
 
 @lexical
 _f_body<quote, line_break, escape>: quote %off(bracket, %off(spec, %off(nested_spec, parts=(F_TEXT<quote, line_break, escape> | replacement_field)*))) quote
 
-replacement_field: "{" %on(bracket, value=%on(replacement, yield_expression | star_expressions) debug="="? conversion=conversion? format=format_spec? "}")
+// After a format spec the closing brace follows it directly, with no line break skipped.
+replacement_field: "{" %on(bracket, value=%on(replacement, yield_expression | star_expressions) debug="="? conversion=conversion? (format=format_spec %off(bracket, "}") | "}"))
 
 @lexical
 conversion: "!" name=CONVERSION
@@ -300,7 +302,7 @@ format_spec: ":" %off(bracket, %if(nested_spec) parts=F_SPEC_TEXT*
                              | %on(spec, parts=(F_SPEC_TEXT | replacement_field)*))
 
 F_TEXT<quote, line_break, escape>: (!quote ([^{}\\\r\n] | line_break | "{{" | "}}" | escape))+
-F_SPEC_TEXT: ([^{}\\\r\n] | "\\" ![{}] .)+
+F_SPEC_TEXT: ([^{}\\\r\n] | %if(long_string) _LINE_BREAK | "\\" (&[{}] | ![{}] .))+
 // A backslash before a brace stays text, and the brace opens or closes a replacement field.
 F_ESCAPE: "\\" (&[{}] | ![{}] ESCAPED)
 F_RAW_ESCAPE: "\\" (&[{}] | ![{}] (_LINE_BREAK | .))

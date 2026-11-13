@@ -25,3 +25,6 @@ lambda_inside = f"{(lambda x: x * 2)(3)}"
 imaginary = 09j, 0_9j, 007j, 0e5j
 joined = b"a" b"b", t"a" t"b", f"a" "b", "a" f"b"
 spaced = f"{name!r }"
+specs = f"{x:\{y}}", f"{x:a\}", f"""{x:>
+10}""", f"""{x:
+{y}}"""
