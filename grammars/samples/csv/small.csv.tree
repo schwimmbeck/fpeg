@@ -1,1 +1,1 @@
-(start (record fields=(field value=BARE"a") fields=~"," fields=(field value=QUOTED"\"b,c\"")) ~_EOL"\n" (record) ~_EOL"\n" (record fields=(field) fields=~"," fields=(field value=BARE"x")) ~_EOL"\n")
+(start (record fields=(field value=BARE"a") ~"," fields=(field value=QUOTED"\"b,c\"")) ~_EOL"\n" (record) ~_EOL"\n" (record fields=(field) ~"," fields=(field value=BARE"x")) ~_EOL"\n")

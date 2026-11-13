@@ -4,17 +4,17 @@ NUM: [0-9]+
 --- "1+2"
 (start left=NUM"1" op="+" right=NUM"2")
 
-=== a separated field holds the items and keeps the separators hidden
+=== a separated field holds the items, and its separators stay hidden without the field
 start: "(" args=(NUM ** ",") ")"
 NUM: [0-9]+
 --- "(1,2)"
-(start ~"(" args=NUM"1" args=~"," args=NUM"2" ~")")
+(start ~"(" args=NUM"1" ~"," args=NUM"2" ~")")
 
-=== a literal next to others inside a field stays hidden
+=== a literal next to others inside a field stays hidden without the field
 start: x=("<" NUM ">")
 NUM: [0-9]+
 --- "<1>"
-(start x=~"<" x=NUM"1" x=~">")
+(start ~"<" x=NUM"1" ~">")
 
 === a field over a repetition of no matches captures nothing
 start: x=(A B){0} A
@@ -34,7 +34,7 @@ start: outer=_pair
 _pair: key=NUM ":" value=NUM
 NUM: [0-9]+
 --- "1:2"
-(start key=NUM"1" outer=~":" value=NUM"2")
+(start key=NUM"1" ~":" value=NUM"2")
 
 === an alias names the node of an alternative
 start: "a" -> first | "b"

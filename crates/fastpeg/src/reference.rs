@@ -705,7 +705,7 @@ impl<'a> Interp<'a> {
             E::Field { field, expr } => match self.eval(expr, pos, ctx)? {
                 Outcome::Ok(mut success) => {
                     for item in &mut success.items {
-                        if item.field() == FieldId::NONE {
+                        if item.field() == FieldId::NONE && !item.is_hidden_token() {
                             item.set_field(*field);
                         }
                     }

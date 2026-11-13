@@ -124,7 +124,7 @@ Matching produces a list of items. An item is a token, with a kind, a position r
 
 - `node(k, e)` turns the items of a success of `e` into one node of kind `k`.
 - `transparent(k, e)` does the same unless the items contain exactly one item that is not a hidden token. In that case the items are the result as they are.
-- `field(f, e)` gives field `f` to each item of a success of `e` that has no field yet.
+- `field(f, e)` gives field `f` to each item of a success of `e` that has no field yet and is not a hidden token. Hidden tokens never carry a field.
 - The **span** of a node runs from the start of its first token to the end of its last token, at any depth, hidden tokens included. A node without tokens has the empty span at the position where its `node` or `transparent` expression was matched.
 
 ## Parsing an input

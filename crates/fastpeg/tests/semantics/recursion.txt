@@ -45,7 +45,7 @@ N: [0-9]
 --- "2 ** 3 ** 2"
 (start (power base=N"2" ~"**" exponent=(power base=N"3" ~"**" exponent=N"2")))
 --- "(1 + 2) * 3"
-(start (binary left=~"(" left=(binary left=N"1" op="+" right=N"2") left=~")" op="*" right=N"3"))
+(start (binary ~"(" left=(binary left=N"1" op="+" right=N"2") ~")" op="*" right=N"3"))
 
 === precedence levels are local names
 start: expr
