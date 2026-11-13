@@ -130,6 +130,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
 - A step leaves no dead code and no stub or page ahead of the code: the checks treat warnings as errors and hold the stubs and the docs to the module. A helper that only the next step uses belongs to that step.
 - A commit that grew too large is split, and a change that belongs to an older commit is amended into it, each new commit checked on its own. Pushed commits may be rewritten so too when the maintainer agrees, and go out with `git push --force-with-lease`.
 - Never add `Co-Authored-By`, "Generated with", session links or any other attribution or tool line to commits or pull requests.
+- Commit messages name no other project, such as another parsing library, also as a reason for a change. Comparisons with related projects belong in one page of the documentation, written when fpeg is published.
 - Pushing waits for the maintainer. Ask before every release tag.
 - Stage by explicit path and read the staged list before committing. Never commit build output, caches, generated pages, `PLAN.md`, `research/` or anything private. Recorded benchmark results are data and are committed.
 - After each commit, append one line to the Progress section of `PLAN.md` when that file exists.
