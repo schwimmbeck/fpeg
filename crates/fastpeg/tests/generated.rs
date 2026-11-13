@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT
 
-//! Generated grammars and inputs. Resolving and parsing never panic and always end, and every
-//! grammar prints to text that reads back to the same grammar.
+//! Generated grammars and inputs. Resolving and parsing never panic and always end, every
+//! grammar prints to text that reads back to the same grammar, and memoization never changes a
+//! result.
 //!
 //! `FASTPEG_GENERATED_CASES` sets how many grammars to try and `FASTPEG_GENERATED_SEED` the first
 //! seed, for longer runs than the default and to replay a reported failure.
@@ -12,7 +13,7 @@ use std::sync::Mutex;
 
 use fastpeg::grammar::builder::*;
 use fastpeg::grammar::{ClassItem, Expr, ExprKind, Grammar, Span};
-use fastpeg::reference::{Limits, Reference};
+use fastpeg::reference::{Limits, ParseErrorKind, Reference};
 
 /// Grammars a normal test run tries.
 const DEFAULT_CASES: u64 = 400;
@@ -331,8 +332,8 @@ fn env_number(name: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
-/// Generate the grammar and inputs of one seed and check them, or describe the failure.
-fn check_seed(seed: u64) -> Option<String> {
+/// The grammar and inputs of one seed.
+fn generate(seed: u64) -> (Grammar, Vec<String>) {
     let mut rng = Rng(seed);
     let rule_count = 1 + rng.below(4);
     let rules = (0..rule_count)
@@ -354,6 +355,22 @@ fn check_seed(seed: u64) -> Option<String> {
         terminals,
     };
     let grammar = generator.grammar();
+    let inputs = (0..INPUTS_PER_GRAMMAR)
+        .map(|i| generator.input(&grammar, i))
+        .collect();
+    (grammar, inputs)
+}
+
+fn limits() -> Limits {
+    Limits {
+        max_steps: MAX_STEPS,
+        ..Limits::default()
+    }
+}
+
+/// Resolving and parsing do not panic, and the grammar prints to text that reads back the same.
+fn check_robust(seed: u64) -> Option<String> {
+    let (grammar, inputs) = generate(seed);
     let printed = grammar.to_string();
     // The text front end runs on the reference interpreter too.
     match catch_unwind(|| Grammar::from_text(&printed)) {
@@ -362,17 +379,10 @@ fn check_seed(seed: u64) -> Option<String> {
         Ok(Err(errors)) => return Some(format!("does not read back: {errors:?}\n{printed}")),
         Err(_) => return Some(format!("panicked reading back:\n{printed}")),
     }
-    let inputs: Vec<String> = (0..INPUTS_PER_GRAMMAR)
-        .map(|i| generator.input(&grammar, i))
-        .collect();
-    let limits = Limits {
-        max_steps: MAX_STEPS,
-        ..Limits::default()
-    };
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         if let Ok(reference) = Reference::new(&grammar) {
             for input in &inputs {
-                let _ = reference.parse_with(input, "start", limits);
+                let _ = reference.parse_with(input, "start", limits());
             }
         }
     }));
@@ -381,8 +391,33 @@ fn check_seed(seed: u64) -> Option<String> {
         .map(|_| format!("panicked on one of {inputs:?}:\n{printed}"))
 }
 
-#[test]
-fn generated_grammars_resolve_parse_and_print_without_failing() {
+/// Parsing with and without the memo gives the same tree or the same error.
+fn check_memo(seed: u64) -> Option<String> {
+    let (grammar, inputs) = generate(seed);
+    let reference = Reference::new(&grammar).ok()?;
+    for input in &inputs {
+        let shown =
+            |result: Result<fastpeg::tree::Tree, fastpeg::reference::ParseError>| match result {
+                Ok(tree) => Some(tree.to_text(input, true)),
+                Err(error) if matches!(error.kind, ParseErrorKind::Limit(_)) => None,
+                Err(error) => Some(error.to_string()),
+            };
+        let memoized = shown(reference.parse_with(input, "start", limits()));
+        let plain = shown(reference.parse_unmemoized(input, "start", limits()));
+        if let (Some(memoized), Some(plain)) = (memoized, plain)
+            && memoized != plain
+        {
+            return Some(format!(
+                "on {input:?} the memo gives\n{memoized}\nand no memo gives\n{plain}\n{grammar}"
+            ));
+        }
+    }
+    None
+}
+
+/// Run a check on every seed, spread over the available threads, and fail with the first few
+/// problems.
+fn check_seeds(check: fn(u64) -> Option<String>) {
     let cases = env_number("FASTPEG_GENERATED_CASES", DEFAULT_CASES);
     let first = env_number("FASTPEG_GENERATED_SEED", 0);
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get()) as u64;
@@ -392,7 +427,7 @@ fn generated_grammars_resolve_parse_and_print_without_failing() {
             let failures = &failures;
             scope.spawn(move || {
                 for seed in (first + offset..first + cases).step_by(threads as usize) {
-                    let outcome = catch_unwind(|| check_seed(seed));
+                    let outcome = catch_unwind(|| check(seed));
                     let problem = outcome.unwrap_or_else(|_| Some("panicked".to_owned()));
                     if let Some(problem) = problem {
                         let mut failures = failures.lock().expect("no thread panics holding it");
@@ -408,4 +443,14 @@ fn generated_grammars_resolve_parse_and_print_without_failing() {
     failures.sort();
     failures.truncate(5);
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
+#[test]
+fn generated_grammars_resolve_parse_and_print_without_failing() {
+    check_seeds(check_robust);
+}
+
+#[test]
+fn memoization_never_changes_a_result() {
+    check_seeds(check_memo);
 }
