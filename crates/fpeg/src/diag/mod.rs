@@ -123,11 +123,15 @@ pub enum DiagnosticCode {
     Internal,
     /// W101: an alternative after one that cannot fail.
     UnreachableAlternative,
+    /// W102: a literal after a literal it starts with.
+    ShadowedLiteral,
+    /// W103: an alternative that starts with the whole of an earlier one.
+    ShadowedAlternative,
 }
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 27] = [
+    pub const ALL: [DiagnosticCode; 29] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -155,6 +159,8 @@ impl DiagnosticCode {
         DiagnosticCode::NotYet,
         DiagnosticCode::Internal,
         DiagnosticCode::UnreachableAlternative,
+        DiagnosticCode::ShadowedLiteral,
+        DiagnosticCode::ShadowedAlternative,
     ];
 
     /// The code, such as `E201`.
@@ -187,6 +193,8 @@ impl DiagnosticCode {
             DiagnosticCode::NotYet => "E501",
             DiagnosticCode::Internal => "E901",
             DiagnosticCode::UnreachableAlternative => "W101",
+            DiagnosticCode::ShadowedLiteral => "W102",
+            DiagnosticCode::ShadowedAlternative => "W103",
         }
     }
 

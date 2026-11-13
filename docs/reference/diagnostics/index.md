@@ -21,7 +21,7 @@ The hundreds of a code tell its area.
 | E401, E402 | limits on the size of a grammar |
 | E501 | what a later milestone of the roadmap brings |
 | E901 | a bug of fpeg itself |
-| W101 | alternatives that a choice never reaches |
+| W101 to W103 | alternatives that a choice never reaches |
 
 ```{toctree}
 :glob:

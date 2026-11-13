@@ -5,8 +5,10 @@
 //! pages of the codes show one grammar for each, which `tests/diagnostics.rs` holds true.
 
 use std::path::Path;
+use std::time::Instant;
 
-use fpeg::{Grammar, Severity};
+use fpeg::builder::{GrammarBuilder, lit, r, seq};
+use fpeg::{Expr, ExprKind, Grammar, Severity};
 
 /// The codes `check` gives for a grammar text, in the order of their places.
 fn codes(text: &str) -> Vec<&'static str> {
@@ -76,4 +78,75 @@ fn a_level_whose_last_alternative_cannot_fail_cuts_off_the_levels_after_it() {
     };
     assert_eq!(codes(&block("\"-\"? atom")), Vec::<&str>::new());
     assert_eq!(codes(&block("\"-\"?")), ["W101"]);
+}
+
+#[test]
+fn a_literal_is_shadowed_where_the_earlier_one_matches_whenever_it_would() {
+    for (text, expected) in [
+        ("start: \"<\" | \"<=\"\n", vec!["W102"]),
+        ("start: \"<=\" | \"<\"\n", vec![]),
+        ("start: x=\"=\" | y=\"==\"\n", vec!["W102"]),
+        ("start: \"a\" | \"b\" | \"c\" | \"ab\"\n", vec!["W102"]),
+        // A literal that ignores case matches every spelling of the later one too.
+        ("start: \"in\"i | \"INNER\"\n", vec!["W102"]),
+        ("start: \"in\" | \"inner\"i\n", vec![]),
+        // With word characters set, a literal of a rule fails in front of one.
+        ("start: \"in\" | \"inner\"\n%word [a-z]\n", vec![]),
+        ("start: \"in\" | \"in+\"\n%word [a-z]\n", vec!["W102"]),
+        ("start: \"+\" | \"+=\"\n%word [a-z]\n", vec!["W102"]),
+        // Inside a terminal no boundary holds.
+        (
+            "start: T\nT: \"in\" | \"inner\"\n%word [a-z]\n",
+            vec!["W102"],
+        ),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
+}
+
+#[test]
+fn an_alternative_is_shadowed_by_an_earlier_one_it_starts_with() {
+    for (text, expected) in [
+        (
+            "start: A B | A B C\nA: \"a\"\nB: \"b\"\nC: \"c\"\n",
+            vec!["W103"],
+        ),
+        ("start: A | A\nA: \"a\"\n", vec!["W103"]),
+        // Fields and aliases change the tree and not the match.
+        (
+            "start: x=A B -> one | A y=B C -> two\nA: \"a\"\nB: \"b\"\nC: \"c\"\n",
+            vec!["W103"],
+        ),
+        (
+            "start: A* B | A* B C\nA: \"a\"\nB: \"b\"\nC: \"c\"\n",
+            vec!["W103"],
+        ),
+        // The longer one first, or a difference before the end, is no shadow.
+        ("start: A B C | A B\nA: \"a\"\nB: \"b\"\nC: \"c\"\n", vec![]),
+        ("start: A B | A C B\nA: \"a\"\nB: \"b\"\nC: \"c\"\n", vec![]),
+        (
+            "start: A+ B | A* B C\nA: \"a\"\nB: \"b\"\nC: \"c\"\n",
+            vec![],
+        ),
+        ("start: A !B | A B\nA: \"a\"\nB: \"b\"\n", vec![]),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
+}
+
+/// Time the check of a choice between 30,000 alternatives may take in a debug build. Each is
+/// compared with the 256 before it, which takes a second or two. All pairs take a minute.
+const LONG_CHOICE_SECONDS: f64 = 20.0;
+
+#[test]
+fn a_choice_between_thousands_of_alternatives_is_checked_in_time() {
+    let alternatives = (0..30_000).map(|i| seq([lit(&format!("k{i:05}")), r("X")]));
+    let mut g = GrammarBuilder::new();
+    g.rule("start", Expr::new(ExprKind::Choice(alternatives.collect())));
+    g.rule("X", lit("x"));
+    let grammar = g.build();
+    let started = Instant::now();
+    assert!(fpeg::check(&grammar).is_empty());
+    let seconds = started.elapsed().as_secs_f64();
+    assert!(seconds < LONG_CHOICE_SECONDS, "{seconds:.1} s");
 }
