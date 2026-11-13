@@ -13,12 +13,12 @@ use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
 use fpeg::{FieldCount, LineIndex, Position};
-use pyo3::PyTypeInfo;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyIterator, PyList, PyTuple, PyType};
+use pyo3::{PyTraverseError, PyTypeInfo, PyVisit};
 
 use crate::grammar::GrammarCore;
 use crate::token::{self, Positions};
@@ -641,6 +641,21 @@ impl Tree {
                 .unbind()),
             _ => Ok(py.NotImplemented()),
         }
+    }
+
+    /// The objects this tree alone owns, so that the collector finds cycles through them, such
+    /// as a tree in its own children. The parse a view holds is shared, and is left out.
+    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
+        if let Some(children) = self.children.get() {
+            visit.call(children)?;
+        }
+        if let Some(meta) = self.meta.get() {
+            visit.call(meta)?;
+        }
+        if let Inner::Owned { data, .. } = &self.inner {
+            visit.call(data)?;
+        }
+        Ok(())
     }
 
     fn __hash__(slf: &Bound<'_, Self>) -> PyResult<isize> {

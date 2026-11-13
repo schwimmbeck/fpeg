@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 import copy
+import gc
 import pickle
+import weakref
 from collections.abc import Callable
 from typing import Any
 
@@ -153,6 +155,19 @@ def test_a_tree_that_contains_itself_is_refused() -> None:
         repr(tree)
     with pytest.raises(ValueError, match="contains itself"):
         hash(tree)
+
+
+def test_a_tree_that_contains_itself_is_freed_by_the_collector() -> None:
+    class Mark:
+        pass
+
+    mark = Mark()
+    tree = fpeg.Tree("loop", [mark])
+    tree.children.append(tree)
+    gone = weakref.ref(mark)
+    del tree, mark
+    gc.collect()
+    assert gone() is None
 
 
 def test_a_copy_has_a_new_list_of_the_same_children() -> None:
