@@ -93,14 +93,19 @@ N: [0-9]
 --- grammar
 needs -> in a precedence block
 
-=== a level name may not shadow a rule
-start: expr
+=== a level name is a name of the whole grammar, so no rule or other level may have it
+start: expr other
 expr: %precedence {
     start: N
+    atom: N
+}
+other: %precedence {
+    atom: "x"
 }
 N: [0-9]
 --- grammar
-the level start shadows a rule
+the level start has the name of a rule
+the level atom is defined twice
 
 === an undeclared flag is an error
 start: %if(missing) "a"

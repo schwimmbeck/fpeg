@@ -130,6 +130,9 @@ impl Interner {
 struct Resolver<'g> {
     grammar: &'g Grammar,
     by_name: HashMap<&'g str, &'g Rule>,
+    /// The levels of the precedence blocks, which every rule may call, with the level that owns
+    /// each name.
+    levels: HashMap<&'g str, (RuleId, &'g super::Level)>,
     rules: Vec<Option<ir::Rule>>,
     instances: HashMap<(String, String), RuleId>,
     /// Instances of rules without parameters, one per name, made before any template instance.
@@ -157,6 +160,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
     let mut r = Resolver {
         grammar,
         by_name: HashMap::new(),
+        levels: HashMap::new(),
         rules: Vec::new(),
         instances: HashMap::new(),
         plain_instances: 0,
@@ -195,6 +199,33 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
                 format!("the rule {} is defined twice", rule.name.text),
                 rule.name.span,
             );
+        }
+    }
+    // Level names belong to the whole grammar, so their rules exist before any rule calls one.
+    // A block with parameters is an error and keeps its levels to itself.
+    for rule in &grammar.rules {
+        let RuleBody::Precedence(levels) = &rule.body else {
+            continue;
+        };
+        if !rule.params.is_empty() {
+            continue;
+        }
+        for level in levels {
+            let name = level.name.text.as_str();
+            if r.by_name.contains_key(name) {
+                r.error(
+                    format!("the level {name} has the name of a rule"),
+                    level.name.span,
+                );
+            } else if r.levels.contains_key(name) {
+                r.error(
+                    format!("the level {name} is defined twice"),
+                    level.name.span,
+                );
+            } else {
+                let id = r.allocate();
+                r.levels.insert(name, (id, level));
+            }
         }
     }
     let mut entry = HashMap::new();
@@ -765,10 +796,15 @@ impl<'g> Resolver<'g> {
         let mut scope_names = HashMap::new();
         let mut ids = Vec::new();
         for level in levels {
-            let id = self.allocate();
+            // A level whose name another level owns, or a level of a block with parameters, gets
+            // a rule of its own that only its block calls.
+            let id = match self.levels.get(level.name.text.as_str()) {
+                Some(&(id, owner)) if std::ptr::eq(owner, level) => id,
+                _ => self.allocate(),
+            };
             ids.push(id);
             if self.by_name.contains_key(level.name.text.as_str()) {
-                let message = format!("the level {} shadows a rule", level.name.text);
+                let message = format!("the level {} has the name of a rule", level.name.text);
                 self.error(message, level.name.span);
             }
             if scope_names.insert(level.name.text.clone(), id).is_some() {
@@ -1068,7 +1104,12 @@ impl<'g> Resolver<'g> {
 
     /// A reference to a level or a rule. References to parameters are lowered by `lower_parts`.
     fn reference(&mut self, name: &Name, args: &[Expr], scope: Scope<'_>, span: Span) -> ir::Expr {
-        if let Some(&id) = scope.levels.and_then(|levels| levels.get(&name.text)) {
+        let level = (scope
+            .levels
+            .and_then(|levels| levels.get(&name.text))
+            .copied())
+        .or_else(|| self.levels.get(name.text.as_str()).map(|&(id, _)| id));
+        if let Some(id) = level {
             if !args.is_empty() {
                 self.error(format!("the level {} takes no arguments", name.text), span);
             }

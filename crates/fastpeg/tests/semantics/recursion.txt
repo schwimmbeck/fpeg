@@ -47,15 +47,17 @@ N: [0-9]
 --- "(1 + 2) * 3"
 (start (binary ~"(" left=(binary left=N"1" op="+" right=N"2") ~")" op="*" right=N"3"))
 
-=== precedence levels are local names
-start: expr
+=== a rule outside a precedence block calls its levels by name
+start: expr ";" sum ";" atom
 expr: %precedence {
     sum: left=sum "+" right=atom -> add
     atom: N
 }
 N: [0-9]
---- "1+2"
-(start (add left=N"1" ~"+" right=N"2"))
+--- "1+2;3+4;5"
+(start (add left=N"1" ~"+" right=N"2") ~";" (add left=N"3" ~"+" right=N"4") ~";" N"5")
+--- "1;2;3+4"
+error at 5: expected end of input
 
 === a rule matched again while growing sees the entries made since
 start: r1*

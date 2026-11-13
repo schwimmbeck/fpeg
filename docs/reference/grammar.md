@@ -200,7 +200,8 @@ expr: %precedence {
 - Each level tries its own alternatives first. If none matches, it falls through to the next tighter level, and the fall-through adds no node.
 - An alternative without `->` adds no node, so `"(" expr ")"` yields the inner expression. An alternative with fields must have `->`.
 - An operator whose left operand is its own level, as in `left=sum ... right=product`, is left associative. One whose right operand is its own level or a looser one is right associative: `exponent=unary` names the looser level `unary`, so `2 ** -1` parses and `2 ** 3 ** 2` groups to the right.
-- The rule itself produces no node. Level names are local to the block and may not shadow a rule of the grammar.
+- The rule itself produces no node.
+- A level name belongs to the whole grammar. Another rule may call a level by its name and gets an operand of that level or a tighter one, as `call: func=atom "(" args=(sum ** ",") ")"` would. No rule and no other level may have the name of a level.
 - The block means one rule per level, with left recursion. An engine may parse it differently as long as the results agree.
 
 ## Ignored text
