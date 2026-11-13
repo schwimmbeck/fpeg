@@ -25,7 +25,7 @@ local text = [[
 long string, no escapes: \n stays]]
 local escaped = "tab\tquote\" zap \z
                  continued"
-local codes = "\x41\65\u{20AC}\\\
+local codes = "\x41\65\255\0000\u{20AC}\u{7FFFFFFF}\u{0}\\\
 next line"
 local s = Stack.new(1, 2, 3)
 s:push(2 ^ -1)

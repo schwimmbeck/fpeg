@@ -287,14 +287,15 @@ T_RAW_PREFIX: [tT] [rR] | [rR] [tT]
 CONVERSION: [sra] !\p{XID_Continue}
 
 STRING: [rR] STRING_BODY<RAW_ESCAPE, .> | [uU]? STRING_BODY<ESCAPE, .>
-BYTES: ([rR] [bB] | [bB] [rR]) STRING_BODY<RAW_ESCAPE, ASCII> | [bB] STRING_BODY<BYTES_ESCAPE, ASCII>
+BYTES: ([rR] [bB] | [bB] [rR]) STRING_BODY<RAW_BYTES_ESCAPE, ASCII> | [bB] STRING_BODY<BYTES_ESCAPE, ASCII>
 ASCII: [\x00-\x7F]
 STRING_BODY<escape, char>: LONG_STRING<"\"\"\"", escape, char> | LONG_STRING<"'''", escape, char>
                          | SHORT_STRING<"\"", escape, char> | SHORT_STRING<"'", escape, char>
 LONG_STRING<quote, escape, char>: quote (!quote (escape | !"\\" char))* quote
 SHORT_STRING<quote, escape, char>: quote (!quote (escape | ![\\\r\n] char))* quote
 RAW_ESCAPE: "\\" (_LINE_BREAK | .)
-BYTES_ESCAPE: "\\" ("x" HEX{2} | ![x] (_LINE_BREAK | .))
+RAW_BYTES_ESCAPE: "\\" (_LINE_BREAK | ASCII)
+BYTES_ESCAPE: "\\" ("x" HEX{2} | ![x] (_LINE_BREAK | ASCII))
 ESCAPE: "\\" ESCAPED
 // Unknown escapes keep their backslash, but these four must be complete.
 ESCAPED: "x" HEX{2} | "u" HEX{4} | "U" HEX{8} | "N{" [^}\r\n]+ "}" | ![xuUN] (_LINE_BREAK | .)
