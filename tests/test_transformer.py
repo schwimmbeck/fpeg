@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import gc
 import pickle
 import sys
+import weakref
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -404,6 +406,19 @@ def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
     loop.children.append(loop)
     with pytest.raises(ValueError, match="the tree contains itself"):
         Built().transform(loop)
+
+
+def test_a_transformer_class_goes_when_it_is_no_longer_used() -> None:
+    class Once(fpeg.Transformer):
+        def call(self, children: list[Any]) -> int:
+            return len(children)
+
+    tree = fpeg.Tree("start", [fpeg.Tree("call", ["a"])])
+    assert Once().transform(tree) == fpeg.Tree("start", [1])
+    gone = weakref.ref(Once)
+    del Once
+    gc.collect()
+    assert gone() is None
 
 
 def test_a_tree_built_in_python_transforms_as_the_parse_it_copies() -> None:

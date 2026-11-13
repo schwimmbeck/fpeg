@@ -14,6 +14,7 @@ import difflib
 import inspect
 import sys
 import types
+import weakref
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, ClassVar, TypeVar, cast
 
@@ -378,15 +379,18 @@ def _option_mode(inline: bool, meta: bool, tree: bool) -> int:
     return INLINE if inline else LIST
 
 
-_owned_conventions: dict[tuple[type, str], tuple[int, tuple[str, ...], int]] = {}
+# By class, weakly, so that a class made for one task goes when it is no longer used.
+_owned_conventions: weakref.WeakKeyDictionary[type, dict[str, tuple[int, tuple[str, ...], int]]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _owned_convention(cls: type, name: str) -> tuple[int, tuple[str, ...], int]:
     """Say how a method is called for a tree built in Python, read once per class and name."""
-    key = (cls, name)
-    if key not in _owned_conventions:
-        _owned_conventions[key] = _node_convention(cls, name, None)
-    return _owned_conventions[key]
+    by_name = _owned_conventions.setdefault(cls, {})
+    if name not in by_name:
+        by_name[name] = _node_convention(cls, name, None)
+    return by_name[name]
 
 
 def _make_plan(
