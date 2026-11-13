@@ -75,6 +75,7 @@ with (open("a") as a, open("b") as b):
 numbers = [x ** 2 for x in range(10) if x % 2 == 0 if x > 2]
 table = {k: v for k, v in zip("abc", range(3))}
 unique = {item for row in matrix for item in row}
+flat = [*row for row in matrix], {**d for d in tables}
 lazy = (n for n in numbers)
 sliced = data[1:-1:2], data[::-1], data[:, 0], matrix[..., None]
 value = a if b else c if d else e

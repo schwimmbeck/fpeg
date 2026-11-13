@@ -238,15 +238,16 @@ expression: %precedence {
 
 tuple: "(" %on(bracket, %off(replacement, (items=star_named_expression "," (items=star_named_expression ** ",") ","?)? ")"))
 group: "(" %on(bracket, %off(replacement, value=(yield_expression | named_expression) ")"))
-generator_expression: "(" %on(bracket, %off(replacement, element=named_expression clauses=comprehension ")"))
+generator_expression: "(" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension ")"))
 list: "[" %on(bracket, %off(replacement, items=(star_named_expression ** ",") ","? "]"))
-list_comprehension: "[" %on(bracket, %off(replacement, element=named_expression clauses=comprehension "]"))
+list_comprehension: "[" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension "]"))
 dict: "{" %on(bracket, %off(replacement, items=(dict_item ** ",") ","? "}"))
 ?dict_item: "**" value=expression -> double_starred
           | key=expression ":" value=expression -> pair
 set: "{" %on(bracket, %off(replacement, items=(star_named_expression ++ ",") ","? "}"))
-dict_comprehension: "{" %on(bracket, %off(replacement, key=expression ":" value=expression clauses=comprehension "}"))
-set_comprehension: "{" %on(bracket, %off(replacement, element=named_expression clauses=comprehension "}"))
+dict_comprehension: "{" %on(bracket, %off(replacement, (key=expression ":" value=expression | element=double_starred) clauses=comprehension "}"))
+double_starred: "**" value=expression
+set_comprehension: "{" %on(bracket, %off(replacement, element=star_named_expression clauses=comprehension "}"))
 comprehension: clauses=for_if+
 for_if: async="async"? "for" targets=star_targets "in" iter=expression conditions=("if" expression)*
 
