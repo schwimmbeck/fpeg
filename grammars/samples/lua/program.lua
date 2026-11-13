@@ -37,5 +37,6 @@ for k, v in pairs({a = 1, [2] = "b", 'c'}) do
   ::continue::
 end
 repeat local x = 1 until x >= 1 or 1 << 2 | 3 & ~4 ~ 5 > 2
+local close, handle <close> = 1 .. 2, nil -- close stays a name, numerals end before ..
 while false do break end
 do ; end

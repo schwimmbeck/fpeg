@@ -6,6 +6,7 @@
 // and call statements accept any prefix expression, a superset that a later check narrows.
 
 %word [A-Za-z0-9_]
+%keywords soft "const" "close"
 
 start: block
 block: statements=statement* ret=return_statement?
@@ -39,7 +40,7 @@ function_statement: "function" name=function_name body=function_body
 function_name: parts=(NAME ++ ".") (":" method=NAME)?
 local_function: "local" "function" name=NAME body=function_body
 local: "local" names=(attribute_name ++ ",") ("=" values=(exp ++ ","))?
-attribute_name: name=NAME ("<" attribute=NAME ">")?
+attribute_name: name=NAME ("<" &("const" | "close") attribute=NAME ">")?
 assign: targets=(prefix ++ ",") "=" values=(exp ++ ",")
 call_statement: call=prefix
 return_statement: "return" values=(exp ** ",") ";"?
@@ -91,8 +92,9 @@ field: "[" key=exp "]" "=" value=exp -> keyed
 
 @reserved
 NAME: [A-Za-z_] [A-Za-z0-9_]*
-NUMBER: "0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
-      | (DIGIT+ ("." !"." DIGIT*)? | "." DIGIT+) ([eE] [+\-]? DIGIT+)?
+// Lua reads a numeral on through letters, digits and dots, so one that touches them is malformed.
+NUMBER: ("0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
+        | (DIGIT+ ("." !"." DIGIT*)? | "." DIGIT+) ([eE] [+\-]? DIGIT+)?) ![0-9A-Za-z_.]
 DIGIT: [0-9]
 HEX: [0-9a-fA-F]
 STRING: "\"" ("\\" ESCAPE | [^"\\\r\n])* "\""
