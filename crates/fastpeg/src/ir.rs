@@ -98,7 +98,7 @@ impl CharSet {
 }
 
 /// A core expression. See the semantics page for the meaning of each.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) enum Expr {
     Empty,
     Literal {

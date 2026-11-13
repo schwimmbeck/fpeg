@@ -74,8 +74,9 @@ C: "c"
 --- grammar
 the field x can capture several items in one match
 
-=== a field over an inlined rule counts the items the rule adds
-start: x=_pair
+=== a field over an inlined rule counts the items the rules it calls add
+start: x=_outer
+_outer: _pair
 _pair: A B
 A: "a"
 B: "b"

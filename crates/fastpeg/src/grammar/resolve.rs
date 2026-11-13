@@ -260,37 +260,95 @@ fn choice(mut items: Vec<ir::Expr>) -> ir::Expr {
     }
 }
 
-/// How many visible items without a field `expr` adds in one match, at most, where 2 stands
-/// for several. `rules` holds the same count for each rule.
-fn unfielded_items(expr: &ir::Expr, rules: &[u8]) -> u8 {
-    use ir::Expr as E;
-    match expr {
-        E::Token { hidden, .. } => u8::from(!hidden),
-        E::Node { .. } | E::Transparent { .. } => 1,
-        E::Call(id) => rules[id.0 as usize],
-        E::Seq(items) => items
-            .iter()
-            .fold(0, |sum, e| (sum + unfielded_items(e, rules)).min(2)),
-        E::Choice(items) => items
-            .iter()
-            .map(|e| unfielded_items(e, rules))
-            .max()
-            .unwrap_or(0),
-        E::Repeat { expr, max, .. } => match (unfielded_items(expr, rules), max) {
-            (_, Some(0)) | (0, _) => 0,
-            (n, Some(1)) => n,
-            _ => 2,
-        },
-        E::Unreserved(expr)
-        | E::FlagOn { expr, .. }
-        | E::FlagOff { expr, .. }
-        | E::Indent { expr, .. }
-        | E::Def { expr, .. }
-        | E::Label { expr, .. } => unfielded_items(expr, rules),
-        E::Shared(expr) => unfielded_items(expr, rules),
-        // An inner field keeps its items, and lookahead adds none.
-        _ => 0,
+/// Counts how many visible items without a field one match of an expression adds, at most,
+/// where 2 stands for several.
+struct ItemCount<'r> {
+    /// The same count for each rule.
+    rules: &'r [u8],
+    /// The rules called where their count adds to the expression's.
+    calls: Vec<usize>,
+    /// The count of each shared part met so far. Nested separated repetitions use their item
+    /// twice at every level, so without it the time doubles with each level.
+    shared: HashMap<*const ir::Expr, u8>,
+}
+
+impl ItemCount<'_> {
+    fn new(rules: &[u8]) -> ItemCount<'_> {
+        ItemCount {
+            rules,
+            calls: Vec::new(),
+            shared: HashMap::new(),
+        }
     }
+
+    fn of(&mut self, expr: &ir::Expr) -> u8 {
+        use ir::Expr as E;
+        match expr {
+            E::Token { hidden, .. } => u8::from(!hidden),
+            E::Node { .. } | E::Transparent { .. } => 1,
+            E::Call(id) => {
+                self.calls.push(id.0 as usize);
+                self.rules[id.0 as usize]
+            }
+            E::Seq(items) => items.iter().fold(0, |sum, e| (sum + self.of(e)).min(2)),
+            E::Choice(items) => items.iter().map(|e| self.of(e)).max().unwrap_or(0),
+            E::Repeat { max: Some(0), .. } => 0,
+            E::Repeat { expr, max, .. } => match (self.of(expr), max) {
+                (0, _) => 0,
+                (n, Some(1)) => n,
+                _ => 2,
+            },
+            E::Unreserved(expr)
+            | E::FlagOn { expr, .. }
+            | E::FlagOff { expr, .. }
+            | E::Indent { expr, .. }
+            | E::Def { expr, .. }
+            | E::Label { expr, .. } => self.of(expr),
+            E::Shared(expr) => {
+                let key = Arc::as_ptr(expr);
+                if let Some(&count) = self.shared.get(&key) {
+                    return count;
+                }
+                let count = self.of(expr);
+                self.shared.insert(key, count);
+                count
+            }
+            // An inner field keeps its items, and lookahead adds none.
+            _ => 0,
+        }
+    }
+}
+
+/// For each rule, how many visible items without a field one match of it adds, at most, where
+/// 2 stands for several. A rule reaches a count through its own body or through a rule it calls
+/// where that rule's count adds to its own, so two rounds of reachability, for one item and then
+/// for several, take linear time. Repeating passes until nothing changes would take a pass per
+/// rule of a chain.
+fn unfielded_counts(rules: &[Option<ir::Rule>]) -> Vec<u8> {
+    let mut counts = vec![0; rules.len()];
+    let mut callers = vec![Vec::new(); rules.len()];
+    for level in 1..=2 {
+        let mut reached = Vec::new();
+        for (id, rule) in rules.iter().enumerate() {
+            let Some(rule) = rule else { continue };
+            let mut count = ItemCount::new(&counts);
+            if count.of(&rule.body) >= level {
+                reached.push(id);
+            }
+            if level == 1 {
+                for callee in count.calls {
+                    callers[callee].push(id);
+                }
+            }
+        }
+        while let Some(id) = reached.pop() {
+            if counts[id] < level {
+                counts[id] = level;
+                reached.extend_from_slice(&callers[id]);
+            }
+        }
+    }
+    counts
 }
 
 /// How many expressions `expr` holds once each parameter is replaced by an argument holding
@@ -353,21 +411,9 @@ impl<'g> Resolver<'g> {
 
     /// Report fields that can capture several items in one match.
     fn check_fields(&mut self) {
-        let mut counts = vec![0; self.rules.len()];
-        // The counts only grow and stop at 2, so this ends.
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for (id, rule) in self.rules.iter().enumerate() {
-                if let Some(rule) = rule {
-                    let count = unfielded_items(&rule.body, &counts);
-                    changed |= count != counts[id];
-                    counts[id] = count;
-                }
-            }
-        }
+        let counts = unfielded_counts(&self.rules);
         for check in std::mem::take(&mut self.field_checks) {
-            if check.parts.iter().any(|p| unfielded_items(p, &counts) > 1) {
+            if (check.parts.iter()).any(|p| ItemCount::new(&counts).of(p) > 1) {
                 let message = format!(
                     "the field {} can capture several items in one match",
                     check.name
@@ -1097,7 +1143,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::resolve;
-    use crate::grammar::builder::{GrammarBuilder, lit, sep_many};
+    use crate::grammar::builder::{GrammarBuilder, field, lit, r, sep_many, seq};
     use crate::ir;
 
     fn children(expr: &ir::Expr) -> Vec<&ir::Expr> {
@@ -1140,15 +1186,17 @@ mod tests {
     }
 
     #[test]
-    fn nested_separated_repetitions_lower_their_item_once() {
+    fn nested_separated_repetitions_lower_and_check_their_item_once() {
         let mut expr = lit("a");
-        for _ in 0..20 {
+        for _ in 0..40 {
             expr = sep_many(expr, lit(","));
         }
         let mut g = GrammarBuilder::new();
-        g.rule("start", expr);
+        // A field and a rule without a node of its own make the field check walk them.
+        g.rule("start", seq([field("x", expr.clone()), r("_items")]));
+        g.rule("_items", expr);
         let grammar = resolve(&g.build()).expect("the grammar resolves");
-        // Twenty levels that each copied their item would hold more than a million.
+        // Forty levels that each copied their item would hold more than a trillion.
         assert!(size(&grammar) < 1_000, "{}", size(&grammar));
     }
 }
