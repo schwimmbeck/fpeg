@@ -5,8 +5,11 @@
 //!
 //! A view holds the parse and an entry index, so making one costs about as much as a string, and
 //! its children are made when asked for and then kept. A tree built in Python, as Lark builds
-//! them, holds its data and its list of children.
+//! them, holds its data and its list of children. Every walk over trees uses an explicit stack,
+//! since left recursion makes trees as deep as their input is long, and refuses a tree built in
+//! Python that contains itself instead of walking it forever.
 
+use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
 use fpeg::{FieldCount, LineIndex, Position};
@@ -235,12 +238,61 @@ impl Tree {
             .map_or_else(|| PyList::empty(py), |c| c.bind(py).clone()))
     }
 
+    /// The field names of the visible children of a view, in order, when the list of children
+    /// still has one entry for each.
+    fn child_fields(&self, count: usize) -> Vec<Option<String>> {
+        let Inner::View { parsed, index } = &self.inner else {
+            return vec![None; count];
+        };
+        let Some(node) = parsed.tree.node(*index as usize) else {
+            return vec![None; count];
+        };
+        let fields: Vec<Option<String>> = (node.children().into_iter())
+            .filter(|child| !child.is_hidden())
+            .map(|child| child.field_name().map(str::to_owned))
+            .collect();
+        if fields.len() == count {
+            fields
+        } else {
+            vec![None; count]
+        }
+    }
+
     fn origin(&self) -> Option<(&Arc<Parsed>, u32)> {
         match &self.inner {
             Inner::View { parsed, index } => Some((parsed, *index)),
             Inner::Owned { origin, .. } => origin.as_ref().map(|(parsed, index)| (parsed, *index)),
         }
     }
+}
+
+/// Whether two objects are views of one node, which makes them equal without a walk.
+fn same_node(a: &Bound<'_, Tree>, b: &Bound<'_, Tree>) -> bool {
+    match (&a.get().inner, &b.get().inner) {
+        (
+            Inner::View {
+                parsed: p,
+                index: i,
+            },
+            Inner::View {
+                parsed: q,
+                index: j,
+            },
+        ) => Arc::ptr_eq(p, q) && i == j,
+        _ => false,
+    }
+}
+
+/// The error for a tree built in Python that holds itself.
+fn cycle() -> PyErr {
+    PyValueError::new_err("the tree contains itself")
+}
+
+/// The steps of a walk that writes text: an item to write at a level, or text to write.
+enum Step<'py> {
+    Item(Bound<'py, PyAny>, usize, Option<String>),
+    Text(&'static str),
+    Leave(usize),
 }
 
 #[pymethods]
@@ -348,4 +400,226 @@ impl Tree {
             FieldCount::Many => Ok(PyList::new(py, items)?.into_any().unbind()),
         }
     }
+
+    /// The tree as indented lines, as Lark writes it, with `name=` before an item that fills a
+    /// field of a node of a parse.
+    #[pyo3(signature = (indent_str = "  "))]
+    fn pretty(slf: &Bound<'_, Self>, indent_str: &str) -> PyResult<String> {
+        let py = slf.py();
+        let mut out = String::new();
+        let mut path: HashSet<usize> = HashSet::new();
+        let mut pending = vec![Step::Item(slf.clone().into_any(), 0, None)];
+        while let Some(step) = pending.pop() {
+            let (obj, level, field) = match step {
+                Step::Item(obj, level, field) => (obj, level, field),
+                Step::Leave(key) => {
+                    path.remove(&key);
+                    continue;
+                }
+                Step::Text(text) => {
+                    out.push_str(text);
+                    continue;
+                }
+            };
+            out.push_str(&indent_str.repeat(level));
+            if let Some(field) = field {
+                out.push_str(&field);
+                out.push('=');
+            }
+            let Ok(tree) = obj.cast::<Tree>() else {
+                out.push_str(&obj.str()?.to_string());
+                out.push('\n');
+                continue;
+            };
+            let key = obj.as_ptr().addr();
+            if !path.insert(key) {
+                return Err(cycle());
+            }
+            pending.push(Step::Leave(key));
+            out.push_str(&tree.get().data_object(py).bind(py).str()?.to_string());
+            let children = tree.get().children_list(py)?;
+            let fields = tree.get().child_fields(children.len());
+            if children.len() == 1 && !children.get_item(0)?.is_instance_of::<Tree>() {
+                out.push('\t');
+                if let Some(field) = &fields[0] {
+                    out.push_str(field);
+                    out.push('=');
+                }
+                out.push_str(&children.get_item(0)?.str()?.to_string());
+                out.push('\n');
+                continue;
+            }
+            out.push('\n');
+            for (child, field) in children.iter().zip(fields).rev() {
+                pending.push(Step::Item(child, level + 1, field));
+            }
+        }
+        Ok(out)
+    }
+
+    /// A tree with the same data and meta and a new list of the same children.
+    fn copy(&self, py: Python<'_>) -> PyResult<Tree> {
+        self.__copy__(py)
+    }
+
+    fn __copy__(&self, py: Python<'_>) -> PyResult<Tree> {
+        let children = PyList::new(py, self.children_list(py)?.iter())?;
+        let tree = Tree::owned(self.data_object(py), children.unbind(), None);
+        let _ = tree.meta.set(self.meta(py)?);
+        Ok(tree)
+    }
+
+    fn __richcmp__(
+        slf: &Bound<'_, Self>,
+        other: &Bound<'_, PyAny>,
+        op: pyo3::basic::CompareOp,
+    ) -> PyResult<Py<PyAny>> {
+        let py = slf.py();
+        let equal = || trees_equal(slf.as_any(), other);
+        match op {
+            pyo3::basic::CompareOp::Eq => {
+                Ok(equal()?.into_pyobject(py)?.to_owned().into_any().unbind())
+            }
+            pyo3::basic::CompareOp::Ne => Ok((!equal()?)
+                .into_pyobject(py)?
+                .to_owned()
+                .into_any()
+                .unbind()),
+            _ => Ok(py.NotImplemented()),
+        }
+    }
+
+    fn __hash__(slf: &Bound<'_, Self>) -> PyResult<isize> {
+        tree_hash(slf.as_any())
+    }
+
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let py = slf.py();
+        let mut out = String::new();
+        let mut path: HashSet<usize> = HashSet::new();
+        let mut pending = vec![Step::Item(slf.clone().into_any(), 0, None)];
+        while let Some(step) = pending.pop() {
+            let obj = match step {
+                Step::Item(obj, ..) => obj,
+                Step::Text(text) => {
+                    out.push_str(text);
+                    continue;
+                }
+                Step::Leave(key) => {
+                    path.remove(&key);
+                    out.push_str("])");
+                    continue;
+                }
+            };
+            let Ok(tree) = obj.cast::<Tree>() else {
+                out.push_str(&obj.repr()?.to_string());
+                continue;
+            };
+            let key = obj.as_ptr().addr();
+            if !path.insert(key) {
+                return Err(cycle());
+            }
+            out.push_str("Tree(");
+            out.push_str(&tree.get().data_object(py).bind(py).repr()?.to_string());
+            out.push_str(", [");
+            pending.push(Step::Leave(key));
+            let children: Vec<Bound<'_, PyAny>> = tree.get().children_list(py)?.iter().collect();
+            for (i, child) in children.into_iter().enumerate().rev() {
+                pending.push(Step::Item(child, 0, None));
+                if i > 0 {
+                    pending.push(Step::Text(", "));
+                }
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Lark's equality: two trees are equal when their data and children are, a tree never equals
+/// anything else.
+fn trees_equal(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<bool> {
+    let py = a.py();
+    let mut path: HashSet<(usize, usize)> = HashSet::new();
+    // Each pair to compare, or the end of a pair whose children are compared.
+    let mut pending: Vec<Option<(Bound<'_, PyAny>, Bound<'_, PyAny>)>> =
+        vec![Some((a.clone(), b.clone()))];
+    let mut leaving: Vec<(usize, usize)> = Vec::new();
+    while let Some(next) = pending.pop() {
+        let Some((x, y)) = next else {
+            if let Some(key) = leaving.pop() {
+                path.remove(&key);
+            }
+            continue;
+        };
+        match (x.cast::<Tree>(), y.cast::<Tree>()) {
+            (Ok(s), Ok(t)) => {
+                if same_node(s, t) {
+                    continue;
+                }
+                let key = (x.as_ptr().addr(), y.as_ptr().addr());
+                if !path.insert(key) {
+                    return Err(cycle());
+                }
+                let (s, t) = (s.get(), t.get());
+                if !s.data_object(py).bind(py).eq(t.data_object(py).bind(py))? {
+                    return Ok(false);
+                }
+                let (left, right) = (s.children_list(py)?, t.children_list(py)?);
+                if left.len() != right.len() {
+                    return Ok(false);
+                }
+                pending.push(None);
+                leaving.push(key);
+                for (l, r) in left.iter().zip(right.iter()).rev() {
+                    pending.push(Some((l, r)));
+                }
+            }
+            (Err(_), Err(_)) => {
+                if !x.eq(&y)? {
+                    return Ok(false);
+                }
+            }
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
+}
+
+/// A hash of a tree's data and children that equal trees share.
+fn tree_hash(root: &Bound<'_, PyAny>) -> PyResult<isize> {
+    let py = root.py();
+    // The hashes of finished children, and for each tree being walked the stack height where
+    // its children's hashes start.
+    let mut hashes: Vec<isize> = Vec::new();
+    let mut path: HashSet<usize> = HashSet::new();
+    let mut pending: Vec<(Bound<'_, PyAny>, Option<usize>)> = vec![(root.clone(), None)];
+    while let Some((obj, start)) = pending.pop() {
+        let Ok(tree) = obj.cast::<Tree>() else {
+            hashes.push(obj.hash()?);
+            continue;
+        };
+        let key = obj.as_ptr().addr();
+        if let Some(start) = start {
+            path.remove(&key);
+            let mut hash = tree.get().data_object(py).bind(py).hash()? as u64;
+            for child in hashes.drain(start..) {
+                // The combining step of CPython's tuple hash, order sensitive.
+                hash = (hash ^ child as u64)
+                    .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                    .rotate_left(31);
+            }
+            hashes.push(hash as isize);
+            continue;
+        }
+        if !path.insert(key) {
+            return Err(cycle());
+        }
+        pending.push((obj.clone(), Some(hashes.len())));
+        for child in tree.get().children_list(py)?.iter().rev() {
+            pending.push((child, None));
+        }
+    }
+    let hash = hashes.pop().unwrap_or(0);
+    // -1 means an error to CPython.
+    Ok(if hash == -1 { -2 } else { hash })
 }

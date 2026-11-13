@@ -64,9 +64,10 @@ call = calls.parse("f(a, b)")
 assert call.field("name") == "f"
 assert call.field("args") == ["a", "b"]
 assert call.text == "f(a, b)"
+print(call.pretty())
 ```
 
-`Tree(data, children, meta=None)` builds a tree in Python, as in Lark.
+`Tree(data, children, meta=None)` builds a tree in Python, as in Lark. Trees compare equal when their data and children are, and hash. Every walk over a tree runs without recursion, so trees of any depth print and compare.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Tree

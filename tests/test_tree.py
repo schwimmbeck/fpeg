@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import copy
+
 import fpeg
 import pytest
 
@@ -65,3 +67,48 @@ def test_a_field_gives_one_item_or_a_list_by_how_many_it_can_hold() -> None:
 def test_text_is_the_input_a_node_spans() -> None:
     assert first_call("f( a ,b )").text == "f( a ,b )"
     assert fpeg.Tree("x", []).text is None
+
+
+def test_trees_built_in_python_equal_views_of_the_same_shape() -> None:
+    call = first_call("f(a)")
+    built = fpeg.Tree("call", [fpeg.Token("NAME", "f"), fpeg.Token("NAME", "a")])
+    assert call == built
+    assert hash(call) == hash(built)
+    assert call != fpeg.Tree("call", ["f"])
+    assert call != "call"
+
+
+def test_pretty_writes_lark_s_layout_with_fields() -> None:
+    tree = parse("f(a) ! k")
+    assert tree.pretty() == "start\n  call\n    name=f\n    args=a\n    kw=kw\tk\n"
+
+
+def test_a_tree_that_contains_itself_is_refused() -> None:
+    tree = fpeg.Tree("loop", [])
+    tree.children.append(tree)
+    with pytest.raises(ValueError, match="contains itself"):
+        repr(tree)
+    with pytest.raises(ValueError, match="contains itself"):
+        hash(tree)
+
+
+def test_a_copy_has_a_new_list_of_the_same_children() -> None:
+    tree = parse("f(a), g(b)")
+    shallow = copy.copy(tree)
+    assert shallow == tree
+    assert shallow.children is not tree.children
+    assert shallow.children[0] is tree.children[0]
+
+
+def test_deep_trees_print_compare_and_hash_without_recursion() -> None:
+    def deep() -> fpeg.Tree:
+        tree = fpeg.Tree("leaf", ["x"])
+        for _ in range(5000):
+            tree = fpeg.Tree("node", [tree])
+        return tree
+
+    one, other = deep(), deep()
+    assert other == one
+    assert hash(other) == hash(one)
+    assert repr(one).count("Tree(") == 5001
+    assert one.pretty().count("\n") == 5001
