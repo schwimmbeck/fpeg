@@ -91,6 +91,7 @@ class Transformer:
     """
 
     __fpeg_strict__: ClassVar[bool] = False
+    __fpeg_reserved__: ClassVar[frozenset[str]]
 
     def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -132,8 +133,8 @@ class Transformer:
         # A token made in Python may have any object as its type.
         name: Any = token.type
         visit = getattr(self, "__visit_tokens__", True)
-        if visit and isinstance(name, str) and _is_handler(cls, name):
-            mode = _token_convention(cls, name)
+        if visit and isinstance(name, str) and is_handler(cls, name):
+            mode = token_convention(cls, name)
             method = getattr(self, name)
             call: Callable[[], Any] = (
                 (lambda: method()) if mode == NOTHING else (lambda: method(token))
@@ -182,7 +183,7 @@ class Transformer:
         cls = type(self)
         # A tree built in Python may have any object as data.
         name: Any = tree.data
-        if isinstance(name, str) and _is_handler(cls, name):
+        if isinstance(name, str) and is_handler(cls, name):
             mode, _, extras = _owned_convention(cls, name)
             method = getattr(self, name)
             args = _arguments(mode, children, tree)
@@ -202,8 +203,13 @@ class Transformer:
 # What `_fpeg._token_value` gives for a token without a builder.
 _NO_VALUE = _fpeg.NO_VALUE
 
-# The names a subclass cannot use as handlers, since the base class needs them.
-_BASE_NAMES = frozenset(vars(Transformer)) | frozenset(dir(object))
+
+def reserved_names(base: type) -> frozenset[str]:
+    """Return the names a subclass cannot use as handlers, since its base class needs them."""
+    return frozenset(name for cls in base.__mro__ for name in vars(cls))
+
+
+Transformer.__fpeg_reserved__ = reserved_names(Transformer)
 
 
 def _results(result: Any) -> Sequence[Any]:
@@ -249,9 +255,9 @@ def _extras(extras: int, tree: Tree, children: list[Any]) -> dict[str, Any]:
     return kwargs
 
 
-def _is_handler(cls: type, name: str) -> bool:
+def is_handler(cls: type, name: str) -> bool:
     """Tell whether the class has a method for the rule or terminal `name`."""
-    if name in _BASE_NAMES or not name.isidentifier():
+    if name in getattr(cls, "__fpeg_reserved__", ()) or not name.isidentifier():
         return False
     attribute = inspect.getattr_static(cls, name, None)
     return attribute is not None and (
@@ -270,7 +276,7 @@ def _unwrap(method: Any) -> Any:
     return method
 
 
-def _function(cls: type, name: str) -> tuple[Callable[..., Any] | None, Any]:
+def function_of(cls: type, name: str) -> tuple[Callable[..., Any] | None, Any]:
     """Return the function behind a method and its `v_args` options."""
     attribute = inspect.getattr_static(cls, name)
     if isinstance(attribute, _VArgs):
@@ -304,9 +310,9 @@ def _parameters(cls: type, name: str, function: Callable[..., Any]) -> list[insp
     return parameters
 
 
-def _token_convention(cls: type, name: str) -> int:
+def token_convention(cls: type, name: str) -> int:
     """Say how a method of a terminal is called: with the token, or with nothing."""
-    function, _ = _function(cls, name)
+    function, _ = function_of(cls, name)
     if function is None:
         # Another callable, such as `float`, gets the token.
         return TOKEN
@@ -325,14 +331,14 @@ def _token_convention(cls: type, name: str) -> int:
     )
 
 
-def _node_convention(
+def node_convention(
     cls: type, name: str, fields: dict[str, bool] | None
 ) -> tuple[int, tuple[str, ...], int]:
     """Say how a method of a node is called: its mode, the fields it takes and its extras.
 
     `fields` is `None` for a tree built in Python, which has none.
     """
-    function, options = _function(cls, name)
+    function, options = function_of(cls, name)
     if function is None:
         inline, meta, tree = options or (False, False, False)
         return _option_mode(inline, meta, tree), (), 0
@@ -370,8 +376,8 @@ def _node_convention(
     else:
         known = f"{name} has no fields"
     raise TypeError(
-        f"{cls.__qualname__}.{name} takes {', '.join(names)}, and {known}. Take the children as "
-        "one list, as *children, or by field"
+        f"{cls.__qualname__}.{name} takes {', '.join(names)}, and {known}. A method takes "
+        "fields by name, one other parameter, or *children"
     )
 
 
@@ -393,7 +399,7 @@ def _owned_convention(cls: type, name: str) -> tuple[int, tuple[str, ...], int]:
     """Say how a method is called for a tree built in Python, read once per class and name."""
     by_name = _owned_conventions.setdefault(cls, {})
     if name not in by_name:
-        by_name[name] = _node_convention(cls, name, None)
+        by_name[name] = node_convention(cls, name, None)
     return by_name[name]
 
 
@@ -407,23 +413,23 @@ def _make_plan(
     """
     names = {name for name, _, _ in kinds}
     if getattr(cls, "__fpeg_strict__", False):
-        _check_strict(cls, names)
+        check_strict(cls, names)
     entries: list[tuple[int, str, int, tuple[str, ...], int]] = []
     conventions: dict[tuple[str, bool], tuple[int, tuple[str, ...], int]] = {}
     for kind, (name, token, fields) in enumerate(kinds):
-        if not _is_handler(cls, name):
+        if not is_handler(cls, name):
             continue
         if (name, token) not in conventions:
             if token:
-                conventions[(name, token)] = (_token_convention(cls, name), (), 0)
+                conventions[(name, token)] = (token_convention(cls, name), (), 0)
             else:
-                conventions[(name, token)] = _node_convention(cls, name, dict(fields))
+                conventions[(name, token)] = node_convention(cls, name, dict(fields))
         mode, field_names, extras = conventions[(name, token)]
         entries.append((kind, name, mode, field_names, extras))
     return entries, _overrides(cls, "__default__"), _overrides(cls, "__default_token__")
 
 
-def _check_strict(cls: type, names: Iterable[str]) -> None:
+def check_strict(cls: type, names: Iterable[str]) -> None:
     known = set(names)
     for name in sorted(_public_methods(cls)):
         if name not in known:
@@ -437,7 +443,8 @@ def _check_strict(cls: type, names: Iterable[str]) -> None:
 def _public_methods(cls: type) -> set[str]:
     methods: set[str] = set()
     for base in cls.__mro__:
-        if base is Transformer or base is object:
+        # The classes of fpeg itself name no rules.
+        if base is object or "__fpeg_reserved__" in vars(base):
             continue
         methods.update(n for n, v in vars(base).items() if not n.startswith("_") and _is_method(v))
     return methods
