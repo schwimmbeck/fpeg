@@ -24,12 +24,6 @@ use crate::lines::LineIndex;
 use crate::parse::{END_OF_INPUT, Limit, Limits, ParseError, ParseErrorKind};
 use crate::tree::{FieldId, KindId, Names, Tree};
 
-/// Evaluation steps a parse may take by default. Work beyond a plain step counts too, so the
-/// limit bounds the time a parse takes: copying a remembered result counts one step per item,
-/// and capturing, comparing, looking up or scanning text counts one per byte. About ten
-/// seconds, enough for a megabyte of Python.
-const DEFAULT_MAX_STEPS: u64 = 200_000_000;
-
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
 const STACK_BYTES: usize = 256 * 1024 * 1024;
 
@@ -181,16 +175,22 @@ impl fmt::Debug for Reference {
 }
 
 impl Reference {
+    /// Evaluation steps a parse may take by default. Work beyond a plain step counts too, so the
+    /// limit bounds the time a parse takes: copying a remembered result counts one step per
+    /// item, and capturing, comparing, looking up or scanning text counts one per byte. About
+    /// ten seconds, enough for a megabyte of Python.
+    pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
+
     /// Resolve a grammar, or report the problems in it, the first hundred at most.
     pub fn new(grammar: &Grammar) -> Result<Reference, Vec<GrammarError>> {
         crate::resolve::resolve(grammar).map(|grammar| Reference { grammar })
     }
 
-    /// Parse the whole input from the rule `start`, with the default depth and a limit of the
-    /// interpreter's own steps that takes about ten seconds.
+    /// Parse the whole input from the rule `start`, with the default depth and
+    /// [`Reference::DEFAULT_MAX_STEPS`] of the interpreter's own steps.
     pub fn parse(&self, input: &str, start: &str) -> Result<Tree, ParseError> {
         let limits = Limits {
-            max_steps: DEFAULT_MAX_STEPS,
+            max_steps: Reference::DEFAULT_MAX_STEPS,
             ..Limits::default()
         };
         self.parse_with(input, start, limits)

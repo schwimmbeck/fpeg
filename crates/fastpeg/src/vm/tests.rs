@@ -8,7 +8,7 @@ use super::Parser;
 use super::machine::Machine;
 use super::program::{Class, Inst, Program};
 use super::verify::verify;
-use crate::builder::{GrammarBuilder, lit, opt, r, sep_many};
+use crate::builder::{GrammarBuilder, lit, opt, r, r_args, sep_many, seq};
 use crate::grammar::{ClassItem, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Property};
 use crate::ir::CharSet;
 use crate::parse::Limits;
@@ -399,22 +399,34 @@ fn a_long_sequence_of_parts_that_may_be_empty_compiles_in_linear_time() {
 const LINEAR_COMPILE_SECONDS: f64 = 10.0;
 
 #[test]
-fn the_deepest_grammar_compiles_on_a_small_stack() {
-    // The compiler recurses once per level of an expression, which the resolver bounds.
-    let mut expr = lit("a");
+fn the_deepest_grammars_compile_on_a_small_stack() {
+    // The resolver and the compiler recurse once per level of an expression, which the resolver
+    // bounds: 100 levels in a rule, and twice that in a template instance whose argument nests
+    // as deeply as its body.
+    let mut nested = lit("a");
     for _ in 1..MAX_EXPRESSION_DEPTH {
-        expr = sep_many(expr, lit(","));
+        nested = sep_many(nested, lit(","));
     }
     let mut g = GrammarBuilder::new();
-    g.rule("start", expr);
-    let grammar = g.build();
-    let compiled = std::thread::Builder::new()
-        .stack_size(SMALL_STACK_BYTES)
-        .spawn(move || Parser::new(&grammar).is_ok())
-        .expect("the thread starts")
-        .join()
-        .expect("compiling finishes");
-    assert!(compiled);
+    g.rule("start", nested);
+    let deep = |mut expr: Expr| {
+        for _ in 2..MAX_EXPRESSION_DEPTH {
+            expr = opt(expr);
+        }
+        expr
+    };
+    let mut h = GrammarBuilder::new();
+    h.rule("start", r_args("t", [deep(lit("a"))]));
+    h.rule("t", seq([deep(r("x")), lit("b")])).params(["x"]);
+    for grammar in [g.build(), h.build()] {
+        let compiled = std::thread::Builder::new()
+            .stack_size(SMALL_STACK_BYTES)
+            .spawn(move || Parser::new(&grammar).is_ok())
+            .expect("the thread starts")
+            .join()
+            .expect("compiling finishes");
+        assert!(compiled);
+    }
 }
 
 /// A stack of the size Windows gives a program's main thread.

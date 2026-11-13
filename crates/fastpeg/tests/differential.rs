@@ -19,7 +19,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use common::cases::{CheckKind, case_files, parse_cases};
 use common::generator::{Features, check_seeds, generate_with, reference_limits};
-use fastpeg::{Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, RuleKind, Tree};
+use fastpeg::{
+    Grammar, Limit, Limits, ParseError, ParseErrorKind, Parser, Reference, RuleKind, Tree,
+};
 
 /// What the machine reports for what it does not run yet.
 const NOT_YET: &str = "which the parser does not run yet";
@@ -46,22 +48,34 @@ fn engines(grammar: &Grammar) -> Result<Option<(Reference, Option<Parser>)>, Str
     }
 }
 
-/// A parse as text: the tree with spans, or the error with its expected set. None at a limit.
-fn shown(result: Result<Tree, ParseError>, input: &str) -> Option<String> {
+/// A parse as text: the tree with spans, or the error with its expected set, or the limit hit.
+fn shown(result: Result<Tree, ParseError>, input: &str) -> Result<String, Limit> {
     match result {
-        Ok(tree) => Some(tree.to_text(input, true)),
-        Err(error) if matches!(error.kind, ParseErrorKind::Limit(_)) => None,
-        Err(error) => Some(format!("{error:?}")),
+        Ok(tree) => Ok(tree.to_text(input, true)),
+        Err(ParseError {
+            kind: ParseErrorKind::Limit(limit),
+            ..
+        }) => Err(limit),
+        Err(error) => Ok(format!("{error:?}")),
     }
 }
 
 enum Verdict {
     Same,
-    /// Only the machine hit a limit.
-    MachineLimit,
+    /// Only the machine hit this limit.
+    MachineLimit(Limit),
     /// The reference interpreter hit a limit.
     ReferenceLimit,
     Differ(String),
+}
+
+/// The limits for the engines: the reference interpreter's own step budget, and the machine's.
+fn default_limits() -> [Limits; 2] {
+    let reference = Limits {
+        max_steps: Reference::DEFAULT_MAX_STEPS,
+        ..Limits::default()
+    };
+    [reference, Limits::default()]
 }
 
 /// Parse with both engines and compare.
@@ -75,13 +89,13 @@ fn compare(
     let expected = shown(reference.parse_with(input, start, limits[0]), input);
     let actual = shown(parser.parse_with(input, start, limits[1]), input);
     match (expected, actual) {
-        (Some(expected), Some(actual)) if expected == actual => Verdict::Same,
-        (Some(expected), Some(actual)) => Verdict::Differ(format!(
+        (Ok(expected), Ok(actual)) if expected == actual => Verdict::Same,
+        (Ok(expected), Ok(actual)) => Verdict::Differ(format!(
             "on {input:?} the reference gives\n{expected}\nand the machine\n{actual}\n{}",
             parser.disassemble()
         )),
-        (Some(_), None) => Verdict::MachineLimit,
-        (None, _) => Verdict::ReferenceLimit,
+        (Ok(_), Err(limit)) => Verdict::MachineLimit(limit),
+        (Err(_), _) => Verdict::ReferenceLimit,
     }
 }
 
@@ -99,7 +113,9 @@ impl Tally {
     fn count(&mut self, verdict: Verdict, failures: &mut Vec<String>, at: &str) {
         match verdict {
             Verdict::Same => self.compared += 1,
-            Verdict::MachineLimit => failures.push(format!("{at}: the machine hits a limit")),
+            Verdict::MachineLimit(limit) => {
+                failures.push(format!("{at}: the machine hits the {limit:?} limit"));
+            }
             Verdict::ReferenceLimit => failures.push(format!("{at}: the reference hits a limit")),
             Verdict::Differ(problem) => failures.push(format!("{at}: {problem}")),
         }
@@ -141,8 +157,7 @@ fn case_files_give_the_same_results_on_both_engines() {
                     tally.waiting += 1;
                     continue;
                 };
-                let limits = [Limits::default(); 2];
-                let verdict = compare(&reference, parser, input, "start", limits);
+                let verdict = compare(&reference, parser, input, "start", default_limits());
                 tally.count(
                     verdict,
                     &mut failures,
@@ -199,8 +214,7 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
         run.push(name);
         for file in files {
             let input = std::fs::read_to_string(&file).expect("the sample is readable");
-            let limits = [Limits::default(); 2];
-            let verdict = compare(&reference, &parser, &input, "start", limits);
+            let verdict = compare(&reference, &parser, &input, "start", default_limits());
             tally.count(verdict, &mut failures, &file.display().to_string());
         }
     }
@@ -251,7 +265,14 @@ fn check_against_reference(seed: u64) -> Option<String> {
             let limits = [reference_limits(), machine];
             match compare(&reference, &parser, input, start, limits) {
                 Verdict::Same => COMPARED.fetch_add(1, Ordering::Relaxed),
-                Verdict::MachineLimit => MACHINE_LIMITS.fetch_add(1, Ordering::Relaxed),
+                // Inputs this short reach the depth limit only through left recursion, which
+                // the machine must reject before it parses.
+                Verdict::MachineLimit(Limit::Depth) => {
+                    return Some(format!(
+                        "from {start} on {input:?} only the machine hits the depth limit\n{grammar}"
+                    ));
+                }
+                Verdict::MachineLimit(_) => MACHINE_LIMITS.fetch_add(1, Ordering::Relaxed),
                 Verdict::ReferenceLimit => REFERENCE_LIMITS.fetch_add(1, Ordering::Relaxed),
                 Verdict::Differ(problem) => {
                     return Some(format!("from {start}: {problem}\n{grammar}"));
