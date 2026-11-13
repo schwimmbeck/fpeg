@@ -71,3 +71,9 @@ close: "</" %ref(tag)
 NAME: [a-z]+
 --- "b></b"
 error at 4: expected %ref(tag)
+
+=== contexts that map the same captures are equal, so capturing again keeps left recursion
+start: %def(c, ()) r
+r: %def(c, ()) r "a" | "b"
+--- "baa"
+(start (r (r (r ~"b") ~"a") ~"a"))

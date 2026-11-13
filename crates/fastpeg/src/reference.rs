@@ -14,7 +14,7 @@
 //! since could be reached. Without it, every operator level of a precedence block re-parses the
 //! levels below it in each growing step, which is exponential in the number of levels.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 use crate::grammar::{Grammar, GrammarError};
@@ -174,19 +174,22 @@ impl Reference {
     }
 }
 
-/// The context of a match: flags that are on, the reference column, and the captures.
+/// The context of a match: flags that are on, the reference column, and what the captures map
+/// to. Contexts that map the same compare equal, whatever was captured and hidden before.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Ctx {
     flags: BTreeSet<FlagId>,
     column: u32,
-    captures: Vec<(CaptureId, String)>,
+    captures: Captures,
 }
+
+type Captures = BTreeMap<CaptureId, String>;
 
 #[derive(Debug)]
 struct Success {
     end: usize,
     items: Vec<Item>,
-    captures: Vec<(CaptureId, String)>,
+    captures: Captures,
     cut: bool,
 }
 
@@ -272,7 +275,7 @@ impl<'a> Interp<'a> {
         let ctx = Ctx {
             flags: BTreeSet::new(),
             column: 0,
-            captures: Vec::new(),
+            captures: Captures::new(),
         };
         let result = self.eval(start, 0, &ctx).and_then(|outcome| match outcome {
             Outcome::Ok(success) => {
@@ -353,7 +356,7 @@ impl<'a> Interp<'a> {
         Ok(Outcome::Fail { cut: false })
     }
 
-    fn with_captures(ctx: &Ctx, captures: Vec<(CaptureId, String)>) -> Ctx {
+    fn with_captures(ctx: &Ctx, captures: Captures) -> Ctx {
         Ctx {
             flags: ctx.flags.clone(),
             column: ctx.column,
@@ -699,25 +702,22 @@ impl<'a> Interp<'a> {
             E::Def { capture, expr } => match self.eval(expr, pos, ctx)? {
                 Outcome::Ok(mut success) => {
                     let text = self.input.get(pos..success.end).unwrap_or_default();
-                    success.captures.push((*capture, text.to_owned()));
+                    success.captures.insert(*capture, text.to_owned());
                     Ok(Outcome::Ok(success))
                 }
                 failure => Ok(failure),
             },
-            E::Ref { capture } => {
-                let text = ctx.captures.iter().rev().find(|(c, _)| c == capture);
-                match text {
-                    Some((_, text))
-                        if self
-                            .input
-                            .get(pos..)
-                            .is_some_and(|r| r.starts_with(text.as_str())) =>
-                    {
-                        Interp::ok(pos + text.len(), ctx)
-                    }
-                    _ => Interp::fail(),
+            E::Ref { capture } => match ctx.captures.get(capture) {
+                Some(text)
+                    if self
+                        .input
+                        .get(pos..)
+                        .is_some_and(|r| r.starts_with(text.as_str())) =>
+                {
+                    Interp::ok(pos + text.len(), ctx)
                 }
-            }
+                _ => Interp::fail(),
+            },
             E::Throw(label) => Err(Abort::Error {
                 label: *label,
                 position: pos,

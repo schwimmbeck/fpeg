@@ -59,7 +59,7 @@ The translation runs in this order.
 
 The meaning of a core expression `e` is a relation between `e`, a position `i`, a context `κ`, and a result.
 
-- The context `κ` has three parts: the set of flags that are on, the reference column, and the captures, a list of names with texts in which later entries hide earlier ones.
+- The context `κ` has three parts: the set of flags that are on, the reference column, and the captures, which map names to texts. Two contexts are equal when all three parts are, however the captures came about.
 - A result is one of:
   - **success** `(j, items, Γ, c)`: the expression matched the input from `i` to `j`, produced the list `items`, leaves the captures `Γ` for what follows, and `c` says whether it passed a cut that no choice point has consumed yet;
   - **failure** `(c)`: the expression does not match, and `c` says whether a cut was passed before the failure;
@@ -113,8 +113,8 @@ A rule that is not left recursive gives the same result as matching its body onc
 | `if(a)`, `if_not(a)` | success `(i, [], Γ, false)` if flag `a` is on, or off, otherwise failure `(false)` |
 | `indent(e, s)` | let `p` be where `skip` ends at `i` if `s`, otherwise `i`. If the column of `p` is greater than the reference column, the result of `e` at `i` with the column of `p` as the reference column, otherwise failure `(false)` |
 | `same(s)` | with `p` as above: success `(i, [], Γ, false)` if the column of `p` equals the reference column, otherwise failure `(false)` |
-| `def(x, e)` | the result of `e`. On success, the captures it leaves get the entry `x` with the text from `i` to the end of the match |
-| `ref(x)` | success after the text of the latest entry `x` if the input continues with it at `i`. Failure if it does not, or if there is no entry `x` |
+| `def(x, e)` | the result of `e`. On success, the captures it leaves map `x` to the text from `i` to the end of the match, in place of any text before |
+| `ref(x)` | success after the text `x` maps to if the input continues with it at `i`. Failure if it does not, or if `x` maps to nothing |
 
 Flags and the reference column hold for the extent of their expression, including the rules it calls. Captures hold until the rule activation that made them ends.
 

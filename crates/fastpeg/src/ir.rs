@@ -29,7 +29,7 @@ pub(crate) struct RuleId(pub u32);
 pub(crate) struct FlagId(pub u16);
 
 /// Identifies a capture name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct CaptureId(pub u16);
 
 /// Identifies an error label.
