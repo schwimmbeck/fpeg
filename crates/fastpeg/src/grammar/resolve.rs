@@ -202,12 +202,18 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         }
     }
     // Level names belong to the whole grammar, so their rules exist before any rule calls one.
-    // A block with parameters is an error and keeps its levels to itself.
+    // A block with parameters is an error, reported here so that an unused one is reported too,
+    // and keeps its levels to itself.
     for rule in &grammar.rules {
         let RuleBody::Precedence(levels) = &rule.body else {
             continue;
         };
         if !rule.params.is_empty() {
+            let message = format!(
+                "the precedence block {} cannot have parameters",
+                rule.name.text
+            );
+            r.error(message, rule.name.span);
             continue;
         }
         for level in levels {
@@ -261,6 +267,12 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
             let start = r.reference(&rule.name, &[], syntactic, rule.name.span);
             entry.insert(rule.name.text.clone(), start);
         }
+    }
+    // A reference reaches a level as it reaches a rule, so a parse may start from one.
+    let levels: Vec<&Name> = r.levels.values().map(|&(_, level)| &level.name).collect();
+    for name in levels {
+        let start = r.reference(name, &[], syntactic, name.span);
+        entry.insert(name.text.clone(), start);
     }
     while let Some(pending) = r.queue.pop_front() {
         r.lower_rule(pending);
@@ -786,12 +798,14 @@ impl<'g> Resolver<'g> {
             );
             self.error(message, rule.name.span);
         }
+        // Its levels would refer to parameters that nothing binds, which only adds errors.
         if !rule.params.is_empty() {
             let message = format!(
                 "the precedence block {} cannot have parameters",
                 rule.name.text
             );
             self.error(message, rule.name.span);
+            return ir::Expr::Empty;
         }
         let mut scope_names = HashMap::new();
         let mut ids = Vec::new();
@@ -1112,6 +1126,15 @@ impl<'g> Resolver<'g> {
         if let Some(id) = level {
             if !args.is_empty() {
                 self.error(format!("the level {} takes no arguments", name.text), span);
+            }
+            // A level is syntactic, which no terminal and no skip expression may use.
+            if scope.mode == Mode::Plain {
+                let message = format!(
+                    "a terminal or the skip expression cannot use the level {}",
+                    name.text
+                );
+                self.error(message, span);
+                return ir::Expr::Empty;
             }
             return ir::Expr::Call(id);
         }

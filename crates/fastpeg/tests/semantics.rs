@@ -246,14 +246,32 @@ fn case_files_match_the_reference_interpreter() {
     );
 }
 
-// The case files always start from `start`, so this case is written out.
+// The case files always start from `start`, so these cases are written out.
 #[test]
-fn a_parse_from_an_unknown_rule_is_an_error() {
-    let grammar = Grammar::from_text("start: \"a\"\n").expect("the grammar reads");
+fn a_parse_starts_from_a_rule_or_a_level_but_not_from_an_unknown_name() {
+    let text = "start: expr\nexpr: %precedence {\n    sum: left=sum \"+\" right=atom -> add\n    atom: N\n}\nN: [0-9]\n";
+    let grammar = Grammar::from_text(text).expect("the grammar reads");
     let reference = Reference::new(&grammar).expect("the grammar resolves");
-    let error = reference.parse("a", "missing").expect_err("no such rule");
+    let tree = reference
+        .parse("1+2", "sum")
+        .expect("a level starts a parse");
+    assert_eq!(
+        tree.to_text("1+2", false),
+        "(add left=N\"1\" ~\"+\" right=N\"2\")"
+    );
+    let error = reference.parse("1", "missing").expect_err("no such rule");
     assert_eq!(
         error.kind,
         ParseErrorKind::UnknownStart("missing".to_owned())
     );
+}
+
+// The case files match grammar errors by subset, so this exact list is written out.
+#[test]
+fn a_precedence_block_with_parameters_reports_only_that() {
+    let text = "start: t<\"x\">\nt<p>: %precedence {\n    b: p\n}\n";
+    let grammar = Grammar::from_text(text).expect("the grammar reads");
+    let errors = Reference::new(&grammar).expect_err("parameters are an error");
+    let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(messages, ["the precedence block t cannot have parameters"]);
 }

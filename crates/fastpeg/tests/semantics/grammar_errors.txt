@@ -190,6 +190,26 @@ only terminals can be @reserved, not start
 the terminal T cannot be transparent
 the terminal U cannot have an alias
 
+=== a terminal or the skip expression cannot use a level
+start: T
+T: sum
+expr: %precedence {
+    sum: left=sum "+" right=atom -> add
+    atom: [0-9]
+}
+%ignore " "+ | atom
+--- grammar
+a terminal or the skip expression cannot use the level sum
+a terminal or the skip expression cannot use the level atom
+
+=== a precedence block with parameters is an error also when nothing uses it
+start: "a"
+p<x>: %precedence {
+    level: x
+}
+--- grammar
+the precedence block p cannot have parameters
+
 === a precedence block is a plain syntactic rule without parameters
 start: _e t<"x">
 _e: %precedence {
