@@ -354,6 +354,8 @@ impl KindItems {
             }
             E::Node { kind, expr: inner } | E::Transparent { kind, expr: inner } => {
                 let items = counter.of(inner);
+                // Only a node that stays holds fields: an alternative of a transparent rule that
+                // gives way to its one child passes the child's field on instead.
                 if matches!(expr, E::Node { .. }) || items.visible > 1 || items.empty {
                     self.mark(*kind);
                     if let Some(present) = self.present.get_mut(kind.0 as usize) {
@@ -362,11 +364,11 @@ impl KindItems {
                             None => *present = Some(items.present.clone()),
                         }
                     }
-                }
-                if let Some(counts) = self.fields.get_mut(kind.0 as usize) {
-                    for (field, count) in items.fields {
-                        let held = counts.entry(field).or_insert(0);
-                        *held = (*held).max(count);
+                    if let Some(counts) = self.fields.get_mut(kind.0 as usize) {
+                        for (field, count) in items.fields {
+                            let held = counts.entry(field).or_insert(0);
+                            *held = (*held).max(count);
+                        }
                     }
                 }
                 self.add(counter, inner, walked);
@@ -598,7 +600,8 @@ mod tests {
     fn fields_of_rules_without_a_node_join_the_node_that_calls_them() {
         let grammar = Grammar::from_text(
             "pair: _kv\n_kv: k=NAME v=NAME\nlist: _items\n_items: x=NAME _items | ()\n\
-             ?wrap: _k\n_k: k=NAME\nouter: w=wrap\nNAME: [a-z]+\n%ignore \" \"+",
+             ?wrap: _k\n_k: k=NAME\nouter: w=wrap\n?two: NAME NAME | _k\n\
+             NAME: [a-z]+\n%ignore \" \"+",
         )
         .unwrap_or_else(|e| panic!("{e:?}"));
         let named = |kind| fields(&grammar, kind);
@@ -613,6 +616,8 @@ mod tests {
             named("outer"),
             [("k".to_owned(), Optional), ("w".to_owned(), Optional)]
         );
+        // The node stays only for two names, which hold no field.
+        assert_eq!(named("two"), []);
     }
 
     #[test]
