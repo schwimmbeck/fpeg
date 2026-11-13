@@ -68,6 +68,25 @@ fn a_failed_alternative_gives_back_the_nodes_it_made() {
 }
 
 #[test]
+fn a_remembered_rule_keeps_few_nodes_of_failed_alternatives() {
+    // As above, with a remembered rule matched after every closing bracket. Each of its first
+    // matches keeps the arena as long as it is then, and there is one for each position.
+    let parser =
+        parser("start: s\ns: \"(\" s \")\" t \"x\" | \"(\" s \")\" t | \"a\"\n@memo\nt: ()\n");
+    let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
+    let mut machine = Machine::new(&parser.program, &input, Limits::default(), None);
+    assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
+    let tree = machine.tree().expect("the tree fits");
+    // The 2^12 failed attempts make more than twenty thousand nodes.
+    assert!(
+        machine.arena_len() <= 4 * tree.len(),
+        "{} nodes in the arena for a tree of {}",
+        machine.arena_len(),
+        tree.len()
+    );
+}
+
+#[test]
 fn an_instruction_takes_at_most_twelve_bytes() {
     assert!(size_of::<Inst>() <= 12, "{}", size_of::<Inst>());
 }

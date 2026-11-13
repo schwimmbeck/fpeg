@@ -365,3 +365,43 @@ fn a_tree_as_deep_as_its_input_prints_without_recursion() {
     assert!(printed.starts_with(&format!("(start {}", "(sum ".repeat(500))));
     assert!(lines.ends_with(&format!("\n{}~\"+\"\n{}~\"1\"\n", "    ", "    ")));
 }
+
+#[test]
+fn the_machine_grows_a_left_recursion_as_long_as_the_input_on_a_small_stack() {
+    let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
+        .expect("the grammar reads");
+    let parser = Parser::new(&grammar).expect("the grammar compiles");
+    let terms = 100_000;
+    let input = format!("1{}", "+1".repeat(terms - 1));
+    // Parsing, laying out and printing a tree 100,000 nodes deep, none of it by recursion.
+    let (entries, printed) = std::thread::Builder::new()
+        .stack_size(PRINT_STACK_BYTES)
+        .spawn(move || {
+            let tree = parser.parse(&input, "start").expect("the input parses");
+            (tree.len(), tree.to_text(&input, false).len())
+        })
+        .expect("the thread starts")
+        .join()
+        .expect("parsing finishes");
+    // A node for every term and for the start, and the tokens between.
+    assert_eq!(entries, 3 * terms);
+    assert!(printed > entries);
+}
+
+#[test]
+fn brackets_nested_beyond_the_depth_limit_are_an_error_in_a_precedence_block() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/grammars/expressions.fpeg");
+    let text = std::fs::read_to_string(path).expect("the grammar is readable");
+    let grammar = Grammar::from_text(&text).expect("the grammar reads");
+    let parser = Parser::new(&grammar).expect("the grammar compiles");
+    // Every level of the block is a rule activation, sixteen for each pair of brackets.
+    assert!(
+        parser
+            .parse(&nested(100).replace('x', "1"), "start")
+            .is_ok()
+    );
+    let error = parser
+        .parse(&nested(1_000).replace('x', "1"), "start")
+        .expect_err("too deep");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
+}
