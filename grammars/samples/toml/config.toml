@@ -28,3 +28,6 @@ lines"""
 pattern = '''
 \d+ "kept" \n
 as written'''
+said = """she said "yes"""" # the content ends in a quote
+joined = """a \
+    b"""

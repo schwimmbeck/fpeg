@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT
 
-// A subset of TOML: tables, arrays of tables, dotted keys, basic, literal and multi-line
+// A subset of TOML 1.0: tables, arrays of tables, dotted keys, basic, literal and multi-line
 // strings, integers, floats, booleans, arrays that may span lines, and inline tables. Dates
-// and times are left out.
+// and times are left out, and so is the check that no key or table is defined twice.
 
 %flag inside
 %ignore [ \t]+ | COMMENT | %if(inside) _NL
@@ -28,20 +28,25 @@ key: parts=(simple_key ++ ".")
       | array
       | inline_table
 
-array: "[" %on(inside, items=(value ** ",") ","? "]")
+array: "[" %on(inside, (items=(value ++ ",") ","?)? "]")
 inline_table: "{" %off(inside, pairs=(pair ** ",") "}")
 
+// Strings hold no control characters but the tab, and multi-line strings line breaks too.
 BARE_KEY: [A-Za-z0-9_\-]+
-BASIC_STRING: "\"" ([^"\\\r\n] | "\\" ESCAPE)* "\""
-LITERAL_STRING: "'" [^'\r\n]* "'"
-ML_BASIC_STRING: "\"\"\"" (!"\"\"\"" ("\\" ESCAPE | .))* "\"\"\""
-ML_LITERAL_STRING: "'''" (!"'''" .)* "'''"
-ESCAPE: ["\\bfnrt] | "u" HEX{4} | "U" HEX{8}
+BASIC_STRING: "\"" ([^"\\\u{0}-\u{8}\u{a}-\u{1f}\u{7f}] | "\\" ESCAPE)* "\""
+LITERAL_STRING: "'" [^'\u{0}-\u{8}\u{a}-\u{1f}\u{7f}]* "'"
+// One or two quotes may end the content, right before the closing delimiter.
+ML_BASIC_STRING: "\"\"\"" (!"\"\"\"" ML_BASIC_PART)* "\"\"\"" "\""{0,2}
+ML_BASIC_PART: "\\" ESCAPE | "\\" [ \t]* NEWLINE ([ \t] | NEWLINE)* | [^\\\u{0}-\u{8}\u{b}-\u{1f}\u{7f}] | "\r\n"
+ML_LITERAL_STRING: "'''" (!"'''" ([^\u{0}-\u{8}\u{b}-\u{1f}\u{7f}] | "\r\n"))* "'''" "'"{0,2}
+NEWLINE: "\n" | "\r\n"
+// An escape names a Unicode scalar value: no surrogate and nothing above U+10FFFF.
+ESCAPE: ["\\bfnrt] | "u" !([dD] [89a-fA-F]) HEX{4} | "U" ("0000" !([dD] [89a-fA-F]) HEX{4} | "000" [1-9a-fA-F] HEX{4} | "0010" HEX{4})
 HEX: [0-9A-Fa-f]
 INTEGER: "0x" HEX ("_"? HEX)* | "0o" [0-7] ("_"? [0-7])* | "0b" [01] ("_"? [01])* | [+\-]? DECIMAL
 FLOAT: [+\-]? (DECIMAL ("." DIGITS EXPONENT? | EXPONENT) | "inf" | "nan")
 DECIMAL: "0" | [1-9] ("_"? [0-9])*
 DIGITS: [0-9] ("_"? [0-9])*
 EXPONENT: [eE] [+\-]? DIGITS
-COMMENT: "#" [^\r\n]*
+COMMENT: "#" [^\u{0}-\u{8}\u{a}-\u{1f}\u{7f}]*
 _NL: (("\r\n" | "\n") [ \t]* COMMENT?)+
