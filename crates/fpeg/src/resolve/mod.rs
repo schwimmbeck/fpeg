@@ -8,10 +8,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use crate::diag::DiagnosticCode;
-use crate::grammar::print::expr_text;
+use crate::grammar::print::{builder_text, expr_text};
 use crate::grammar::{
     Alternative, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Level,
-    MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span,
+    MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
 use crate::tree::{FieldId, KindId, Names};
@@ -109,8 +109,11 @@ struct Resolver<'g> {
     /// Instances of rules without parameters, one per name, made before any template instance.
     plain_instances: usize,
     queue: VecDeque<Pending<'g>>,
+    /// Kinds by name and builder, so that each builder has a kind of its own.
     kinds: Interner,
+    kind_names: Vec<String>,
     kind_display: Vec<String>,
+    kind_builders: Vec<Option<ValueBuilder>>,
     fields: Interner,
     flags: HashMap<&'g str, FlagId>,
     captures: Interner,
@@ -137,7 +140,9 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         plain_instances: 0,
         queue: VecDeque::new(),
         kinds: Interner::with(&["<error>", "<missing>", "<skipped>"]),
+        kind_names: vec!["<error>".into(), "<missing>".into(), "<skipped>".into()],
         kind_display: vec!["error".into(), "missing".into(), "skipped".into()],
+        kind_builders: vec![None, None, None],
         fields: Interner::with(&[""]),
         flags: HashMap::new(),
         captures: Interner::default(),
@@ -256,14 +261,15 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         return Err(r.errors);
     }
     let rules: Vec<ir::Rule> = r.rules.into_iter().flatten().collect();
-    let facts = crate::items::count(&rules, &entry, r.kinds.names.len());
+    let facts = crate::items::count(&rules, &entry, r.kind_names.len());
     Ok(ir::Grammar {
         rules,
         entry,
         kind_fields: facts.kind_fields,
+        kind_builders: r.kind_builders,
         single_item: facts.single_item,
         names: Arc::new(Names {
-            kinds: r.kinds.names,
+            kinds: r.kind_names,
             fields: r.fields.names,
         }),
         kind_display: r.kind_display,
@@ -569,10 +575,19 @@ impl<'g> Resolver<'g> {
         RuleId((self.rules.len() - 1) as u32)
     }
 
-    fn kind(&mut self, name: &str, display: &str) -> KindId {
-        let (id, new) = self.kinds.id(name);
+    /// The kind of the nodes or tokens named `name` that the builder makes values of. Each
+    /// builder gets a kind of its own, so that a tree finds the builder by the kind.
+    fn kind(&mut self, name: &str, display: &str, builder: Option<&ValueBuilder>) -> KindId {
+        let key = match builder {
+            None => name.to_owned(),
+            // Rule names hold no NUL, and anonymous kinds have no builder.
+            Some(builder) => format!("{name}\0{}", builder_text(builder)),
+        };
+        let (id, new) = self.kinds.id(&key);
         if new {
+            self.kind_names.push(name.to_owned());
             self.kind_display.push(display.to_owned());
+            self.kind_builders.push(builder.cloned());
         }
         KindId(id)
     }
@@ -742,7 +757,7 @@ impl<'g> Resolver<'g> {
                 let mut lowered = Vec::new();
                 for alternative in alternatives {
                     let expr = self.lower(&alternative.expr, scope);
-                    lowered.push(self.wrap(rule, kind, alternative.alias.as_ref(), expr));
+                    lowered.push(self.wrap(rule, kind, alternative, expr));
                 }
                 choice(lowered)
             }
@@ -763,32 +778,33 @@ impl<'g> Resolver<'g> {
         &mut self,
         rule: &Rule,
         kind: RuleKind,
-        alias: Option<&Name>,
+        alternative: &Alternative,
         expr: ir::Expr,
     ) -> ir::Expr {
+        let builder = alternative.builder.as_ref();
         if kind == RuleKind::Terminal {
-            if let Some(alias) = alias {
+            if let Some(alias) = &alternative.alias {
                 let message = format!("the terminal {} cannot have an alias", rule.name.text);
                 self.error(DiagnosticCode::RuleForm, message, alias.span);
             }
             return expr;
         }
         let expr = Box::new(expr);
-        if let Some(alias) = alias {
+        if let Some(alias) = &alternative.alias {
             ir::Expr::Node {
-                kind: self.kind(&alias.text, &alias.text),
+                kind: self.kind(&alias.text, &alias.text, builder),
                 expr,
             }
         } else if rule.is_underscored() {
             *expr
         } else if rule.transparent {
             ir::Expr::Transparent {
-                kind: self.kind(&rule.name.text, &rule.name.text),
+                kind: self.kind(&rule.name.text, &rule.name.text, builder),
                 expr,
             }
         } else {
             ir::Expr::Node {
-                kind: self.kind(&rule.name.text, &rule.name.text),
+                kind: self.kind(&rule.name.text, &rule.name.text, builder),
                 expr,
             }
         }
@@ -844,7 +860,7 @@ impl<'g> Resolver<'g> {
                 let expr = self.lower(&alternative.expr, scope);
                 match &alternative.alias {
                     Some(alias) => lowered.push(ir::Expr::Node {
-                        kind: self.kind(&alias.text, &alias.text),
+                        kind: self.kind(&alias.text, &alias.text, alternative.builder.as_ref()),
                         expr: Box::new(expr),
                     }),
                     None => {
@@ -1097,7 +1113,7 @@ impl<'g> Resolver<'g> {
             return atom;
         }
         let name = expr_text(written);
-        let kind = self.kind(&name, &name);
+        let kind = self.kind(&name, &name, None);
         let mut inner = atom;
         if let ExprKind::Literal {
             text,
@@ -1217,7 +1233,14 @@ impl<'g> Resolver<'g> {
                     .display
                     .as_ref()
                     .map_or(&target.name.text, |d| &d.value);
-                let kind = self.kind(&target.name.text, display);
+                // A terminal makes one kind of token, with the builder of its first alternative.
+                let builder = match &target.body {
+                    RuleBody::Alternatives(alternatives) => {
+                        alternatives.first().and_then(|a| a.builder.as_ref())
+                    }
+                    RuleBody::Precedence(_) => None,
+                };
+                let kind = self.kind(&target.name.text, display, builder);
                 let token = ir::Expr::Token {
                     kind,
                     hidden: target.is_underscored() && !scope.in_field,
@@ -1243,30 +1266,10 @@ mod tests {
 
     use super::resolve;
     use crate::grammar::builder::{GrammarBuilder, lit, r, sep_many};
+    use crate::grammar::print::builder_text;
     use crate::ir;
     use crate::reference::Reference;
-
-    fn children(expr: &ir::Expr) -> Vec<&ir::Expr> {
-        use ir::Expr as E;
-        match expr {
-            E::Seq(items) | E::Choice(items) => items.iter().collect(),
-            E::Repeat { expr, .. }
-            | E::Token { expr, .. }
-            | E::Node { expr, .. }
-            | E::Transparent { expr, .. }
-            | E::Field { expr, .. }
-            | E::FlagOn { expr, .. }
-            | E::FlagOff { expr, .. }
-            | E::Indent { expr, .. }
-            | E::Def { expr, .. }
-            | E::Label { expr, .. }
-            | E::And(expr)
-            | E::Not(expr)
-            | E::Unreserved(expr) => vec![expr],
-            E::Shared(expr) => vec![expr],
-            _ => Vec::new(),
-        }
-    }
+    use crate::{Grammar, Parser};
 
     /// The expressions of all rules, counting a shared one once.
     fn size(grammar: &ir::Grammar) -> usize {
@@ -1280,7 +1283,7 @@ mod tests {
             {
                 continue;
             }
-            pending.extend(children(expr));
+            pending.extend(expr.children());
         }
         size
     }
@@ -1301,5 +1304,36 @@ mod tests {
         assert!(size(&resolved) < 1_000, "{}", size(&resolved));
         let reference = Reference::new(&grammar).expect("the grammar resolves");
         assert!(format!("{reference:?}").len() < 100);
+    }
+
+    #[test]
+    fn each_builder_has_a_kind_of_its_own_named_like_its_rule() {
+        let text = "?value: list | NUM | \"true\" => True | \"false\" => False
+                    list: \"[\" (value ** \",\") \"]\" => list
+                    row: () -> list => list
+                    NUM: [0-9]+ => int
+                    %ignore \" \"+";
+        let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
+        let parser = Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"));
+        let builders = |name: &str| -> Vec<Option<String>> {
+            (parser.kinds().iter())
+                .filter(|kind| kind.name == name)
+                .map(|kind| kind.builder.as_ref().map(builder_text))
+                .collect()
+        };
+        let some = |text: &str| Some(text.to_owned());
+        assert_eq!(builders("value"), [None, some("True"), some("False")]);
+        // Equal builders share a kind, also across rules through an alias.
+        assert_eq!(builders("list"), [some("list")]);
+        assert_eq!(builders("NUM"), [some("int")]);
+        // The tree reads as it would without builders.
+        let input = "[1, true]";
+        let tree = parser
+            .parse(input, "value")
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(
+            tree.to_text(input, false),
+            "(list ~\"[\" NUM\"1\" ~\",\" (value ~\"true\") ~\"]\")"
+        );
     }
 }

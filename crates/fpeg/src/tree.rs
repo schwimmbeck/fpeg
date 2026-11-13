@@ -12,6 +12,8 @@
 use std::fmt::Write;
 use std::sync::Arc;
 
+use crate::grammar::ValueBuilder;
+
 /// Identifies a kind of node or token in a grammar's kind table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct KindId(pub u32);
@@ -46,7 +48,7 @@ pub enum FieldCount {
 }
 
 /// What a compiled grammar knows about one kind of node or token.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Kind {
     /// The name, shared by every kind that one rule or alias makes.
@@ -55,6 +57,8 @@ pub struct Kind {
     pub display: String,
     /// The fields of its nodes, by field id, with how many items each can hold.
     pub fields: Vec<(FieldId, FieldCount)>,
+    /// The value builder of the alternatives that make it, or of its terminal.
+    pub builder: Option<ValueBuilder>,
 }
 
 /// The names behind kind and field ids, shared by a grammar and its trees.

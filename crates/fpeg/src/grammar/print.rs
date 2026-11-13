@@ -362,6 +362,11 @@ fn module_name(module: &str) -> String {
     }
 }
 
+/// A builder as written after `=>`, without spans, so equal builders give equal texts.
+pub(crate) fn builder_text(builder: &ValueBuilder) -> String {
+    BuilderText(builder).to_string()
+}
+
 struct BuilderText<'a>(&'a ValueBuilder);
 
 impl Display for BuilderText<'_> {

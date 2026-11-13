@@ -17,7 +17,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::grammar::{ClassItem, Span};
+use crate::grammar::{ClassItem, Span, ValueBuilder};
 use crate::tree::{FieldCount, FieldId, Kind, KindId, Names};
 
 /// Identifies a rule of a resolved grammar.
@@ -54,6 +54,8 @@ pub(crate) struct Grammar {
     pub labels: Vec<Label>,
     /// For each kind, the fields of its nodes with how many items each can hold.
     pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
+    /// For each kind, the value builder of the alternatives that make it.
+    pub kind_builders: Vec<Option<ValueBuilder>>,
     /// For each rule that can start a parse, whether it always leaves one visible item.
     pub single_item: HashMap<String, bool>,
 }
@@ -66,6 +68,7 @@ impl Grammar {
                 name: name.clone(),
                 display: self.kind_display.get(id).cloned().unwrap_or_default(),
                 fields: self.kind_fields.get(id).cloned().unwrap_or_default(),
+                builder: self.kind_builders.get(id).cloned().flatten(),
             })
             .collect()
     }

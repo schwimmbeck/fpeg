@@ -297,6 +297,8 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 | `=> None`, `=> True`, `=> False`, a number, a string | a constant |
 | `=> Name(a, b, key=c, items=*, flag=None)` | a call of a registered function with fields, constants and `*` for all children |
 
+- A builder belongs to its alternative. Each alternative with a builder makes nodes of a kind of their own, named like the rule or the alias, so a tree reads the same with builders and without. Alternatives with equal builders share that kind, across rules too.
+
 ## Modules
 
 Status: syntax now, effect in M7.
