@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import pickle
 import threading
 from pathlib import Path
 
@@ -32,6 +33,17 @@ def test_grammar_errors_carry_a_code_and_a_place() -> None:
     assert diagnostic.path is None
     assert str(raised.value) == "<grammar>:1:8: error[E201]: unknown rule missing"
     assert isinstance(raised.value, ValueError)
+
+
+def test_a_grammar_error_pickles_with_its_diagnostics() -> None:
+    with pytest.raises(fpeg.GrammarError) as raised:
+        fpeg.Grammar("start: missing")
+    again = pickle.loads(pickle.dumps(raised.value))
+    assert str(again) == str(raised.value)
+    (diagnostic,) = again.diagnostics
+    assert repr(diagnostic) == repr(raised.value.diagnostics[0])
+    made = fpeg.Diagnostic("E201", "unknown rule x", 2, 3, 2, 4, "g.fpeg")
+    assert str(pickle.loads(pickle.dumps(made))) == "g.fpeg:2:3: error[E201]: unknown rule x"
 
 
 def test_open_reads_a_file_with_a_byte_order_mark_and_names_it_in_messages(

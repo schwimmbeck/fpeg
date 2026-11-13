@@ -60,12 +60,49 @@ impl Diagnostic {
 
 #[pymethods]
 impl Diagnostic {
+    #[new]
+    #[pyo3(signature = (code, message, line, column, end_line, end_column, path = None))]
+    fn new(
+        code: String,
+        message: String,
+        line: usize,
+        column: usize,
+        end_line: usize,
+        end_column: usize,
+        path: Option<String>,
+    ) -> Diagnostic {
+        Diagnostic {
+            code,
+            message,
+            line,
+            column,
+            end_line,
+            end_column,
+            path,
+        }
+    }
+
     fn __str__(&self) -> String {
         self.rendered()
     }
 
     fn __repr__(&self) -> String {
         format!("<Diagnostic {}>", self.rendered())
+    }
+
+    /// Pickle a diagnostic as its fields, which pickles a grammar error with its diagnostics.
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyTuple>> {
+        let d = slf.get();
+        let fields = (
+            &d.code,
+            &d.message,
+            d.line,
+            d.column,
+            d.end_line,
+            d.end_column,
+            d.path.as_deref(),
+        );
+        (slf.get_type(), fields).into_pyobject(slf.py())
     }
 }
 

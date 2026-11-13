@@ -24,7 +24,7 @@ assert (pair.meta.line, pair.meta.column, pair.meta.end_column) == (1, 8, 14)
 
 ## Grammar
 
-`Grammar(text)` compiles a grammar given as text, and `Grammar.open(path)` reads one from a file. A grammar with problems raises `GrammarError`, which holds each problem as a `Diagnostic` with its [code](diagnostics/index.md) and its place.
+`Grammar(text)` compiles a grammar given as text, and `Grammar.open(path)` reads one from a file. A grammar with problems raises `GrammarError`, which holds each problem as a `Diagnostic` with its [code](diagnostics/index.md) and its place. Both pickle, so that a grammar error can pass to another process.
 
 ```python
 try:

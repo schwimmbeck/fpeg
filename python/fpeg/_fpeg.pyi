@@ -33,6 +33,16 @@ __all__ = [
 class Diagnostic:
     """A problem of a grammar: its stable code, what exactly is wrong, and where."""
 
+    def __new__(
+        cls,
+        code: str,
+        message: str,
+        line: int,
+        column: int,
+        end_line: int,
+        end_column: int,
+        path: str | None = None,
+    ) -> Diagnostic: ...
     @property
     def code(self) -> str: ...
     @property
