@@ -169,3 +169,46 @@ start: "a" => Point(x, y=*, z=None, w="s", n=1.5)
 start: "a"{3,2}
 --- grammar
 maximum is below its minimum
+
+=== a repetition count must fit in 32 bits
+start: "a"{4294967296}
+--- grammar
+the number is too large
+
+=== only terminals can be reserved, and a terminal is neither transparent nor aliased
+@reserved
+start: T U
+?T: "a"
+U: "b" -> u
+--- grammar
+only terminals can be @reserved, not start
+the terminal T cannot be transparent
+the terminal U cannot have an alias
+
+=== a precedence block is a plain syntactic rule without parameters
+start: _e t<"x">
+_e: %precedence {
+    a: "a"
+}
+t<p>: %precedence {
+    b: p
+}
+--- grammar
+the precedence block _e must be a plain syntactic rule
+the precedence block t cannot have parameters
+
+=== a parameter or a level given arguments is an error
+start: t<"a"> e
+t<p>: p<"b">
+e: %precedence {
+    a: b<"c">
+    b: "d"
+}
+--- grammar
+the parameter p takes no arguments
+the level b takes no arguments
+
+=== the inherited body needs a grammar that extends another
+start: ...
+--- grammar
+... needs a grammar that uses %extends (M7)
