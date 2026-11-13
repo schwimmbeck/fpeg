@@ -1,4 +1,9 @@
-# fastpeg
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/logo-dark.svg">
+    <img alt="fastpeg" src="docs/_static/logo-light.svg" width="300">
+  </picture>
+</h1>
 
 A general-purpose PEG parsing library with a native engine and a `Transformer` that turns parse trees into your own objects.
 
