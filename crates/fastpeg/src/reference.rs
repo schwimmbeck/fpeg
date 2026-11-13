@@ -91,7 +91,7 @@ pub enum ParseErrorKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Limit {
     /// Too deeply nested rule activations, or matches nested deeper than the interpreter's
-    /// stack allows.
+    /// stack allows. Also when the interpreter's thread, which has that stack, cannot start.
     Depth,
     /// Too many evaluation steps.
     Steps,
@@ -175,8 +175,12 @@ impl Reference {
         });
         match outcome {
             Ok(Ok(result)) => result,
-            // The thread could not start, so run here and let a deep parse hit its limit.
-            Err(_) => run(),
+            // On the caller's stack the nesting limit would not keep the recursion in bounds,
+            // so without its own thread the parse stops as if too deep.
+            Err(_) => Err(ParseError {
+                position: 0,
+                kind: ParseErrorKind::Limit(Limit::Depth),
+            }),
             Ok(Err(panic)) => std::panic::resume_unwind(panic),
         }
     }
