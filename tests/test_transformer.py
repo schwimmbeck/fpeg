@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import pickle
 from collections.abc import Iterator
 from typing import Any
 
@@ -65,6 +66,18 @@ def test_a_star_parameter_or_inline_v_args_gets_the_children_as_arguments() -> N
     many = tuple("abcdefghij")
     assert Inline().transform(parse(f"f({', '.join(many)})")) == [("f", *many)]
 
+    # On a class v_args applies to every method, and it wraps a callable that keeps no options.
+    @fpeg.v_args(inline=True)
+    class Lark(fpeg.Transformer):
+        kw = fpeg.v_args(inline=True)(str.upper)
+
+        def call(self, name: Any, *rest: Any) -> tuple[Any, ...]:
+            return (name, *rest)
+
+    assert Lark().transform(parse("f(a) ! k")).children == [("f", "a", "K")]
+    with pytest.raises(TypeError, match="takes no wrapper"):
+        fpeg.v_args(wrapper=print)  # type: ignore[arg-type] # Lark's wrapper is refused
+
 
 def test_parameters_named_after_fields_get_one_value_none_or_a_list() -> None:
     class Fields(fpeg.Transformer):
@@ -124,6 +137,22 @@ def test_terminal_methods_get_their_token_and_any_callable_works() -> None:
     call = Tokens().transform(parse("f(7)")).children[0]
     assert call.children == ["NAME:f", 7]
 
+    class Shapes(fpeg.Transformer):
+        def NAME(self) -> str:
+            return "name"
+
+        @staticmethod
+        def NUMBER(*token: fpeg.Token) -> tuple[fpeg.Token, ...]:
+            return token
+
+    assert Shapes().transform(parse("f(7)")).children[0].children == ["name", ("7",)]
+
+    class TwoTokens(fpeg.Transformer):
+        def NAME(self, token: fpeg.Token, other: fpeg.Token) -> None: ...
+
+    with pytest.raises(TypeError, match="takes 2 arguments, and a terminal's method takes"):
+        TwoTokens().transform(parse("f()"))
+
 
 def test_keyword_only_extras_give_meta_node_and_children_beside_fields() -> None:
     seen: list[Any] = []
@@ -149,6 +178,18 @@ def test_a_signature_that_fits_no_rule_fails_at_the_first_transform_naming_the_f
 
     with pytest.raises(TypeError, match="takes only meta, node, children by keyword"):
         Keyword().transform(parse("f()"))
+
+    class Before(fpeg.Transformer):
+        def call(self, name: Any, *rest: Any) -> None: ...
+
+    with pytest.raises(TypeError, match=r"takes parameters before its \*parameter"):
+        Before().transform(parse("f()"))
+
+    class Unnamed(fpeg.Transformer):
+        def kw(self, bang: Any, name: Any) -> None: ...
+
+    with pytest.raises(TypeError, match="kw has no fields"):
+        Unnamed().transform(parse("f() ! k"))
 
 
 def test_discard_removes_a_node_from_its_parent_and_from_its_field() -> None:
@@ -274,6 +315,60 @@ def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
     with pytest.raises(TypeError, match="a tree built in Python has no fields"):
         FieldsOnBuilt().transform(built)
 
+    loop = fpeg.Tree("start", [])
+    loop.children.append(loop)
+    with pytest.raises(ValueError, match="the tree contains itself"):
+        Built().transform(loop)
+
+
+def test_a_tree_built_in_python_transforms_as_the_parse_it_copies() -> None:
+    class Modes(fpeg.Transformer):
+        def start(self, *calls: Any, meta: fpeg.Meta, children: list[Any]) -> tuple[Any, ...]:
+            return (meta.end_column, children, *calls)
+
+        def call(self, children: list[Any], *, node: fpeg.Tree) -> tuple[Any, ...]:
+            return (node.data, children)
+
+        def group(self, *items: Any) -> Iterator[Any]:
+            yield from items
+
+        def kw(self) -> Any:
+            return fpeg.Discard
+
+        NUMBER = int
+
+    class Options(fpeg.Transformer):
+        @fpeg.v_args(meta=True)
+        def call(self, meta: fpeg.Meta, children: list[Any]) -> tuple[Any, ...]:
+            return (meta.column, *children)
+
+        @fpeg.v_args(inline=True, meta=True)
+        def group(self, meta: fpeg.Meta, *items: Any) -> tuple[Any, ...]:
+            return (meta.end_column, *items)
+
+        @fpeg.v_args(tree=True)
+        def kw(self, tree: fpeg.Tree) -> fpeg.Tree:
+            return tree
+
+    class Defaults(fpeg.Transformer):
+        def __default__(self, data: Any, children: list[Any], meta: fpeg.Meta) -> Any:
+            return (data, meta.start_pos, children)
+
+    tree = parse("f(1, [a, 2]) ! k, g()")
+    # A pickled tree comes back built in Python, without the parse behind it.
+    copy = pickle.loads(pickle.dumps(tree))
+    for transformer in (Modes(), Options(), Defaults()):
+        assert transformer.transform(copy) == transformer.transform(tree)
+    assert fpeg.Transformer().transform(copy) is copy
+
+    class Failing(fpeg.Transformer):
+        def call(self, children: list[Any]) -> None:
+            raise ValueError("no")
+
+    with pytest.raises(ValueError, match="no") as raised:
+        Failing().transform(copy)
+    assert raised.value.__notes__[-1].endswith("Failing.call, for the tree call")
+
 
 def test_a_lone_token_and_any_other_value_transform_too() -> None:
     class Tokens(fpeg.Transformer):
@@ -282,6 +377,12 @@ def test_a_lone_token_and_any_other_value_transform_too() -> None:
     number = parse("f(7)").children[0].children[1]
     assert Tokens().transform(number) == 7
     assert Tokens().transform("plain") == "plain"
+
+    class Default(fpeg.Transformer):
+        def __default_token__(self, token: fpeg.Token) -> str:
+            return f"<{token}>"
+
+    assert Default().transform(number) == "<7>"
 
 
 def test_methods_are_found_on_the_instance_at_each_transform() -> None:
