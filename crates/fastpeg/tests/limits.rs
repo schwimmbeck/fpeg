@@ -3,7 +3,8 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
-use fastpeg::grammar::{Grammar, MAX_EXPRESSION_DEPTH};
+use fastpeg::grammar::builder::{GrammarBuilder, def, empty, lit};
+use fastpeg::grammar::{Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH};
 use fastpeg::reference::{Limit, Limits, ParseErrorKind, Reference};
 
 /// A stack too small for printing that recursed once per level of a deep tree.
@@ -94,6 +95,29 @@ fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
         .parse(&nested(1_500), "start")
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
+}
+
+#[test]
+fn more_flags_or_capture_names_than_ids_are_errors() {
+    let count = usize::from(u16::MAX) + 2;
+    let mut flags = GrammarBuilder::new();
+    for i in 0..count {
+        flags.flag(&format!("f{i}"));
+    }
+    flags.rule("start", lit("a"));
+    let mut captures = GrammarBuilder::new();
+    let defs = (0..count).map(|i| def(&format!("c{i}"), empty())).collect();
+    captures.rule("start", Expr::new(ExprKind::Sequence(defs)));
+    for (builder, message) in [
+        (flags, "too many flags"),
+        (captures, "too many capture names"),
+    ] {
+        let errors = Reference::new(&builder.build()).expect_err("too many ids");
+        assert!(
+            errors.iter().any(|e| e.message.contains(message)),
+            "{errors:?}"
+        );
+    }
 }
 
 #[test]

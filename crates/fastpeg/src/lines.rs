@@ -45,10 +45,11 @@ impl LineIndex {
     pub fn column(&self, text: &str, offset: usize, tab_width: u32) -> u32 {
         let start = self.line_start(offset);
         let mut column = 0u32;
+        // Saturating, so that a line too long to count stays at the largest column.
         for c in text.get(start..offset).unwrap_or("").chars() {
             column = match c {
-                '\t' if tab_width > 0 => (column / tab_width + 1) * tab_width,
-                _ => column + 1,
+                '\t' if tab_width > 0 => (column / tab_width + 1).saturating_mul(tab_width),
+                _ => column.saturating_add(1),
             };
         }
         column
@@ -69,5 +70,12 @@ mod tests {
         assert_eq!(lines.column(text, x, 4), 5);
         assert_eq!(lines.line(text.find('d').unwrap_or_default()), 2);
         assert_eq!(lines.column(text, text.len(), 8), 1);
+    }
+
+    #[test]
+    fn a_column_too_large_to_count_stays_at_the_largest() {
+        let text = "\t\t\tx";
+        let lines = LineIndex::new(text);
+        assert_eq!(lines.column(text, 3, u32::MAX / 2 + 1), u32::MAX);
     }
 }

@@ -35,6 +35,9 @@ const MAX_INSTANCE_EXPRESSIONS: usize = 100_000;
 /// The tab width when a grammar sets none.
 const DEFAULT_TAB_WIDTH: u32 = 8;
 
+/// The widest tab a grammar may set, far beyond any real layout, which keeps columns countable.
+const MAX_TAB_WIDTH: u32 = 1_000;
+
 /// The attributes a rule may carry.
 const ATTRIBUTES: [&str; 5] = ["lexical", "reserved", "sync", "memo", "nomemo"];
 
@@ -343,8 +346,11 @@ impl<'g> Resolver<'g> {
     fn directives(&mut self) {
         let g = self.grammar;
         for flag in &g.flags {
-            let next = FlagId(self.flags.len() as u16);
-            self.flags.entry(&flag.text).or_insert(next);
+            let Ok(next) = u16::try_from(self.flags.len()) else {
+                self.error("the grammar declares too many flags".into(), flag.span);
+                break;
+            };
+            self.flags.entry(&flag.text).or_insert(FlagId(next));
         }
         if let Some(word) = &g.word {
             match &word.kind {
@@ -359,9 +365,10 @@ impl<'g> Resolver<'g> {
             }
         }
         if let Some(tabs) = g.tabs
-            && tabs.value == 0
+            && !(1..=MAX_TAB_WIDTH).contains(&tabs.value)
         {
-            self.error("%tabs needs a width of at least 1".into(), tabs.span);
+            let message = format!("%tabs needs a width from 1 to {MAX_TAB_WIDTH}");
+            self.error(message, tabs.span);
         }
         if let Some(module) = &g.extends {
             self.error(
@@ -440,7 +447,13 @@ impl<'g> Resolver<'g> {
 
     fn capture(&mut self, name: &Name) -> CaptureId {
         let (id, _) = self.captures.id(&name.text);
-        CaptureId(u16::try_from(id).unwrap_or(u16::MAX))
+        match u16::try_from(id) {
+            Ok(id) => CaptureId(id),
+            Err(_) => {
+                self.error("the grammar has too many capture names".into(), name.span);
+                CaptureId(0)
+            }
+        }
     }
 
     fn flag(&mut self, name: &Name) -> FlagId {

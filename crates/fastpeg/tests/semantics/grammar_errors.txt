@@ -30,6 +30,12 @@ inner: "b"
 --- grammar
 cannot use the rule inner
 
+=== a tab width must lie between 1 and the maximum
+%tabs 3000000000
+start: "a"
+--- grammar
+%tabs needs a width from 1 to 1000
+
 === a hex escape in a class needs two hex digits
 start: [\xaé]
 --- grammar
