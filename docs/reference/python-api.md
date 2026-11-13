@@ -166,7 +166,7 @@ except ValueError as error:
     assert error.__notes__ == ["fpeg: in Failing.pair, for the node pair at line 1, column 1"]
 ```
 
-`grammar.transformer_template(name)` writes a starting transformer for a grammar: a method for every rule and terminal, the parameters of a node's method named after its fields with type hints from how many items each holds, the builders a method replaces, and `strict=True`.
+`grammar.transformer_template(name)` writes a starting transformer for a grammar: a method for every rule that makes nodes and every terminal, the parameters of a node's method named after its fields with type hints from how many items each holds, the builders a method replaces, and `strict=True`. A transparent rule `?name` whose every match leaves one visible item never makes a node, so it gets no method.
 
 ```python
 template = grammar.transformer_template("Pairs")

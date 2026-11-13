@@ -316,6 +316,9 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     assert "    def call(self, name: Any, args: list[Any], kw: Any) -> Any:" in source
     assert "        args holds a list of items." in source
     assert "    def NUMBER(self, token: fpeg.Token) -> Any:" in source
+    # `?arg` always gives way to its one child, and only its alias makes nodes.
+    assert "def arg(" not in source
+    assert "    def group(self, *children: Any) -> Any:" in source
     namespace: dict[str, Any] = {}
     exec(compile(source, "<template>", "exec"), namespace)
     assert namespace["Calls"]().transform(parse("f(a, [1]) ! k")) is None

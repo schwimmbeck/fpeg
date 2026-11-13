@@ -277,9 +277,10 @@ impl Grammar {
         }
     }
 
-    /// The Python source of a starting transformer for the grammar: a method for every rule and
-    /// terminal, the parameters of a node's method named after its fields, with type hints from
-    /// how many items each field holds, and `strict=True`, so that a misspelled method fails.
+    /// The Python source of a starting transformer for the grammar: a method for every rule that
+    /// makes nodes and every terminal, the parameters of a node's method named after its fields,
+    /// with type hints from how many items each field holds, and `strict=True`, so that a
+    /// misspelled method fails.
     #[pyo3(signature = (name = "Transformer"))]
     fn transformer_template(&self, py: Python<'_>, name: &str) -> PyResult<String> {
         let keywords: Vec<String> = py.import("keyword")?.getattr("kwlist")?.extract()?;
@@ -296,8 +297,14 @@ impl Grammar {
         let mut seen = std::collections::HashSet::new();
         for (id, kind) in kinds.iter().enumerate() {
             let kind_name = kind.name.as_str();
-            // Rules `_name` make no node, and hidden terminals no visible token.
-            if kind_name.starts_with('_') || !is_identifier(kind_name)? || !seen.insert(kind_name) {
+            // Rules `_name` make no node, and hidden terminals no visible token. Nor does a
+            // transparent rule that always gives way to its one child.
+            let made = kinds.iter().any(|k| k.name == kind_name && k.made);
+            if kind_name.starts_with('_')
+                || !made
+                || !is_identifier(kind_name)?
+                || !seen.insert(kind_name)
+            {
                 continue;
             }
             out.push('\n');
@@ -308,7 +315,7 @@ impl Grammar {
                 continue;
             }
             let mut builders: Vec<String> = (kinds.iter())
-                .filter(|k| k.name == kind_name)
+                .filter(|k| k.name == kind_name && k.made)
                 .filter_map(|k| k.builder.as_ref().map(|builder| format!("=> {builder}")))
                 .collect();
             builders.dedup();
