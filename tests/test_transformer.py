@@ -61,6 +61,9 @@ def test_a_star_parameter_or_inline_v_args_gets_the_children_as_arguments() -> N
             return list(calls)
 
     assert Inline().transform(parse("f(a), g()")) == [("f", "a"), ("g",)]
+    # More arguments than a call passes from the stack.
+    many = tuple("abcdefghij")
+    assert Inline().transform(parse(f"f({', '.join(many)})")) == [("f", *many)]
 
 
 def test_parameters_named_after_fields_get_one_value_none_or_a_list() -> None:

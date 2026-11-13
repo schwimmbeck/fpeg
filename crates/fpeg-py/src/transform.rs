@@ -28,6 +28,10 @@ use crate::tree::{Meta, Parsed, Tree, item, token_positions};
 /// Entries the scan goes through between two looks for a signal such as Ctrl+C.
 const SIGNAL_CHECK_ENTRIES: usize = 65_536;
 
+/// Pointers a call passes from the stack: the free slot, the arguments and the keyword values.
+/// A call with more puts them on the heap.
+const CALL_STACK_POINTERS: usize = 8;
+
 /// How a plan calls a method. The codes are those of `fpeg._transformer`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -214,6 +218,10 @@ struct Scan<'py, 'p> {
     /// The bound methods met in this transform, by kind, found at the first entry of each.
     methods: Vec<Option<Py<PyAny>>>,
     stack: Vec<Value>,
+    /// The children of the node at hand with their fields, and the arguments of the call at
+    /// hand, kept so that their space is reused from node to node.
+    children: Vec<(FieldId, Py<PyAny>)>,
+    arguments: Vec<Py<PyAny>>,
     /// Positions of the tokens the scan makes, which come in input order.
     cursor: Option<LineCursor<'p>>,
     discard: Bound<'py, PyAny>,
@@ -345,15 +353,13 @@ impl<'py, 'p> Scan<'py, 'p> {
         if self.visit_tokens
             && let Some(handler) = handler
         {
-            let (name, mode) = (handler.name.clone_ref(self.py), handler.mode);
-            let method = self.method(kind, &name)?;
-            let token = self.make_token(node)?;
-            let result = match mode {
-                Mode::Nothing => method.call0(),
-                _ => method.call1((token,)),
+            let method = self.method(kind, &handler.name)?;
+            let result = match handler.mode {
+                Mode::Nothing => vectorcall(&method, &[], &[]),
+                _ => vectorcall(&method, &[self.make_token(node)?.unbind()], &[]),
             };
             let result =
-                result.map_err(|e| self.noted(e, &name.bind(self.py).to_string(), node))?;
+                result.map_err(|e| self.noted(e, &handler.name.bind(self.py).to_string(), node))?;
             return self.push(index, node.field(), result);
         }
         let parsed = self.parsed;
@@ -384,37 +390,17 @@ impl<'py, 'p> Scan<'py, 'p> {
         let base = (self.stack.iter())
             .rposition(|value| (value.entry as usize) < first)
             .map_or(0, |at| at + 1);
-        let children = self.stack.split_off(base);
         let kind = node.kind().0 as usize;
         let handler = (self.plan.handlers.get(kind)).and_then(Option::as_ref);
-        if let Some(handler) = handler {
-            let result = self.call(node, kind, handler, children)?;
-            return self.push(index, node.field(), result);
-        }
-        let parsed = self.parsed;
-        if let Some(builder) = parsed.grammar.builders.get(kind).and_then(Option::as_ref) {
-            let mut values = Vec::with_capacity(children.len());
-            for child in children {
-                let field = child.field;
-                values.push((field, self.object(child)?));
-            }
-            let (start, end) = node.span();
-            let names = &parsed.grammar.field_names;
-            let text = parsed.text(start, end);
-            let result = builders::node_value(self.py, builder, text, &values, names)
-                .map_err(|e| self.noted_builder(e, builder.name(), node))?;
-            return self.push(index, node.field(), result);
-        }
-        let data = parsed.grammar.kind_names[kind].clone_ref(self.py);
-        if self.plan.default_node {
-            let children = PyList::new(self.py, self.objects(children)?)?;
-            let meta = self.meta(node)?;
-            let result = (self.transformer)
-                .call_method1(intern!(self.py, "__default__"), (data, children, meta))
-                .map_err(|e| self.noted(e, "__default__", node))?;
-            return self.push(index, node.field(), result);
-        }
-        if children.iter().all(|child| child.object.is_none()) {
+        let builder = (self.parsed.grammar.builders.get(kind)).and_then(Option::as_ref);
+        if handler.is_none()
+            && builder.is_none()
+            && !self.plan.default_node
+            && self.stack[base..]
+                .iter()
+                .all(|child| child.object.is_none())
+        {
+            self.stack.truncate(base);
             self.stack.push(Value {
                 entry: index as u32,
                 field: node.field(),
@@ -422,15 +408,59 @@ impl<'py, 'p> Scan<'py, 'p> {
             });
             return Ok(());
         }
-        let children = PyList::new(self.py, self.objects(children)?)?;
-        let origin = Some((Arc::clone(self.parsed), index as u32));
-        let tree = Tree::owned(data.into_any(), children.unbind(), origin);
-        self.stack.push(Value {
-            entry: index as u32,
-            field: node.field(),
-            object: Some(Py::new(self.py, tree)?.into_any()),
-        });
-        Ok(())
+        let mut children = self.take_children(base)?;
+        let result = self.value(node, kind, handler, builder, &children);
+        children.clear();
+        self.children = children;
+        self.push(index, node.field(), result?)
+    }
+
+    /// Take the values from `base` on off the stack as objects with their fields, into the space
+    /// kept for children.
+    fn take_children(&mut self, base: usize) -> PyResult<Vec<(FieldId, Py<PyAny>)>> {
+        let (py, parsed) = (self.py, self.parsed);
+        let mut children = std::mem::take(&mut self.children);
+        for value in self.stack.drain(base..) {
+            let object = match value.object {
+                Some(object) => object,
+                None => item(py, parsed, value.entry as usize)?,
+            };
+            children.push((value.field, object));
+        }
+        Ok(children)
+    }
+
+    /// The value of a node from its method, its builder or `__default__`, else a tree of the
+    /// values of its children.
+    fn value(
+        &mut self,
+        node: NodeRef<'_>,
+        kind: usize,
+        handler: Option<&Handler>,
+        builder: Option<&builders::Builder>,
+        children: &[(FieldId, Py<PyAny>)],
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let (py, parsed) = (self.py, self.parsed);
+        if let Some(handler) = handler {
+            return self.call(node, kind, handler, children);
+        }
+        if let Some(builder) = builder {
+            let (start, end) = node.span();
+            let names = &parsed.grammar.field_names;
+            return builders::node_value(py, builder, parsed.text(start, end), children, names)
+                .map_err(|e| self.noted_builder(e, builder.name(), node));
+        }
+        let data = parsed.grammar.kind_names[kind].clone_ref(py);
+        let list = PyList::new(py, children.iter().map(|(_, object)| object.clone_ref(py)))?;
+        if self.plan.default_node {
+            let meta = self.meta(node)?;
+            return (self.transformer)
+                .call_method1(intern!(py, "__default__"), (data, list, meta))
+                .map_err(|e| self.noted(e, "__default__", node));
+        }
+        let origin = Some((Arc::clone(parsed), node.index() as u32));
+        let tree = Tree::owned(data.into_any(), list.unbind(), origin);
+        Ok(Bound::new(py, tree)?.into_any())
     }
 
     /// Call the method of a node as its plan says.
@@ -439,77 +469,67 @@ impl<'py, 'p> Scan<'py, 'p> {
         node: NodeRef<'_>,
         kind: usize,
         handler: &Handler,
-        children: Vec<Value>,
+        children: &[(FieldId, Py<PyAny>)],
     ) -> PyResult<Bound<'py, PyAny>> {
         let py = self.py;
-        let name = handler.name.clone_ref(py);
-        let method = self.method(kind, &name)?;
-        let needs_all = handler.mode != Mode::Fields || handler.extras & EXTRA_CHILDREN != 0;
-        let mut args: Vec<Py<PyAny>> = Vec::new();
-        let mut all: Option<Vec<Py<PyAny>>> = None;
-        if handler.mode == Mode::Fields {
-            let mut fielded: Vec<(FieldId, Py<PyAny>)> = Vec::new();
-            let mut rest = Vec::new();
-            for child in children {
-                let field = child.field;
-                let object = self.object(child)?;
-                if needs_all {
-                    rest.push(object.clone_ref(py));
-                }
-                if field != FieldId::NONE {
-                    fielded.push((field, object));
+        let method = self.method(kind, &handler.name)?;
+        let objects = || children.iter().map(|(_, object)| object.clone_ref(py));
+        let list = || PyList::new(py, objects()).map(|list| list.into_any().unbind());
+        let mut args = std::mem::take(&mut self.arguments);
+        match handler.mode {
+            Mode::List => args.push(list()?),
+            Mode::Inline => args.extend(objects()),
+            Mode::Fields => {
+                for &(field, count) in &handler.fields {
+                    let mut items = (children.iter())
+                        .filter(|(f, _)| *f == field)
+                        .map(|(_, object)| object.clone_ref(py));
+                    args.push(match count {
+                        FieldCount::Many => {
+                            let list = PyList::empty(py);
+                            for item in items {
+                                list.append(item)?;
+                            }
+                            list.into_any().unbind()
+                        }
+                        FieldCount::One => {
+                            let first = items.next();
+                            let more = items.count();
+                            if more > 0 {
+                                let name = &self.parsed.grammar.field_names[usize::from(field.0)];
+                                let message = format!(
+                                    "the field {} holds one item, and its children gave {} values",
+                                    name.bind(py),
+                                    more + 1
+                                );
+                                let error = PyTypeError::new_err(message);
+                                return Err(self.noted(
+                                    error,
+                                    &handler.name.bind(py).to_string(),
+                                    node,
+                                ));
+                            }
+                            first.unwrap_or_else(|| py.None())
+                        }
+                    });
                 }
             }
-            for &(field, count) in &handler.fields {
-                let items: Vec<Py<PyAny>> = (fielded.iter())
-                    .filter(|(f, _)| *f == field)
-                    .map(|(_, object)| object.clone_ref(py))
-                    .collect();
-                args.push(match count {
-                    FieldCount::Many => PyList::new(py, items)?.into_any().unbind(),
-                    FieldCount::One if items.len() > 1 => {
-                        let field_name = &self.parsed.grammar.field_names[usize::from(field.0)];
-                        let message = format!(
-                            "the field {} holds one item, and its children gave {} values",
-                            field_name.bind(py),
-                            items.len()
-                        );
-                        let error = PyTypeError::new_err(message);
-                        return Err(self.noted(error, &name.bind(py).to_string(), node));
-                    }
-                    FieldCount::One => items.into_iter().next().unwrap_or_else(|| py.None()),
-                });
+            Mode::Meta => {
+                args.push(self.meta(node)?);
+                args.push(list()?);
             }
-            if needs_all {
-                all = Some(rest);
+            Mode::MetaInline => {
+                args.push(self.meta(node)?);
+                args.extend(objects());
             }
-        } else {
-            let objects = self.objects(children)?;
-            let list = || -> PyResult<Py<PyAny>> {
-                let items = objects.iter().map(|o| o.clone_ref(py));
-                Ok(PyList::new(py, items)?.into_any().unbind())
-            };
-            match handler.mode {
-                Mode::List => args.push(list()?),
-                Mode::Inline => args.extend(objects.iter().map(|o| o.clone_ref(py))),
-                Mode::Meta => {
-                    args.push(self.meta(node)?);
-                    args.push(list()?);
-                }
-                Mode::MetaInline => {
-                    args.push(self.meta(node)?);
-                    args.extend(objects.iter().map(|o| o.clone_ref(py)));
-                }
-                Mode::Tree => {
-                    let data = self.parsed.grammar.kind_names[kind].clone_ref(py);
-                    let children = PyList::new(py, objects.iter().map(|o| o.clone_ref(py)))?;
-                    let origin = Some((Arc::clone(self.parsed), node.index() as u32));
-                    let tree = Tree::owned(data.into_any(), children.unbind(), origin);
-                    args.push(Py::new(py, tree)?.into_any());
-                }
-                Mode::Nothing | Mode::Fields | Mode::Token => {}
+            Mode::Tree => {
+                let data = self.parsed.grammar.kind_names[kind].clone_ref(py);
+                let origin = Some((Arc::clone(self.parsed), node.index() as u32));
+                let children = PyList::new(py, objects())?.unbind();
+                let tree = Tree::owned(data.into_any(), children, origin);
+                args.push(Py::new(py, tree)?.into_any());
             }
-            all = Some(objects);
+            Mode::Nothing | Mode::Token => {}
         }
         let mut keywords: Vec<(&'static str, Py<PyAny>)> = Vec::new();
         if handler.extras & EXTRA_META != 0 {
@@ -519,11 +539,13 @@ impl<'py, 'p> Scan<'py, 'p> {
             keywords.push(("node", item(py, self.parsed, node.index())?));
         }
         if handler.extras & EXTRA_CHILDREN != 0 {
-            let items = all.unwrap_or_default();
-            keywords.push(("children", PyList::new(py, items)?.into_any().unbind()));
+            keywords.push(("children", list()?));
         }
-        vectorcall(&method, &args, &keywords)
-            .map_err(|error| self.noted(error, &name.bind(py).to_string(), node))
+        let result = vectorcall(&method, &args, &keywords)
+            .map_err(|error| self.noted(error, &handler.name.bind(py).to_string(), node));
+        args.clear();
+        self.arguments = args;
+        result
     }
 }
 
@@ -536,10 +558,20 @@ fn vectorcall<'py>(
     let py = callable.py();
     // A free slot before the arguments lets a bound method put `self` there without copying,
     // which PY_VECTORCALL_ARGUMENTS_OFFSET allows.
-    let mut pointers: Vec<*mut ffi::PyObject> = Vec::with_capacity(1 + args.len() + keywords.len());
-    pointers.push(null_mut());
-    pointers.extend(args.iter().map(Py::as_ptr));
-    pointers.extend(keywords.iter().map(|(_, value)| value.as_ptr()));
+    let count = 1 + args.len() + keywords.len();
+    let mut on_stack = [null_mut(); CALL_STACK_POINTERS];
+    let mut on_heap = Vec::new();
+    let pointers: &mut [*mut ffi::PyObject] = if count <= CALL_STACK_POINTERS {
+        &mut on_stack[..count]
+    } else {
+        on_heap.resize(count, null_mut());
+        &mut on_heap
+    };
+    let values =
+        (args.iter().map(Py::as_ptr)).chain(keywords.iter().map(|(_, value)| value.as_ptr()));
+    for (slot, value) in pointers[1..].iter_mut().zip(values) {
+        *slot = value;
+    }
     let names = if keywords.is_empty() {
         None
     } else {
@@ -548,11 +580,12 @@ fn vectorcall<'py>(
     };
     let names_pointer = names.as_ref().map_or(null_mut(), |n| n.as_ptr());
     // SAFETY: the pointers borrow from `args` and `keywords`, which outlive the call. The count
-    // leaves out the free slot and the keyword values, whose names `names` holds.
+    // leaves out the free slot and the keyword values, whose names `names` holds. The pointer
+    // comes from a mutable borrow, since the callee may write the free slot for the call.
     let result = unsafe {
         ffi::PyObject_Vectorcall(
             callable.as_ptr(),
-            pointers.as_ptr().add(1),
+            pointers.as_mut_ptr().add(1),
             args.len() | ffi::PY_VECTORCALL_ARGUMENTS_OFFSET,
             names_pointer,
         )
@@ -594,6 +627,8 @@ pub fn scan<'py>(
         visit_tokens,
         methods: (0..parsed.grammar.kind_names.len()).map(|_| None).collect(),
         stack: Vec::new(),
+        children: Vec::new(),
+        arguments: Vec::new(),
         cursor: None,
         discard: discard(py)?.clone(),
     };
