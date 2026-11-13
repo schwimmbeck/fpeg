@@ -3,7 +3,8 @@
 
 """A PEG parsing library with a native engine and a Transformer for parse trees.
 
-A `Grammar` is compiled from text at runtime.
+A `Grammar` is compiled from text at runtime and parses inputs into trees of `Tree` and
+`Token` items, views of a tree that stays in native memory.
 """
 
 from fpeg._fpeg import (
@@ -11,6 +12,7 @@ from fpeg._fpeg import (
     Grammar,
     GrammarError,
     Token,
+    Tree,
     __version__,
 )
 
@@ -19,5 +21,6 @@ __all__ = [
     "Grammar",
     "GrammarError",
     "Token",
+    "Tree",
     "__version__",
 ]

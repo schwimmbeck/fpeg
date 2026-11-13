@@ -8,8 +8,24 @@ import pytest
 
 
 def name_token() -> fpeg.Token:
-    # The token that a parse of (abc) by a rule start: "(" NAME ")" holds.
-    return fpeg.Token("NAME", "abc", 1, 1, 2, end_line=1, end_column=5, end_pos=4)
+    grammar = fpeg.Grammar('start: "(" NAME ")"\nNAME: [a-z]+')
+    tree = grammar.parse("(abc)")
+    assert isinstance(tree, fpeg.Tree)
+    token = tree.children[0]
+    assert isinstance(token, fpeg.Token)
+    return token
+
+
+def test_a_token_of_a_parse_is_a_str_with_its_kind_and_positions() -> None:
+    token = name_token()
+    assert isinstance(token, str)
+    assert token == "abc"
+    assert token.upper() == "ABC"
+    assert token.type == "NAME"
+    assert token.value == "abc"
+    assert type(token.value) is str
+    assert (token.start_pos, token.end_pos) == (1, 4)
+    assert (token.line, token.column, token.end_line, token.end_column) == (1, 2, 1, 5)
 
 
 def test_tokens_compare_and_hash_as_their_text() -> None:

@@ -4,7 +4,7 @@
 """Type stubs for the native module."""
 
 from os import PathLike
-from typing import final
+from typing import Any, final
 
 __version__: str
 
@@ -39,6 +39,25 @@ class Grammar:
     def __init__(self, text: str) -> None: ...
     @classmethod
     def open(cls, path: str | PathLike[str]) -> Grammar: ...
+    def parse(
+        self,
+        text: str,
+        start: str = "start",
+        *,
+        max_steps: int | None = None,
+        max_depth: int | None = None,
+    ) -> Tree | Token: ...
+
+class Tree:
+    """A node of a parse tree: `data` and `children`, as Lark's `Tree`."""
+
+    def __init__(self, data: str, children: list[Any]) -> None: ...
+    @property
+    def data(self) -> str: ...
+    @property
+    def children(self) -> list[Any]: ...
+    @property
+    def text(self) -> str | None: ...
 
 class Token(str):
     """A token of a parse: a str with the name of its kind and its positions."""

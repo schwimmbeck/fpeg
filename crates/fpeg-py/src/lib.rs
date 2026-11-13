@@ -6,6 +6,7 @@
 mod errors;
 mod grammar;
 mod token;
+mod tree;
 
 use pyo3::pymodule;
 
@@ -18,6 +19,8 @@ mod _fpeg {
     use crate::errors::Diagnostic;
     #[pymodule_export]
     use crate::grammar::Grammar;
+    #[pymodule_export]
+    use crate::tree::Tree;
 
     #[pymodule_init]
     fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -1,9 +1,22 @@
 # Python API
 
-The `fpeg` package compiles a grammar from text at runtime.
+The `fpeg` package compiles a grammar from text and parses inputs into a tree that stays in native memory. Python sees the tree through views: a `Tree` for each node and a `Token` for each token, made when they are first asked for.
 
 ```python
 import fpeg
+
+grammar = fpeg.Grammar(r"""
+start: pair ("," pair)*
+pair: key=NAME "=" value=NUMBER
+NAME: [a-z]+
+NUMBER: [0-9]+
+%ignore " "+
+""")
+
+tree = grammar.parse("x = 1, y = 22")
+assert tree.data == "start"
+pair = tree.children[1]
+assert pair.children == ["y", "22"]
 ```
 
 ## Grammar
@@ -19,8 +32,40 @@ except fpeg.GrammarError as error:
     assert str(problem) == "<grammar>:1:8: error[E201]: unknown rule pair"
 ```
 
+`parse` returns the one visible item at the top of the tree: a `Tree` for a node, or a `Token` for a token, which a transparent start rule gives when its one child is a token. A start rule that may leave no visible item or several, such as a rule `_name`, is refused before parsing, as an unknown one is.
+
+```python
+numbers = fpeg.Grammar('?start: NUMBER | list\nlist: "[" (start ** ",") "]"\nNUMBER: [0-9]+')
+assert isinstance(numbers.parse("7"), fpeg.Token)
+assert numbers.parse("[7,8]").data == "list"
+```
+
+A grammar is immutable, so one grammar serves any number of parses from any thread. A parse of a longer input lets other Python threads run while it works.
+
 ```{eval-rst}
 .. autoclass:: fpeg.Grammar
+   :members:
+```
+
+## Tree
+
+A `Tree` is a node: `data` is the name of its rule or alias, and `children` its visible items. Hidden tokens, such as the `=` above, stay in the native tree but not among the children.
+
+```python
+calls = fpeg.Grammar(r"""
+start: name=NAME "(" args=(NAME ** ",") ")"
+NAME: [a-z]+
+%ignore " "+
+""")
+call = calls.parse("f(a, b)")
+assert call.children == ["f", "a", "b"]
+assert call.text == "f(a, b)"
+```
+
+`Tree(data, children)` builds a tree in Python, as in Lark.
+
+```{eval-rst}
+.. autoclass:: fpeg.Tree
    :members:
 ```
 
@@ -29,7 +74,7 @@ except fpeg.GrammarError as error:
 A `Token` is a `str` with the name of its kind in `type` and its place in Lark's attributes: `start_pos` and `end_pos` count code points, `line` and `column` count from 1, and `end_column` is the column after the last character. Tokens compare and hash as their text. Their attributes are read-only, and `update()` makes a token with another type or text at the same place.
 
 ```python
-number = fpeg.Token("NUMBER", "22", 11, 1, 12, end_line=1, end_column=14, end_pos=13)
+number = pair.children[1]
 assert isinstance(number, str) and number == "22"
 assert (number.type, number.start_pos, number.end_pos) == ("NUMBER", 11, 13)
 assert number.update(type="INT").type == "INT"
@@ -42,6 +87,8 @@ assert fpeg.Token("NAME", "x") == "x"
 ```
 
 ## Errors
+
+A parse that does not match raises a `ValueError` that says what the grammar expected there, and so does a parse that reaches a limit. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.
 
 ```{eval-rst}
 .. autoexception:: fpeg.GrammarError

@@ -97,6 +97,21 @@ fn fill(
     }
 }
 
+/// A token of `text`, made natively.
+pub fn make<'py>(
+    py: Python<'py>,
+    text: &str,
+    kind_name: &Bound<'py, PyString>,
+    positions: Positions,
+    serial: u64,
+    kind: u32,
+) -> PyResult<Bound<'py, PyAny>> {
+    let ty = TOKEN_TYPE.load(Ordering::Relaxed);
+    let obj = new_str_subtype(py, ty, PyString::new(py, text).into_any())?;
+    fill(&obj, kind_name.clone().into_any(), positions, serial, kind);
+    Ok(obj)
+}
+
 /// The positions of a token.
 fn positions_of(obj: &Bound<'_, PyAny>) -> Positions {
     // SAFETY: callers pass tokens, whose positions never change after they are made.
