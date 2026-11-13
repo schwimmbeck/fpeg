@@ -16,6 +16,7 @@ BENCH = "--manifest-path benchmarks/rust/Cargo.toml"
 CHECKS = [
     ("Rust formatting", "cargo fmt --check"),
     ("Rust lints", "cargo clippy --all-targets -- -D warnings"),
+    ("Rust lints without tests", "cargo clippy --workspace --lib --bins -- -D warnings"),
     ("Rust tests", "cargo test -q"),
     ("Python formatting", "uv run ruff format --check"),
     ("Python lints", "uv run ruff check"),

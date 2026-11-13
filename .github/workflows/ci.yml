@@ -71,6 +71,7 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --workspace --lib --bins -- -D warnings
       - run: cargo fmt --check --manifest-path benchmarks/rust/Cargo.toml
       - run: cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warnings
       - run: uv sync
