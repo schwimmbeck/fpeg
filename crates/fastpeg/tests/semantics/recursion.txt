@@ -56,3 +56,9 @@ expr: %precedence {
 N: [0-9]
 --- "1+2"
 (start (add left=N"1" ~"+" right=N"2"))
+
+=== a rule matched again while growing sees the entries made since
+start: r1*
+r1: (start+ | "b" "a") ^ "oops"
+--- "ba"
+error at 2: oops

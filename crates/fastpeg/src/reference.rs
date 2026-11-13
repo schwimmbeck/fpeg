@@ -9,9 +9,10 @@
 //!
 //! One shortcut keeps deep grammars tractable without changing a result: a rule call whose
 //! evaluation consulted no left-recursion table entry from outside itself depends only on the
-//! rule, the position, the context and whether failures are being recorded, so its result is
-//! remembered under those. Without it, every operator level of a precedence block re-parses
-//! the levels below it in each growing step, which is exponential in the number of levels.
+//! rule, the position, the context, whether failures are being recorded, and on the entries
+//! made since, so its result is remembered under the first four and reused while no entry made
+//! since could be reached. Without it, every operator level of a precedence block re-parses the
+//! levels below it in each growing step, which is exponential in the number of levels.
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
@@ -124,6 +125,27 @@ impl Reference {
 
     /// Parse the whole input from the rule `start`.
     pub fn parse_with(&self, input: &str, start: &str, limits: Limits) -> Result<Tree, ParseError> {
+        self.run(input, start, limits, true)
+    }
+
+    /// Parse without remembering rule results, which must give the same result as
+    /// [`Reference::parse_with`] whenever neither hits a limit. For tests of the memo.
+    pub fn parse_unmemoized(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+    ) -> Result<Tree, ParseError> {
+        self.run(input, start, limits, false)
+    }
+
+    fn run(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+        memoize: bool,
+    ) -> Result<Tree, ParseError> {
         let Some(start_expr) = self.grammar.entry.get(start) else {
             return Err(ParseError {
                 position: 0,
@@ -136,7 +158,7 @@ impl Reference {
                 kind: ParseErrorKind::Limit(Limit::InputSize),
             });
         }
-        let run = || Interp::new(&self.grammar, input, limits).parse(start_expr);
+        let run = || Interp::new(&self.grammar, input, limits, memoize).parse(start_expr);
         let outcome = std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .stack_size(STACK_BYTES)
@@ -196,13 +218,24 @@ struct LrEntry {
     depth: usize,
 }
 
+/// A remembered call result and the table entries that were active when it was made, by serial.
+struct MemoEntry {
+    result: CallResult,
+    active: Vec<u64>,
+}
+
 struct Interp<'a> {
     g: &'a ir::Grammar,
     input: &'a str,
     lines: LineIndex,
     lr: HashMap<CallKey, LrEntry>,
+    /// The serials and positions of the active table entries, oldest first. Every entry gets a
+    /// new serial.
+    lr_active: Vec<(u64, usize)>,
+    next_serial: u64,
     /// Results of calls that depend on no outside table entry, keyed with the quiet state.
-    memo: HashMap<(CallKey, bool), CallResult>,
+    memo: HashMap<(CallKey, bool), MemoEntry>,
+    memoize: bool,
     /// The smallest depth of a table entry the evaluation in progress consulted.
     dependency: usize,
     farthest: Option<usize>,
@@ -214,13 +247,16 @@ struct Interp<'a> {
 }
 
 impl<'a> Interp<'a> {
-    fn new(g: &'a ir::Grammar, input: &'a str, limits: Limits) -> Interp<'a> {
+    fn new(g: &'a ir::Grammar, input: &'a str, limits: Limits, memoize: bool) -> Interp<'a> {
         Interp {
             g,
             input,
             lines: LineIndex::new(input),
             lr: HashMap::new(),
+            lr_active: Vec::new(),
+            next_serial: 0,
             memo: HashMap::new(),
+            memoize,
             dependency: usize::MAX,
             farthest: None,
             expected: BTreeSet::new(),
@@ -348,8 +384,16 @@ impl<'a> Interp<'a> {
             return Ok(Interp::call_outcome(entry.result.clone(), ctx));
         }
         let memo_key = (key.clone(), self.quiet > 0);
-        if let Some(result) = self.memo.get(&memo_key) {
-            return Ok(Interp::call_outcome(result.clone(), ctx));
+        // The result consulted none of the entries active when it was made. Matching it again
+        // would follow the same path unless it consulted an entry made since, and it can only
+        // reach entries at its own position or later.
+        if let Some(entry) = self.memo.get(&memo_key)
+            && self
+                .lr_active
+                .iter()
+                .all(|&(serial, at)| at < pos || entry.active.binary_search(&serial).is_ok())
+        {
+            return Ok(Interp::call_outcome(entry.result.clone(), ctx));
         }
         if self.depth >= self.limits.max_depth {
             return Err(Abort::Limit(Limit::Depth));
@@ -366,16 +410,23 @@ impl<'a> Interp<'a> {
                 depth: height,
             },
         );
+        self.lr_active.push((self.next_serial, pos));
+        self.next_serial += 1;
         let outer_dependency = std::mem::replace(&mut self.dependency, usize::MAX);
         self.depth += 1;
         let result = self.grow(&key, body, pos, ctx);
         self.depth -= 1;
         self.lr.remove(&key);
+        self.lr_active.pop();
         let inner_dependency = self.dependency;
         self.dependency = outer_dependency.min(inner_dependency);
         let best = result?;
-        if inner_dependency >= height {
-            self.memo.insert(memo_key, best.clone());
+        if self.memoize && inner_dependency >= height {
+            let entry = MemoEntry {
+                result: best.clone(),
+                active: self.lr_active.iter().map(|&(serial, _)| serial).collect(),
+            };
+            self.memo.insert(memo_key, entry);
         }
         Ok(Interp::call_outcome(best, ctx))
     }
