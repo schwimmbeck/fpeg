@@ -76,16 +76,30 @@ pub enum Limit {
     InputSize,
 }
 
+impl ParseError {
+    /// What went wrong, without the position.
+    pub fn message(&self) -> String {
+        match &self.kind {
+            ParseErrorKind::NoMatch { expected } if expected.is_empty() => "no match".to_owned(),
+            ParseErrorKind::NoMatch { expected } => format!("expected {}", expected.join(", ")),
+            ParseErrorKind::Label(label) => label.clone(),
+            ParseErrorKind::Limit(Limit::Depth) => {
+                "rule calls nest deeper than the depth limit".to_owned()
+            }
+            ParseErrorKind::Limit(Limit::Steps) => {
+                "the parse takes more steps than the step limit".to_owned()
+            }
+            ParseErrorKind::Limit(Limit::InputSize) => {
+                "the input is too large for 32-bit offsets".to_owned()
+            }
+            ParseErrorKind::UnknownStart(name) => format!("no rule {name} to start from"),
+        }
+    }
+}
+
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error at {}: ", self.position)?;
-        match &self.kind {
-            ParseErrorKind::NoMatch { expected } if expected.is_empty() => f.write_str("no match"),
-            ParseErrorKind::NoMatch { expected } => write!(f, "expected {}", expected.join(", ")),
-            ParseErrorKind::Label(label) => f.write_str(label),
-            ParseErrorKind::Limit(limit) => write!(f, "{limit:?} limit exceeded"),
-            ParseErrorKind::UnknownStart(name) => write!(f, "no rule {name} to start from"),
-        }
+        write!(f, "error at {}: {}", self.position, self.message())
     }
 }
 

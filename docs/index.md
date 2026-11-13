@@ -8,7 +8,7 @@ fastpeg is a general-purpose parsing library for Parsing Expression Grammars (PE
 - From Python you read that tree or turn it into your own objects with a `Transformer`, a class with one method per rule.
 
 ```{note}
-fastpeg is at an early stage and does not parse anything yet. The [roadmap](roadmap.md) says what comes next.
+fastpeg is at an early stage. The [command line](reference/cli.md) parses with grammars that need no left recursion, cuts, columns or captures, and the Python binding comes next. The [roadmap](roadmap.md) says what comes after.
 ```
 
 ## Install
@@ -25,6 +25,8 @@ print(fastpeg.__version__)
 
 - [Grammar language](reference/grammar.md): the syntax of grammars.
 - [Semantics](reference/semantics.md): what a grammar means.
+- [Parse tree](reference/tree.md): nodes, tokens, fields and spans.
+- [Command line](reference/cli.md): `fastpeg check` and `fastpeg parse`.
 - [Diagnostics](reference/diagnostics/index.md): every problem a grammar can have, with its code.
 
 ```{toctree}
@@ -33,6 +35,8 @@ print(fastpeg.__version__)
 roadmap
 reference/grammar
 reference/semantics
+reference/tree
+reference/cli
 reference/diagnostics/index
 development
 ```

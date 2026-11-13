@@ -168,7 +168,7 @@ impl Tree {
                     if space {
                         out.push(' ');
                     }
-                    item.write_head(&mut out, input, spans);
+                    item.write_head(&mut out, input, spans, true);
                     if !item.is_token() {
                         pending.push(Step::Close);
                         for child in item.children().into_iter().rev() {
@@ -177,6 +177,32 @@ impl Tree {
                     }
                 }
             }
+        }
+        out
+    }
+}
+
+impl Tree {
+    /// The tree with one item per line, written as in [`Tree::to_text`], each line indented by
+    /// two spaces for every node it lies in.
+    pub fn to_lines(&self, input: &str, spans: bool) -> String {
+        let mut out = String::new();
+        // An explicit stack, since trees from left recursion are as deep as they are long.
+        let mut pending: Vec<(NodeRef<'_>, usize)> = self
+            .roots()
+            .into_iter()
+            .rev()
+            .map(|root| (root, 0))
+            .collect();
+        while let Some((item, depth)) = pending.pop() {
+            for _ in 0..depth {
+                out.push_str("  ");
+            }
+            item.write_head(&mut out, input, spans, false);
+            for child in item.children().into_iter().rev() {
+                pending.push((child, depth + 1));
+            }
+            out.push('\n');
         }
         out
     }
@@ -249,8 +275,8 @@ impl<'t> NodeRef<'t> {
         input.get(start as usize..end as usize).unwrap_or("")
     }
 
-    /// Write a token, or a node up to its children.
-    fn write_head(&self, out: &mut String, input: &str, spans: bool) {
+    /// Write a token, or a node up to its children, opening the node's bracket if `bracket`.
+    fn write_head(&self, out: &mut String, input: &str, spans: bool, bracket: bool) {
         if let Some(field) = self.field_name() {
             out.push_str(field);
             out.push('=');
@@ -267,7 +293,9 @@ impl<'t> NodeRef<'t> {
             }
             let _ = write!(out, "{:?}", self.text(input));
         } else {
-            out.push('(');
+            if bracket {
+                out.push('(');
+            }
             out.push_str(self.kind_name());
         }
         if spans {
