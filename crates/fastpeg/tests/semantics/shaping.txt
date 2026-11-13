@@ -86,7 +86,19 @@ W: [a-z]
 --- "1,2;a|b"
 (start (list N"1" ~"," N"2") ~";" (list W"a" ~"|" W"b"))
 
-=== an argument that takes in a parameter keeps every form around it
+=== an argument that takes in a parameter keeps the counts, columns, flags and labels around it
+%flag g
+start: outer<"c", "-", %if(g) "e">
+outer<q, s, r>: inner<q{2} ** s> inner<%indent(%same q)> inner<%on(g, r)> inner<q ^ "oops">
+inner<x>: x
+--- "cc-cccec"
+(start (outer (inner ~"c" ~"c" ~"-" ~"c" ~"c") (inner ~"c") (inner ~"e") (inner ~"c")))
+--- "c-cccec"
+error at 1: expected "c"
+--- "cc-ccce"
+error at 7: oops
+
+=== an argument that takes in a parameter keeps the forms around it
 %flag f
 start: %on(f, outer<%if(!f) "a", "c">)
 outer<p, q>: inner<%off(f, p) | "b"> inner<inner<&q %def(n, q) %ref(n) ^ "oops">> inner<(!"b" x=q) ** ",">
