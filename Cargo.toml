@@ -3,7 +3,7 @@
 
 [workspace]
 members = ["crates/fastpeg", "crates/fastpeg-cli", "crates/fastpeg-py"]
-exclude = ["benchmarks/rust"]
+exclude = ["benchmarks/rust", "fuzz"]
 resolver = "3"
 
 [workspace.package]

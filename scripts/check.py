@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 BENCH = "--manifest-path benchmarks/rust/Cargo.toml"
+FUZZ = "--manifest-path fuzz/Cargo.toml"
 # The order of the list in AGENTS.md.
 CHECKS = [
     ("Rust formatting", "cargo fmt --check"),
@@ -30,6 +31,8 @@ CHECKS = [
     ("REUSE compliance", "uv run reuse lint --quiet"),
     ("benchmark crate formatting", f"cargo fmt --check {BENCH}"),
     ("benchmark crate lints", f"cargo clippy {BENCH} --all-targets -- -D warnings"),
+    ("fuzz crate formatting", f"cargo fmt --check {FUZZ}"),
+    ("fuzz crate lints", f"cargo clippy {FUZZ} --all-targets -- -D warnings"),
 ]
 
 # How much of a failed check's output to show, counted from its end, in characters.

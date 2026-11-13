@@ -46,7 +46,7 @@ benchmarks/           benchmark harness, corpus fetchers, recorded results
 benchmarks/rust/      Rust baselines, a package outside the workspace
 docs/                 user documentation, one Markdown file per page
 tests/                Python tests, and oracle and corpus tests that span crates
-fuzz/                 fuzz targets (M2)
+fuzz/                 fuzz targets for cargo-fuzz, a package outside the workspace
 scripts/              development helpers, among them the licence header check
 .github/workflows/    CI
 ```
@@ -71,6 +71,8 @@ uv run python scripts/check_licence_headers.py
 uv run reuse lint
 cargo fmt --check --manifest-path benchmarks/rust/Cargo.toml
 cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warnings
+cargo fmt --check --manifest-path fuzz/Cargo.toml
+cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 ```
 
 - `uv run python scripts/check.py` runs all of them in this order, stops at the first failure and prints the time each took. Run it before every commit.

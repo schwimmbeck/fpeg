@@ -41,6 +41,7 @@ COMMENT_BY_SUFFIX = {
     ".yaml": "#",
     ".sh": "#",
     ".ps1": "#",
+    ".dict": "#",
 }
 EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt", ".svg"}
 EXEMPT_NAMES = {

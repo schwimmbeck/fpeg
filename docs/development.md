@@ -38,14 +38,33 @@ Every change passes these checks before it is committed. Continuous integration 
 
 Every file states its copyright and licence, in a header or, for files that cannot carry one, in `REUSE.toml`, and `LICENSES/` holds the text of every licence used, as the [REUSE specification](https://reuse.software/spec/) asks.
 
-`uv run python scripts/check.py` runs all of these in order, together with the checks of the benchmark crate below, and stops at the first failure.
+`uv run python scripts/check.py` runs all of these in order, together with the checks of the benchmark and fuzz crates below, and stops at the first failure.
 
-The Rust baselines of the benchmarks live in their own package outside the workspace, with their own checks:
+The Rust benchmarks and the fuzz targets live in packages of their own outside the workspace, with their own checks:
 
 ```sh
 cargo fmt --check --manifest-path benchmarks/rust/Cargo.toml
 cargo clippy --manifest-path benchmarks/rust/Cargo.toml --all-targets -- -D warnings
+cargo fmt --check --manifest-path fuzz/Cargo.toml
+cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 ```
+
+## Fuzzing
+
+The fuzz targets in `fuzz/` run under [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz), which needs a nightly toolchain and works best on Linux. Each target reads its input as a grammar text, then a NUL, then an input to parse.
+
+| Target | What it checks |
+|---|---|
+| `grammar` | reading, compiling and parsing end without a panic, whatever the grammar and the input |
+| `differential` | the parsing machine gives the tree or error of the reference interpreter |
+
+```sh
+cargo install cargo-fuzz
+cd fuzz
+cargo +nightly fuzz run differential -- -dict=fpeg.dict -max_total_time=600 corpus/differential ../crates/fastpeg/grammars
+```
+
+The grammars of the project serve as the first inputs. libFuzzer keeps what it finds in `fuzz/corpus/` and a failing input in `fuzz/artifacts/`, both ignored by git.
 
 ## Tests of the core
 

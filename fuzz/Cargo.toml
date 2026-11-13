@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Fuzz targets for cargo-fuzz, which needs a nightly toolchain. Kept out of the workspace, so the
+# library's checks build without libFuzzer.
+[package]
+name = "fastpeg-fuzz"
+description = "Fuzz targets of fastpeg"
+publish = false
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Dominik Schwimmbeck"]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+fastpeg = { path = "../crates/fastpeg", features = ["reference"] }
+libfuzzer-sys = "0.4.10"
+
+[[bin]]
+name = "grammar"
+path = "fuzz_targets/grammar.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "differential"
+path = "fuzz_targets/differential.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]
