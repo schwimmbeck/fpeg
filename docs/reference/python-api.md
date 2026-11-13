@@ -166,7 +166,7 @@ except ValueError as error:
     assert error.__notes__ == ["fpeg: in Failing.pair, for the node pair at line 1, column 1"]
 ```
 
-`fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children.
+`fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children. A tree built in Python transforms too, by its `data`, without fields.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Transformer

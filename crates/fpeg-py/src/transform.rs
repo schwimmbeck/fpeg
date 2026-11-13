@@ -518,6 +518,12 @@ fn vectorcall<'py>(
     unsafe { Bound::from_owned_ptr_or_err(py, result) }
 }
 
+/// Whether a tree is a view of a parse.
+#[pyfunction]
+pub fn is_view(tree: &Bound<'_, Tree>) -> bool {
+    tree.get().parse_entry().is_some()
+}
+
 /// Transform a view with the plan of the transformer's class, and return the values its node
 /// gives its parent: one, none for `Discard`, or several from a generator.
 #[pyfunction]

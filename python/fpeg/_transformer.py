@@ -4,7 +4,8 @@
 """The Transformer: methods named like the rules and terminals of a grammar, called children first.
 
 The signature of a method says what it gets. This module reads the signatures once per class and
-grammar into a plan, and the native scan of `fpeg._fpeg` follows the plan over the tree.
+grammar into a plan, and the native scan of `fpeg._fpeg` follows the plan over the tree. Trees
+built in Python, which have no grammar, take the slower walk of `Transformer._transform_owned`.
 """
 
 from __future__ import annotations
@@ -117,7 +118,9 @@ class Transformer:
     def _values(self, item: Any) -> tuple[Any, ...]:
         """Return the values an item gives its parent: one, none for `Discard`, or several."""
         if isinstance(item, Tree):
-            return _fpeg.scan(self, item, _make_plan)
+            if _fpeg.is_view(item):
+                return _fpeg.scan(self, item, _make_plan)
+            return self._transform_owned(item)
         if isinstance(item, Token):
             return self._transform_token(item)
         return (item,)
@@ -135,6 +138,48 @@ class Transformer:
         if _overrides(cls, "__default_token__"):
             return _results(self.__default_token__(token))
         return (token,)
+
+    def _transform_owned(self, root: Tree) -> tuple[Any, ...]:
+        """Transform a tree built in Python, children first, without recursion."""
+        values: list[Any] = []
+        on_path: set[int] = set()
+        # An item to transform, or a tree whose children's values start at a position of values.
+        pending: list[tuple[Any, int]] = [(root, -1)]
+        while pending:
+            item, start = pending.pop()
+            if start >= 0:
+                on_path.discard(id(item))
+                children = values[start:]
+                del values[start:]
+                values.extend(self._owned_value(item, children))
+            elif isinstance(item, Tree) and not _fpeg.is_view(item):
+                if id(item) in on_path:
+                    raise ValueError("the tree contains itself")
+                on_path.add(id(item))
+                pending.append((item, len(values)))
+                pending.extend((child, -1) for child in reversed(item.children))
+            else:
+                values.extend(self._values(item))
+        return tuple(values)
+
+    def _owned_value(self, tree: Tree, children: list[Any]) -> tuple[Any, ...]:
+        cls = type(self)
+        # A tree built in Python may have any object as data.
+        name: Any = tree.data
+        if isinstance(name, str) and _is_handler(cls, name):
+            mode, _, extras = _owned_convention(cls, name)
+            method = getattr(self, name)
+            args = _arguments(mode, children, tree)
+            kwargs = _extras(extras, tree, children)
+            where = f"in {cls.__qualname__}.{name}, for the tree {name}"
+            return _results(_noted(lambda: method(*args, **kwargs), where))
+        if _overrides(cls, "__default__"):
+            return _results(self.__default__(name, children, tree.meta))
+        if len(children) == len(tree.children) and all(
+            a is b for a, b in zip(children, tree.children, strict=True)
+        ):
+            return (tree,)
+        return (Tree(name, children, tree.meta),)
 
 
 # The names a subclass cannot use as handlers, since the base class needs them.
@@ -156,6 +201,31 @@ def _noted(call: Callable[[], Any], where: str) -> Any:
     except BaseException as error:
         error.add_note(f"fpeg: {where}")
         raise
+
+
+def _arguments(mode: int, children: list[Any], tree: Tree) -> tuple[Any, ...]:
+    if mode == LIST:
+        return (children,)
+    if mode == INLINE:
+        return tuple(children)
+    if mode == NOTHING:
+        return ()
+    if mode == META:
+        return (tree.meta, children)
+    if mode == META_INLINE:
+        return (tree.meta, *children)
+    return (Tree(tree.data, children, tree.meta),)
+
+
+def _extras(extras: int, tree: Tree, children: list[Any]) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {}
+    if extras & EXTRAS["meta"]:
+        kwargs["meta"] = tree.meta
+    if extras & EXTRAS["node"]:
+        kwargs["node"] = tree
+    if extras & EXTRAS["children"]:
+        kwargs["children"] = children
+    return kwargs
 
 
 def _is_handler(cls: type, name: str) -> bool:
@@ -221,9 +291,12 @@ def _token_convention(cls: type, name: str) -> int:
 
 
 def _node_convention(
-    cls: type, name: str, fields: dict[str, bool]
+    cls: type, name: str, fields: dict[str, bool] | None
 ) -> tuple[int, tuple[str, ...], int]:
-    """Say how a method of a node is called: its mode, the fields it takes and its extras."""
+    """Say how a method of a node is called: its mode, the fields it takes and its extras.
+
+    `fields` is `None` for a tree built in Python, which has none.
+    """
     function, options = _function(cls, name)
     if function is None:
         inline, meta, tree = options or (False, False, False)
@@ -255,7 +328,12 @@ def _node_convention(
         return FIELDS, names, extras
     if len(names) == 1:
         return LIST, (), extras
-    known = f"the fields of {name} are {', '.join(fields)}" if fields else f"{name} has no fields"
+    if fields is None:
+        known = "a tree built in Python has no fields"
+    elif fields:
+        known = f"the fields of {name} are {', '.join(fields)}"
+    else:
+        known = f"{name} has no fields"
     raise TypeError(
         f"{cls.__qualname__}.{name} takes {', '.join(names)}, and {known}. Take the children as "
         "one list, as *children, or by field"
@@ -268,6 +346,17 @@ def _option_mode(inline: bool, meta: bool, tree: bool) -> int:
     if meta:
         return META_INLINE if inline else META
     return INLINE if inline else LIST
+
+
+_owned_conventions: dict[tuple[type, str], tuple[int, tuple[str, ...], int]] = {}
+
+
+def _owned_convention(cls: type, name: str) -> tuple[int, tuple[str, ...], int]:
+    """Say how a method is called for a tree built in Python, read once per class and name."""
+    key = (cls, name)
+    if key not in _owned_conventions:
+        _owned_conventions[key] = _node_convention(cls, name, None)
+    return _owned_conventions[key]
 
 
 def _make_plan(

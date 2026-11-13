@@ -251,6 +251,27 @@ def test_strict_transformers_name_only_rules_and_terminals() -> None:
     assert Helper().transform(parse("f()")).children == ["F"]
 
 
+def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
+    class Built(fpeg.Transformer):
+        def pair(self, children: list[Any]) -> tuple[Any, ...]:
+            return tuple(children)
+
+        def NAME(self, token: fpeg.Token) -> str:
+            return token * 2
+
+    built = fpeg.Tree("start", [fpeg.Tree("pair", [fpeg.Token("NAME", "a"), "b"]), parse("f()")])
+    result = Built().transform(built)
+    assert result == fpeg.Tree(
+        "start", [("aa", "b"), fpeg.Tree("start", [fpeg.Tree("call", ["ff"])])]
+    )
+
+    class FieldsOnBuilt(fpeg.Transformer):
+        def pair(self, key: Any, value: Any) -> None: ...
+
+    with pytest.raises(TypeError, match="a tree built in Python has no fields"):
+        FieldsOnBuilt().transform(built)
+
+
 def test_a_lone_token_and_any_other_value_transform_too() -> None:
     class Tokens(fpeg.Transformer):
         NUMBER = int

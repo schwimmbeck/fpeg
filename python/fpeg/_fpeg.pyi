@@ -159,6 +159,7 @@ class DiscardType:
 Discard: DiscardType
 
 def rebuild_tree(shape: list[int], values: list[Any]) -> Tree: ...
+def is_view(tree: Tree) -> bool: ...
 def scan(
     transformer: object,
     view: Tree,
