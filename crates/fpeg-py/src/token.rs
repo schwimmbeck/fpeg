@@ -244,7 +244,7 @@ fn bind<'py>(
     Ok(values)
 }
 
-/// The arguments of `Token(...)`, in Lark's order.
+/// The arguments of `Token(...)`, in order.
 const CONSTRUCTOR: [&str; 8] = [
     "type",
     "value",
@@ -459,7 +459,7 @@ unsafe extern "C" fn token_reduce(
 
 // The docstrings of the type and its methods. CPython reads a signature from the start of a
 // docstring: the name with its arguments, then a line "--".
-const TOKEN_DOC: &std::ffi::CStr = c"Token(type, value, start_pos=None, line=None, column=None, end_line=None, end_column=None, end_pos=None)\n--\n\nA token of a parse: a str with the name of its kind and its place, as Lark's Token. Positions count code points, lines and columns count from 1.";
+const TOKEN_DOC: &std::ffi::CStr = c"Token(type, value, start_pos=None, line=None, column=None, end_line=None, end_column=None, end_pos=None)\n--\n\nA token of a parse: a str with the name of its kind and its place. Positions count code points, lines and columns count from 1.";
 const UPDATE_DOC: &std::ffi::CStr = c"update($self, /, type=None, value=None)\n--\n\nA token like this one with another type or value, at the same place.";
 const NEW_BORROW_POS_DOC: &std::ffi::CStr = c"new_borrow_pos($type, /, type, value, borrow_t)\n--\n\nA token of a type and value at the place of another token.";
 

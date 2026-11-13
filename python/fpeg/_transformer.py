@@ -51,7 +51,7 @@ class _VArgs:
 def v_args(
     inline: bool = False, meta: bool = False, tree: bool = False, wrapper: None = None
 ) -> Callable[[_Callable], _Callable]:
-    """Say how methods are called, as Lark's `v_args` does, for code ported from Lark.
+    """Say by decorator how methods are called.
 
     `inline` passes the children as arguments, `meta` passes the node's position first and
     `tree` passes a tree of the transformed children. On a class it applies to every method

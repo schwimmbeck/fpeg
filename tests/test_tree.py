@@ -131,7 +131,7 @@ def test_trees_built_in_python_equal_views_of_the_same_shape() -> None:
     assert odd == odd
 
 
-def test_pretty_writes_lark_s_layout_with_fields() -> None:
+def test_pretty_indents_items_by_depth_and_names_their_fields() -> None:
     tree = parse("f(a) ! k")
     assert tree.pretty() == "start\n  call\n    name=f\n    args=a\n    kw=kw\tk\n"
 

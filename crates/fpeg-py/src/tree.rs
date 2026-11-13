@@ -4,10 +4,10 @@
 //! `Tree` and `Meta`: views of the nodes of a parse, and trees built in Python.
 //!
 //! A view holds the parse and an entry index, so making one costs about as much as a string, and
-//! its children are made when asked for and then kept. A tree built in Python, as Lark builds
-//! them, holds its data and its list of children. Every walk over trees uses an explicit stack,
-//! since left recursion makes trees as deep as their input is long, and refuses a tree built in
-//! Python that contains itself instead of walking it forever.
+//! its children are made when asked for and then kept. A tree built in Python holds its data and
+//! its list of children. Every walk over trees uses an explicit stack, since left recursion makes
+//! trees as deep as their input is long, and refuses a tree built in Python that contains itself
+//! instead of walking it forever.
 
 use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
@@ -192,7 +192,7 @@ enum Inner {
 /// The type of the children of a view, `fpeg._tree.Children`, found on first need.
 static CHILDREN_TYPE: PyOnceLock<Py<PyType>> = PyOnceLock::new();
 
-/// A node of a parse tree, as Lark's `Tree`: `data`, `children` and `meta`.
+/// A node of a parse tree: `data`, `children` and `meta`.
 ///
 /// A tree from a parse is a view of the native tree, and its children are made when asked for.
 /// `Tree(data, children, meta=None)` builds one in Python.
@@ -373,7 +373,7 @@ impl Tree {
         self.children_list(py)
     }
 
-    /// Where the node spans: Lark's line, column, end_line, end_column, start_pos and end_pos.
+    /// Where the node spans: line, column, end_line, end_column, start_pos and end_pos.
     #[getter]
     fn meta(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         if let Some(meta) = self.meta.get() {
@@ -446,8 +446,8 @@ impl Tree {
         }
     }
 
-    /// The tree as indented lines, as Lark writes it, with `name=` before an item that fills a
-    /// field of a node of a parse.
+    /// The tree as lines indented by depth, with `name=` before an item that fills a field of a
+    /// node of a parse.
     #[pyo3(signature = (indent_str = "  "))]
     fn pretty<'py>(slf: &Bound<'py, Self>, indent_str: &str) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
@@ -781,8 +781,7 @@ pub fn rebuild_tree(
     }
 }
 
-/// Lark's equality: two trees are equal when their data and children are, a tree never equals
-/// anything else.
+/// Two trees are equal when their data and children are, and a tree never equals anything else.
 fn trees_equal(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<bool> {
     let py = a.py();
     let mut path: HashSet<(usize, usize)> = HashSet::new();

@@ -50,7 +50,7 @@ def test_tokens_compare_and_hash_as_their_text() -> None:
     assert by_text["abc"] == 1
 
 
-def test_a_token_is_made_in_python_as_lark_makes_it() -> None:
+def test_a_token_is_made_in_python_from_its_type_text_and_place() -> None:
     token = fpeg.Token("NAME", "x", 3, 1, 4, end_line=1, end_column=5, end_pos=4)
     assert (token.type, token, token.start_pos, token.line, token.column) == ("NAME", "x", 3, 1, 4)
     assert (token.end_line, token.end_column, token.end_pos) == (1, 5, 4)
@@ -70,7 +70,7 @@ def test_update_and_new_borrow_pos_keep_the_positions() -> None:
     assert (borrowed.type, borrowed, borrowed.line, borrowed.end_column) == ("OTHER", "q", 1, 5)
 
 
-def test_a_token_shows_and_pickles_as_lark_s_does() -> None:
+def test_a_token_shows_its_type_and_text_and_pickles_with_its_place() -> None:
     token = name_token()
     assert repr(token) == "Token('NAME', 'abc')"
     again = pickle.loads(pickle.dumps(token))

@@ -74,15 +74,15 @@ def test_a_star_parameter_or_inline_v_args_gets_the_children_as_arguments() -> N
 
     # On a class v_args applies to every method, and it wraps a callable that keeps no options.
     @fpeg.v_args(inline=True)
-    class Lark(fpeg.Transformer):
+    class Decorated(fpeg.Transformer):
         kw = fpeg.v_args(inline=True)(str.upper)
 
         def call(self, name: Any, *rest: Any) -> tuple[Any, ...]:
             return (name, *rest)
 
-    assert Lark().transform(parse("f(a) ! k")).children == [("f", "a", "K")]
+    assert Decorated().transform(parse("f(a) ! k")).children == [("f", "a", "K")]
     with pytest.raises(TypeError, match="takes no wrapper"):
-        fpeg.v_args(wrapper=print)  # type: ignore[arg-type] # Lark's wrapper is refused
+        fpeg.v_args(wrapper=print)  # type: ignore[arg-type] # a wrapper is refused
 
 
 def test_parameters_named_after_fields_get_one_value_none_or_a_list() -> None:
@@ -125,7 +125,7 @@ def test_v_args_passes_meta_or_a_tree_of_the_transformed_children() -> None:
     assert tree == fpeg.Tree("start", [(1, 2), (8, 1)])
 
 
-def test_a_callable_class_attribute_gets_the_list_as_in_lark() -> None:
+def test_a_callable_class_attribute_gets_the_list() -> None:
     class Attributes(fpeg.Transformer):
         start = list
         call = tuple
@@ -309,7 +309,7 @@ def test_terminal_methods_wait_without_visit_tokens() -> None:
     assert Upper(visit_tokens=False).transform(tree) is tree
     assert Upper().transform(tree).children[0].children == ["F"]
 
-    # Neither does the default, as in Lark, on a parse, a tree built in Python or a token alone.
+    # Neither does the default, on a parse, a tree built in Python or a token alone.
     class Default(fpeg.Transformer):
         def __default_token__(self, token: fpeg.Token) -> str:
             return "default"

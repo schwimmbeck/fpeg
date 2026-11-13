@@ -67,7 +67,7 @@ assert call.text == "f(a, b)"
 print(call.pretty())
 ```
 
-`Tree(data, children, meta=None)` builds a tree in Python, as in Lark. The children of a tree from a parse are a list that refuses changes, since a transform reads the parse itself: to change a tree, build one, with `copy()` or `Tree`. Trees compare equal when their data and children are, hash and pickle. Every walk over a tree runs without recursion, so trees of any depth print, compare and pickle.
+`Tree(data, children, meta=None)` builds a tree in Python. The children of a tree from a parse are a list that refuses changes, since a transform reads the parse itself: to change a tree, build one, with `copy()` or `Tree`. Trees compare equal when their data and children are, hash and pickle. Every walk over a tree runs without recursion, so trees of any depth print, compare and pickle.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Tree
@@ -79,7 +79,7 @@ print(call.pretty())
 
 ## Token
 
-A `Token` is a `str` with the name of its kind in `type` and its place in Lark's attributes: `start_pos` and `end_pos` count code points, `line` and `column` count from 1, and `end_column` is the column after the last character. Tokens compare and hash as their text. Their attributes are read-only, and `update()` makes a token with another type or text at the same place.
+A `Token` is a `str` with the name of its kind in `type` and its place in these attributes: `start_pos` and `end_pos` count code points, `line` and `column` count from 1, and `end_column` is the column after the last character. Tokens compare and hash as their text. Their attributes are read-only, and `update()` makes a token with another type or text at the same place.
 
 ```python
 number = pair.field("value")
@@ -102,7 +102,7 @@ A `Transformer` turns a tree into values. A method named like a rule gives the v
 |---|---|
 | `def pair(self, key, value)`, every parameter a field | the fields by name: the value, or `None` when absent, for a field of at most one item, a list for a field that can hold several |
 | `def pair(self, *children)` | the visible children as arguments |
-| `def pair(self, children)`, a parameter that is no field | the list of the visible children, as in Lark |
+| `def pair(self, children)`, a parameter that is no field | the list of the visible children |
 | `def pair(self)` | nothing |
 | `def NAME(self, token)` | the token |
 | `meta`, `node` or `children` as keyword-only parameters | beside the rest: where the node spans, the node as parsed, the list of children |
@@ -174,7 +174,7 @@ assert "    def pair(self, key: Any, value: Any) -> Any:" in template
 assert "        key holds one item." in template
 ```
 
-`fpeg.v_args` reads Lark's decorator, so ported code runs: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children. A tree built in Python transforms too, by its `data`, without fields.
+`fpeg.v_args` says by decorator how methods are called, on a method or a whole class: `inline=True` passes the children as arguments, `meta=True` the position first, `tree=True` a tree of the transformed children. A tree built in Python transforms too, by its `data`, without fields.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Transformer

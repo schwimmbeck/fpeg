@@ -186,7 +186,7 @@ Show(value=Product(factors=[Var(name='x'), Sum(terms=[Var(name='y'), 1])]))
 What a method gets, its signature says:
 
 - `binding(self, name, value)` names fields, so it gets the fields by name. A field of one item gives the item, and a field the template marks `Any | None` gives `None` when absent.
-- `sum(self, *terms)` gets the children as arguments. A single parameter that names no field, such as `children`, would get them as one list, as in Lark.
+- `sum(self, *terms)` gets the children as arguments. A single parameter that names no field, such as `children`, would get them as one list.
 - `NUMBER(self, token)` gets the token, a `str` with its position.
 - Beside these, keyword-only parameters ask for more: `*, meta` for where the node spans, `*, node` for the node as parsed, `*, children` for the list of children next to the fields.
 
@@ -325,7 +325,3 @@ assert Splice().transform(values.parse("let x = 2, y = 3; show x * (y + 1)")) ==
 ```
 
 `Sum(*)` passes the list of the children's values. Without `Splice`, `let` has neither a method nor a builder and stays a tree that holds the two `Let` objects.
-
-## Coming from Lark
-
-Code written for Lark's `Transformer` mostly runs: methods named after rules get the list of children, and `fpeg.v_args` reads Lark's decorator. Two things differ on purpose: tokens compare as plain strings, without Lark's comparison of their types, and an exception in a method keeps its type instead of becoming Lark's `VisitError`. The [Python API](../reference/python-api.md#transformer) has the details.

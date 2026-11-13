@@ -133,7 +133,7 @@ class Meta:
 
 @disjoint_base
 class Tree:
-    """A node of a parse tree: `data`, `children` and `meta`, as Lark's `Tree`."""
+    """A node of a parse tree: `data`, `children` and `meta`."""
 
     def __new__(cls, data: str, children: list[Any], meta: Meta | None = None) -> Tree: ...
     @property
