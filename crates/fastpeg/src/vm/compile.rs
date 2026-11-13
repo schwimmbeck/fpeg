@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use super::program::{Class, Inst, Program, RuleInfo};
 use crate::analysis;
+use crate::diag::DiagnosticCode;
 use crate::grammar::{GrammarError, Span};
 use crate::ir::{self, RuleId};
 use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
@@ -86,6 +87,7 @@ pub(crate) fn compile(grammar: &ir::Grammar) -> Result<Program, Vec<GrammarError
     if u32::try_from(c.code.len()).is_err() {
         let message = "the grammar is too large to compile".to_owned();
         return Err(vec![GrammarError {
+            code: DiagnosticCode::TooLarge,
             message,
             span: Span::default(),
         }]);
@@ -206,7 +208,11 @@ fn unsupported(grammar: &ir::Grammar) -> Vec<GrammarError> {
     let mut errors: Vec<GrammarError> = Vec::new();
     let mut add = |message: String, span: Span| {
         // The instances of a template repeat the messages of their template.
-        let error = GrammarError { message, span };
+        let error = GrammarError {
+            code: DiagnosticCode::NotYet,
+            message,
+            span,
+        };
         if errors.len() < MAX_ERRORS && !errors.contains(&error) {
             errors.push(error);
         }

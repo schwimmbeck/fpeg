@@ -11,7 +11,7 @@ use super::{
     ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property, Recover,
     Rule, RuleBody, Span, Text, ValueBuilder, meta,
 };
-use crate::lines::LineIndex;
+use crate::diag::DiagnosticCode;
 use crate::parse::{Limit, ParseErrorKind};
 use crate::tree::NodeRef;
 use crate::vm::Parser;
@@ -25,28 +25,28 @@ impl Grammar {
             .as_ref()
             .map_err(Clone::clone)?;
         let tree = meta.parse(text, "start").map_err(|error| {
-            let lines = LineIndex::new(text);
-            let line = lines.line(error.position) + 1;
-            // A count of code points for people to read, not the column that indentation uses.
-            let before = text.get(lines.line_start(error.position)..error.position);
-            let column = before.unwrap_or("").chars().count() + 1;
-            let message = match error.kind {
-                ParseErrorKind::NoMatch { expected } => format!(
-                    "syntax error at line {line}, column {column}: expected {}",
-                    expected.join(", ")
+            let (code, message) = match error.kind {
+                ParseErrorKind::NoMatch { expected } => (
+                    DiagnosticCode::Syntax,
+                    format!("expected {}", expected.join(", ")),
+                ),
+                ParseErrorKind::Limit(Limit::Depth) => (
+                    DiagnosticCode::TooDeep,
+                    "the grammar text nests too deeply to read".to_owned(),
                 ),
                 ParseErrorKind::Limit(limit) => {
                     let what = match limit {
-                        Limit::Depth => "nests too deeply",
-                        Limit::Steps => "takes too long",
                         Limit::InputSize => "is too large",
+                        _ => "takes too long",
                     };
-                    format!("the grammar text {what} to read, at line {line}, column {column}")
+                    let message = format!("the grammar text {what} to read");
+                    (DiagnosticCode::TooLarge, message)
                 }
-                other => format!("syntax error at line {line}, column {column}: {other:?}"),
+                other => (DiagnosticCode::Internal, format!("{other:?}")),
             };
             let at = error.position as u32;
             vec![GrammarError {
+                code,
                 message,
                 span: Span { start: at, end: at },
             }]
@@ -115,14 +115,18 @@ struct Converter<'t> {
 }
 
 impl<'t> Converter<'t> {
-    fn error(&mut self, message: String, span: Span) {
-        self.errors.push(GrammarError { message, span });
+    fn error(&mut self, code: DiagnosticCode, message: String, span: Span) {
+        self.errors.push(GrammarError {
+            code,
+            message,
+            span,
+        });
     }
 
     fn too_deep(&mut self, span: Span) {
         let message = format!("an expression nests deeper than {MAX_EXPRESSION_DEPTH} levels");
         if !self.errors.iter().any(|e| e.message == message) {
-            self.error(message, span);
+            self.error(DiagnosticCode::TooDeep, message, span);
         }
     }
 
@@ -186,7 +190,11 @@ impl<'t> Converter<'t> {
                     grammar.recovers.push(Recover { label, expr });
                 }
             }
-            other => self.error(format!("unexpected {other}"), span(node)),
+            other => self.error(
+                DiagnosticCode::Internal,
+                format!("unexpected {other}"),
+                span(node),
+            ),
         }
     }
 
@@ -213,7 +221,8 @@ impl<'t> Converter<'t> {
 
     fn count(&mut self, node: &NodeRef<'_>) -> Count {
         let value = self.text_of(node).parse().unwrap_or_else(|_| {
-            self.error("the number is too large".into(), span(node));
+            let message = "the number is too large".into();
+            self.error(DiagnosticCode::Number, message, span(node));
             0
         });
         Count {
@@ -468,7 +477,11 @@ impl<'t> Converter<'t> {
                 },
             },
             other => {
-                self.error(format!("unexpected {other}"), span(node));
+                self.error(
+                    DiagnosticCode::Internal,
+                    format!("unexpected {other}"),
+                    span(node),
+                );
                 ExprKind::Empty
             }
         };
@@ -548,7 +561,7 @@ impl<'t> Converter<'t> {
             };
             match decoded {
                 Some(c) => out.push(c),
-                None => self.error("invalid escape".into(), at),
+                None => self.error(DiagnosticCode::Escape, "invalid escape".into(), at),
             }
         }
         out
@@ -574,7 +587,11 @@ impl<'t> Converter<'t> {
                 let negated = rest.starts_with("\\P");
                 match Property::from_name(name) {
                     Some(property) => units.push(ClassUnit::Property(property, negated)),
-                    None => self.error(format!("unknown Unicode property {name}"), at),
+                    None => self.error(
+                        DiagnosticCode::Property,
+                        format!("unknown Unicode property {name}"),
+                        at,
+                    ),
                 }
                 rest = tail;
                 continue;
@@ -633,7 +650,11 @@ impl<'t> Converter<'t> {
                 items: vec![ClassItem::Property { property, negated }],
             }),
             None => {
-                self.error(format!("unknown Unicode property {name}"), span(node));
+                self.error(
+                    DiagnosticCode::Property,
+                    format!("unknown Unicode property {name}"),
+                    span(node),
+                );
                 ExprKind::Empty
             }
         }

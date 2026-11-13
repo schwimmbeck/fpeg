@@ -16,6 +16,7 @@
 )]
 
 mod analysis;
+mod diag;
 mod grammar;
 mod ir;
 mod lines;
@@ -26,6 +27,7 @@ mod resolve;
 mod tree;
 mod vm;
 
+pub use diag::DiagnosticCode;
 pub use grammar::builder;
 pub use grammar::{
     Alternative, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel, Expr,

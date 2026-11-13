@@ -25,6 +25,7 @@ print(fastpeg.__version__)
 
 - [Grammar language](reference/grammar.md): the syntax of grammars.
 - [Semantics](reference/semantics.md): what a grammar means.
+- [Diagnostics](reference/diagnostics/index.md): every problem a grammar can have, with its code.
 
 ```{toctree}
 :hidden:
@@ -32,5 +33,6 @@ print(fastpeg.__version__)
 roadmap
 reference/grammar
 reference/semantics
+reference/diagnostics/index
 development
 ```

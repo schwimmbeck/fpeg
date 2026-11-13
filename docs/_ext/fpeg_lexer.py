@@ -40,6 +40,8 @@ class FpegLexer(RegexLexer):
             (r"[|&!~^?*+.=]", Operator),
             (r"_*[A-Z][A-Za-z0-9_]*", Name.Constant),
             (r"_*[a-z][A-Za-z0-9_]*", Name),
+            # Any other name the language reads, such as `_1`, which the resolver rejects.
+            (r"[A-Za-z_][A-Za-z0-9_]*", Name),
             (r"-?\d+", Number),
             (r"[(){}<>:,]", Punctuation),
         ]

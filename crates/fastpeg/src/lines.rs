@@ -40,6 +40,13 @@ impl LineIndex {
         self.starts[self.line(offset)]
     }
 
+    /// The line and column of a byte offset as people count them: both from 1, the column in
+    /// code points from the start of the line, whatever the characters are.
+    pub fn line_column(&self, text: &str, offset: usize) -> (usize, usize) {
+        let before = text.get(self.line_start(offset)..offset).unwrap_or("");
+        (self.line(offset) + 1, before.chars().count() + 1)
+    }
+
     /// The column of a byte offset, counting from 0: one per code point from the start of the
     /// line, with a tab advancing to the next multiple of `tab_width` and a form feed going back
     /// to 0, as Python counts indentation.
@@ -72,6 +79,15 @@ mod tests {
         assert_eq!(lines.column(text, x, 4), 5);
         assert_eq!(lines.line(text.find('d').unwrap_or_default()), 2);
         assert_eq!(lines.column(text, text.len() - 1, 8), 1);
+    }
+
+    #[test]
+    fn people_count_lines_and_columns_from_one_in_code_points() {
+        let text = "ab\r\n\täx";
+        let lines = LineIndex::new(text);
+        assert_eq!(lines.line_column(text, 0), (1, 1));
+        assert_eq!(lines.line_column(text, text.len() - 1), (2, 3));
+        assert_eq!(lines.line_column(text, text.len()), (2, 4));
     }
 
     #[test]

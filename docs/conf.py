@@ -16,6 +16,8 @@ release = importlib.metadata.version("fastpeg")
 
 extensions = ["myst_parser", "run_code_blocks", "fpeg_lexer"]
 source_suffix = {".md": "markdown"}
+# Headings down to the third level get anchors that links such as page.md#section can name.
+myst_heading_anchors = 3
 exclude_patterns = ["_build"]
 
 html_theme = "furo"

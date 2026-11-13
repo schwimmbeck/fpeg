@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
+use crate::diag::DiagnosticCode;
 use crate::grammar::print::expr_text;
 use crate::grammar::{
     Alternative, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, GrammarError, Level,
@@ -166,6 +167,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         r.check_name(&rule.name);
         if r.by_name.insert(&rule.name.text, rule).is_some() {
             r.error(
+                DiagnosticCode::Duplicate,
                 format!("the rule {} is defined twice", rule.name.text),
                 rule.name.span,
             );
@@ -183,18 +185,20 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
                 "the precedence block {} cannot have parameters",
                 rule.name.text
             );
-            r.error(message, rule.name.span);
+            r.error(DiagnosticCode::Precedence, message, rule.name.span);
             continue;
         }
         for level in levels {
             let name = level.name.text.as_str();
             if r.by_name.contains_key(name) {
                 r.error(
+                    DiagnosticCode::Duplicate,
                     format!("the level {name} has the name of a rule"),
                     level.name.span,
                 );
             } else if r.levels.contains_key(name) {
                 r.error(
+                    DiagnosticCode::Duplicate,
                     format!("the level {name} is defined twice"),
                     level.name.span,
                 );
@@ -416,10 +420,14 @@ fn substitute(expr: &Expr, params: &HashMap<String, Expr>) -> Expr {
 }
 
 impl<'g> Resolver<'g> {
-    fn error(&mut self, message: String, span: Span) {
+    fn error(&mut self, code: DiagnosticCode, message: String, span: Span) {
         // Each instance of a template reports the errors of its body again. The cap keeps the
         // check for those repeats cheap.
-        let error = GrammarError { message, span };
+        let error = GrammarError {
+            code,
+            message,
+            span,
+        };
         if self.errors.len() < MAX_ERRORS && !self.errors.contains(&error) {
             self.errors.push(error);
         }
@@ -434,7 +442,7 @@ impl<'g> Resolver<'g> {
                     "the field {} can capture several items in one match",
                     check.name
                 );
-                self.error(message, check.span);
+                self.error(DiagnosticCode::FieldItems, message, check.span);
             }
         }
     }
@@ -449,7 +457,7 @@ impl<'g> Resolver<'g> {
                 "the name {} must start with a letter after any underscores",
                 name.text
             );
-            self.error(message, name.span);
+            self.error(DiagnosticCode::Name, message, name.span);
         }
     }
 
@@ -461,7 +469,7 @@ impl<'g> Resolver<'g> {
             }
             if self.flags.len() == MAX_FLAGS {
                 let message = format!("a grammar declares at most {MAX_FLAGS} flags");
-                self.error(message, flag.span);
+                self.error(DiagnosticCode::TooLarge, message, flag.span);
                 break;
             }
             let next = FlagId(self.flags.len() as u16);
@@ -476,34 +484,39 @@ impl<'g> Resolver<'g> {
                         items: class.items.clone(),
                     };
                 }
-                _ => self.error("%word needs a character class".into(), word.span),
+                _ => self.error(
+                    DiagnosticCode::Class,
+                    "%word needs a character class".into(),
+                    word.span,
+                ),
             }
         }
         if let Some(tabs) = g.tabs
             && !(1..=MAX_TAB_WIDTH).contains(&tabs.value)
         {
             let message = format!("%tabs needs a width from 1 to {MAX_TAB_WIDTH}");
-            self.error(message, tabs.span);
+            self.error(DiagnosticCode::Bounds, message, tabs.span);
         }
         if let Some(module) = &g.extends {
             self.error(
+                DiagnosticCode::NotYet,
                 "%extends is not supported yet, see the roadmap (M7)".into(),
                 module.span,
             );
         }
         for import in &g.imports {
             let message = "%import is not supported yet, see the roadmap (M7)".into();
-            self.error(message, import.module.span);
+            self.error(DiagnosticCode::NotYet, message, import.module.span);
         }
         for recover in &g.recovers {
             let message = "%recover is not supported yet, see the roadmap (M8)".into();
-            self.error(message, recover.label.span);
+            self.error(DiagnosticCode::NotYet, message, recover.label.span);
         }
     }
 
     fn too_large(&mut self, template: &str, span: Span) {
         let message = format!("the instances of {template} expand into too many expressions");
-        self.error(message, span);
+        self.error(DiagnosticCode::TooLarge, message, span);
     }
 
     /// The id of the instance of `rule` with these closed arguments, created on first use, or
@@ -518,7 +531,7 @@ impl<'g> Resolver<'g> {
             let templates = self.instances.len() - self.plain_instances;
             if templates >= MAX_TEMPLATE_INSTANCES {
                 let message = format!("the template {} creates too many instances", rule.name.text);
-                self.error(message, span);
+                self.error(DiagnosticCode::TooLarge, message, span);
                 return None;
             }
             // The instance lowers a copy of an argument for every use of its parameter.
@@ -566,7 +579,11 @@ impl<'g> Resolver<'g> {
         match u16::try_from(id) {
             Ok(id) => FieldId(id),
             Err(_) => {
-                self.error("the grammar has too many field names".into(), name.span);
+                self.error(
+                    DiagnosticCode::TooLarge,
+                    "the grammar has too many field names".into(),
+                    name.span,
+                );
                 FieldId::NONE
             }
         }
@@ -577,7 +594,11 @@ impl<'g> Resolver<'g> {
         match u16::try_from(id) {
             Ok(id) => CaptureId(id),
             Err(_) => {
-                self.error("the grammar has too many capture names".into(), name.span);
+                self.error(
+                    DiagnosticCode::TooLarge,
+                    "the grammar has too many capture names".into(),
+                    name.span,
+                );
                 CaptureId(0)
             }
         }
@@ -590,7 +611,7 @@ impl<'g> Resolver<'g> {
                 // A declared flag beyond the limit has its error at the limit already.
                 if !self.grammar.flags.iter().any(|f| f.text == name.text) {
                     let message = format!("the flag {} is not declared with %flag", name.text);
-                    self.error(message, name.span);
+                    self.error(DiagnosticCode::UnknownFlag, message, name.span);
                 }
                 FlagId(0)
             }
@@ -609,14 +630,18 @@ impl<'g> Resolver<'g> {
 
     fn check_class(&mut self, items: &[ClassItem], span: Span) {
         if items.is_empty() {
-            self.error("a character class must list something".into(), span);
+            self.error(
+                DiagnosticCode::Class,
+                "a character class must list something".into(),
+                span,
+            );
         }
         for item in items {
             if let ClassItem::Range(first, last) = item
                 && first > last
             {
                 let message = format!("the range {first:?}-{last:?} runs backwards");
-                self.error(message, span);
+                self.error(DiagnosticCode::Class, message, span);
             }
         }
     }
@@ -626,6 +651,7 @@ impl<'g> Resolver<'g> {
         let deep = exprs.iter().any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH);
         if deep {
             self.error(
+                DiagnosticCode::TooDeep,
                 format!("{what} nests deeper than {MAX_EXPRESSION_DEPTH} levels"),
                 span,
             );
@@ -658,6 +684,7 @@ impl<'g> Resolver<'g> {
         for attribute in &rule.attributes {
             if !ATTRIBUTES.contains(&attribute.text.as_str()) {
                 self.error(
+                    DiagnosticCode::UnknownAttribute,
                     format!("unknown attribute @{}", attribute.text),
                     attribute.span,
                 );
@@ -665,15 +692,15 @@ impl<'g> Resolver<'g> {
         }
         if kind == RuleKind::Terminal && rule.has_attribute("lexical") {
             let message = format!("the terminal {} cannot be @lexical", rule.name.text);
-            self.error(message, rule.name.span);
+            self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
         if kind != RuleKind::Terminal && rule.has_attribute("reserved") {
             let message = format!("only terminals can be @reserved, not {}", rule.name.text);
-            self.error(message, rule.name.span);
+            self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
         if rule.transparent && kind == RuleKind::Terminal {
             let message = format!("the terminal {} cannot be transparent", rule.name.text);
-            self.error(message, rule.name.span);
+            self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
         let params: HashMap<String, Expr> = rule
             .params
@@ -707,7 +734,7 @@ impl<'g> Resolver<'g> {
                         "the transparent rule {} has a field outside an aliased alternative",
                         rule.name.text
                     );
-                    self.error(message, rule.name.span);
+                    self.error(DiagnosticCode::TransparentField, message, rule.name.span);
                 }
                 let mut lowered = Vec::new();
                 for alternative in alternatives {
@@ -739,7 +766,7 @@ impl<'g> Resolver<'g> {
         if kind == RuleKind::Terminal {
             if let Some(alias) = alias {
                 let message = format!("the terminal {} cannot have an alias", rule.name.text);
-                self.error(message, alias.span);
+                self.error(DiagnosticCode::RuleForm, message, alias.span);
             }
             return expr;
         }
@@ -770,7 +797,7 @@ impl<'g> Resolver<'g> {
                 "the precedence block {} must be a plain syntactic rule",
                 rule.name.text
             );
-            self.error(message, rule.name.span);
+            self.error(DiagnosticCode::Precedence, message, rule.name.span);
         }
         // Its levels would refer to parameters that nothing binds, which only adds errors.
         if !rule.params.is_empty() {
@@ -778,7 +805,7 @@ impl<'g> Resolver<'g> {
                 "the precedence block {} cannot have parameters",
                 rule.name.text
             );
-            self.error(message, rule.name.span);
+            self.error(DiagnosticCode::Precedence, message, rule.name.span);
             return ir::Expr::Empty;
         }
         let mut scope_names = HashMap::new();
@@ -793,11 +820,11 @@ impl<'g> Resolver<'g> {
             ids.push(id);
             if self.by_name.contains_key(level.name.text.as_str()) {
                 let message = format!("the level {} has the name of a rule", level.name.text);
-                self.error(message, level.name.span);
+                self.error(DiagnosticCode::Duplicate, message, level.name.span);
             }
             if scope_names.insert(level.name.text.clone(), id).is_some() {
                 let message = format!("the level {} is defined twice", level.name.text);
-                self.error(message, level.name.span);
+                self.error(DiagnosticCode::Duplicate, message, level.name.span);
             }
         }
         let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
@@ -821,7 +848,11 @@ impl<'g> Resolver<'g> {
                         if alternative.expr.contains_field() {
                             let message =
                                 "an alternative with fields needs -> in a precedence block";
-                            self.error(message.into(), alternative.expr.span);
+                            self.error(
+                                DiagnosticCode::Precedence,
+                                message.into(),
+                                alternative.expr.span,
+                            );
                         }
                         lowered.push(expr);
                     }
@@ -840,7 +871,7 @@ impl<'g> Resolver<'g> {
             Some(first) => ir::Expr::Call(*first),
             None => {
                 let message = format!("the precedence block {} has no levels", rule.name.text);
-                self.error(message, rule.name.span);
+                self.error(DiagnosticCode::Precedence, message, rule.name.span);
                 ir::Expr::Empty
             }
         }
@@ -868,6 +899,7 @@ impl<'g> Resolver<'g> {
             } => {
                 if text.is_empty() {
                     self.error(
+                        DiagnosticCode::EmptyLiteral,
                         "a literal cannot be empty, use () for the empty string".into(),
                         expr.span,
                     );
@@ -891,7 +923,7 @@ impl<'g> Resolver<'g> {
                 if let Some(arg) = scope.params.get(&name.text) {
                     if !args.is_empty() {
                         let message = format!("the parameter {} takes no arguments", name.text);
-                        self.error(message, expr.span);
+                        self.error(DiagnosticCode::Arguments, message, expr.span);
                         return E::Empty;
                     }
                     let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
@@ -926,6 +958,7 @@ impl<'g> Resolver<'g> {
             } => {
                 if max.is_some_and(|max| max < *min) {
                     self.error(
+                        DiagnosticCode::Bounds,
                         "a repetition's maximum is below its minimum".into(),
                         expr.span,
                     );
@@ -1042,6 +1075,7 @@ impl<'g> Resolver<'g> {
             ExprKind::Error { .. } => E::ErrorAlternative,
             ExprKind::Inherited => {
                 self.error(
+                    DiagnosticCode::NotYet,
                     "... needs a grammar that uses %extends (M7)".into(),
                     expr.span,
                 );
@@ -1101,7 +1135,11 @@ impl<'g> Resolver<'g> {
         .or_else(|| self.levels.get(name.text.as_str()).map(|&(id, _)| id));
         if let Some(id) = level {
             if !args.is_empty() {
-                self.error(format!("the level {} takes no arguments", name.text), span);
+                self.error(
+                    DiagnosticCode::Arguments,
+                    format!("the level {} takes no arguments", name.text),
+                    span,
+                );
             }
             // A level is syntactic, which no terminal and no skip expression may use.
             if scope.mode == Mode::Plain {
@@ -1109,13 +1147,17 @@ impl<'g> Resolver<'g> {
                     "a terminal or the skip expression cannot use the level {}",
                     name.text
                 );
-                self.error(message, span);
+                self.error(DiagnosticCode::RuleInTerminal, message, span);
                 return ir::Expr::Empty;
             }
             return ir::Expr::Call(id);
         }
         let Some(&target) = self.by_name.get(name.text.as_str()) else {
-            self.error(format!("unknown rule {}", name.text), span);
+            self.error(
+                DiagnosticCode::UnknownRule,
+                format!("unknown rule {}", name.text),
+                span,
+            );
             return ir::Expr::Empty;
         };
         if target.params.len() != args.len() {
@@ -1125,13 +1167,13 @@ impl<'g> Resolver<'g> {
                 target.params.len(),
                 args.len()
             );
-            self.error(message, span);
+            self.error(DiagnosticCode::Arguments, message, span);
             return ir::Expr::Empty;
         }
         // Substituting would leave the arguments in place and take the name for a rule's.
         if let Some(param) = args.iter().find_map(|a| misused_parameter(a, scope.params)) {
             let message = format!("the parameter {} takes no arguments", param.text);
-            self.error(message, param.span);
+            self.error(DiagnosticCode::Arguments, message, param.span);
             return ir::Expr::Empty;
         }
         // Arguments that take in parameters grow with every instance, so their size is known
@@ -1150,7 +1192,7 @@ impl<'g> Resolver<'g> {
                 "the arguments of {} nest deeper than {MAX_EXPRESSION_DEPTH} levels",
                 name.text
             );
-            self.error(message, span);
+            self.error(DiagnosticCode::TooDeep, message, span);
             return ir::Expr::Empty;
         }
         // A call to a placeholder would reach a rule that is not there.
@@ -1164,7 +1206,7 @@ impl<'g> Resolver<'g> {
                     "a terminal or the skip expression cannot use the rule {}",
                     name.text
                 );
-                self.error(message, span);
+                self.error(DiagnosticCode::RuleInTerminal, message, span);
                 ir::Expr::Empty
             }
             (mode, RuleKind::Terminal) => {

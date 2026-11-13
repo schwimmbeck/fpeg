@@ -61,6 +61,7 @@ impl Parser {
         #[cfg(feature = "reference")]
         if let Err(problem) = verify::verify(&program) {
             return Err(vec![GrammarError {
+                code: crate::diag::DiagnosticCode::Internal,
                 message: format!("the compiler made a program that fails verification: {problem}"),
                 span: crate::grammar::Span::default(),
             }]);

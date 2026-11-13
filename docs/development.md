@@ -58,11 +58,12 @@ The tests of the core crate run on the reference interpreter, and the differenti
 | `tests/generated.rs` | generated grammars and inputs, made by `tests/common/generator.rs`: nothing panics, every parse ends within the limits, printing reads back, and memoization never changes a result |
 | `tests/differential.rs` | the parsing machine against the reference interpreter on every case file, every acceptance grammar with its samples, and generated grammars: the same tree, or the same error with the same expected set. Grammars the machine does not run yet are skipped, and each test reports how many |
 | `tests/mutated.rs` | the grammars of `crates/fastpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
-| `tests/docs.rs` | every `fpeg` block of the documentation |
+| `tests/docs.rs` | every `fpeg` block of the documentation outside the diagnostics pages |
+| `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fastpeg check` prints, and its fix compiles |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
 | `src/vm/tests.rs` | the code the compiler makes for small grammars, exact character classes, the verifier against broken programs, and what the machine does not run yet |
 
-`FASTPEG_BLESS=1 cargo test` rewrites the expected results of the case files and the `.tree` files, which are then reviewed before a commit. `FASTPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FASTPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FASTPEG_MUTANTS` and `FASTPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
+`FASTPEG_BLESS=1 cargo test` rewrites the expected results of the case files, the `.tree` files and the messages on the diagnostics pages, which are then reviewed before a commit. `FASTPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FASTPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FASTPEG_MUTANTS` and `FASTPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
 
 ## Documentation
 

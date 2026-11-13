@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Every grammar block in the docs must read, and one with a `start` rule must also resolve,
-//! so that an example in the docs cannot drift from the language.
+//! so that an example in the docs cannot drift from the language. The pages of diagnostics show
+//! grammars with problems on purpose, and `diagnostics.rs` checks them.
 
 use std::path::{Path, PathBuf};
 
@@ -11,7 +12,12 @@ use fastpeg::{Grammar, Reference};
 fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("the docs directory is readable") {
         let path = entry.expect("a directory entry").path();
-        if path.is_dir() && path.file_name().is_some_and(|n| n != "_build") {
+        let skipped = ["_build", "diagnostics"];
+        if path.is_dir()
+            && path
+                .file_name()
+                .is_some_and(|n| !skipped.iter().any(|s| n == *s))
+        {
             markdown_files(&path, out);
         } else if path.extension().is_some_and(|e| e == "md") {
             out.push(path);

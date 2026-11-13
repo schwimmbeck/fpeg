@@ -148,7 +148,8 @@ unknown Unicode property Emoji
 === a syntax error names what was expected
 start: "a" |
 --- grammar
-syntax error at line 1, column 13
+error[E101]: expected "!", "%def", "%error"
+at 12..12
 
 === imports are not supported yet
 %import common (WS)

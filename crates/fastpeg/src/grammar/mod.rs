@@ -8,6 +8,8 @@
 
 use std::fmt;
 
+use crate::diag::DiagnosticCode;
+
 pub mod builder;
 mod meta;
 pub(crate) mod print;
@@ -20,7 +22,9 @@ pub const MAX_EXPRESSION_DEPTH: usize = 100;
 /// A problem that makes a grammar unusable.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GrammarError {
-    /// What is wrong.
+    /// The kind of problem, whose page in the documentation explains it.
+    pub code: DiagnosticCode,
+    /// What exactly is wrong.
     pub message: String,
     /// Where in the grammar source. Empty for grammars built in code.
     pub span: Span,
@@ -30,8 +34,8 @@ impl fmt::Display for GrammarError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} at {}..{}",
-            self.message, self.span.start, self.span.end
+            "error[{}]: {} at {}..{}",
+            self.code, self.message, self.span.start, self.span.end
         )
     }
 }
