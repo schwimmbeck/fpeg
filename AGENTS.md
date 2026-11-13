@@ -15,7 +15,7 @@ fastpeg is a general-purpose parsing library for Parsing Expression Grammars (PE
 - Python is the first binding. It exposes the tree lazily and runs a Lark-style `Transformer`, a class with one method per rule, after the parse.
 - Grammar analysis reports diagnostics with stable codes. A command-line checker and later a language server use the same diagnostics.
 
-Status: milestone M0 is done. The workspace builds with the three crates as shells, the checks below pass on Windows and Linux, the CI workflow waits for the repository's first remote, the benchmark harness records a baseline of other parsers, and the docs site has its first pages. There is no parser yet. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`, the reference interpreter) appear with the milestone that needs them.
+Status: milestone M0 is done. M1 has its code and is in review: the normative drafts of the grammar language and its semantics, the grammar model and builder, the reference interpreter with the text front end, and the acceptance grammars with their samples. There is no engine yet, so grammars run on the reference interpreter, which is compiled only for tests. The milestones are listed in `docs/roadmap.md`. Files the rules name that do not exist yet (`CHANGELOG.md`) appear with the milestone that needs them.
 
 ## Principles
 
@@ -40,7 +40,7 @@ crates/fastpeg/       core: grammar front end, analysis, compiler, parsing machi
 crates/fastpeg-cli/   the fastpeg command: check, parse, profile
 crates/fastpeg-py/    PyO3 binding, built with maturin
 python/fastpeg/       Python package: Transformer, tree and token views, type stubs
-grammars/             grammars shipped with the library and the acceptance grammars (M1)
+grammars/             grammars shipped with the library and the acceptance grammars, samples in samples/
 examples/             runnable examples, each one used by the docs (M3)
 benchmarks/           benchmark harness, corpus fetchers, recorded results
 benchmarks/rust/      Rust baselines, a package outside the workspace
