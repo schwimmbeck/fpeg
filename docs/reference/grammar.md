@@ -175,7 +175,7 @@ call: func=NAME "(" args=(expr ** ",") ")"
 binary: left=term op=("+" | "-") right=term
 ```
 
-- A field captures the token of a literal, class, property, `.` or hidden terminal when that token is the field's whole match, as `op` above shows: directly, or through choices, repetitions, `^`, `%on`, `%off`, `%indent` and `%def`. Tokens that stand in a sequence with others, a separator or a lookahead stay hidden, so `args=(expr ** ",")` holds the expressions and not the commas.
+- A field captures the token of a literal, class, property, `.`, `%ref` or hidden terminal when that token is the field's whole match, as `op` above shows: directly, or through choices, repetitions, `^`, `%on`, `%off`, `%indent` and `%def`. Tokens that stand in a sequence with others, a separator or a lookahead stay hidden, so `args=(expr ** ",")` holds the expressions and not the commas.
 - The cardinality of a field is fixed by the grammar: one value for `x=e`, a value or none for `x=e?`, a list for `x=e*`, `x=e+`, `x=e{n,m}`, a separated repetition, or a label used more than once in the rule.
 - A field captures one item per match. A field whose expression may produce several visible items in one match, such as `x=(A B)`, is an error.
 
