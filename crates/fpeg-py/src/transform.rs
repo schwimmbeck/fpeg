@@ -222,8 +222,8 @@ struct Scan<'py, 'p> {
     /// hand, kept so that their space is reused from node to node.
     children: Vec<(FieldId, Py<PyAny>)>,
     arguments: Vec<Py<PyAny>>,
-    /// The entry whose method last yielded or discarded, which at the end says whether the
-    /// values of the top are a list.
+    /// The entry whose method last yielded or discarded. A node above it cannot come back as its
+    /// view, and at the end it says whether the values of the top are a list.
     spliced: Option<u32>,
     /// Positions of the tokens the scan makes, which come in input order.
     cursor: Option<LineCursor<'p>>,
@@ -406,9 +406,11 @@ impl<'py, 'p> Scan<'py, 'p> {
         let kind = node.kind().0 as usize;
         let handler = (self.plan.handlers.get(kind)).and_then(Option::as_ref);
         let builder = (self.parsed.grammar.builders.get(kind)).and_then(Option::as_ref);
+        // Entries come in postorder, so a splice from `first` on removed or replaced a child.
         if handler.is_none()
             && builder.is_none()
             && !self.plan.default_node
+            && self.spliced.is_none_or(|entry| (entry as usize) < first)
             && self.stack[base..]
                 .iter()
                 .all(|child| child.object.is_none())

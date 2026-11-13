@@ -218,6 +218,16 @@ def test_discard_removes_a_node_from_its_parent_and_from_its_field() -> None:
     assert Drop().transform(parse("f() ! k")).children == [("f", None)]
     assert Drop().transform(parse("f() ! k").children[0].field("kw")) == []
 
+    # Also when no method rebuilds the parent, on a parse and on a tree built in Python.
+    class DropOnly(fpeg.Transformer):
+        def kw(self) -> Any:
+            return fpeg.Discard
+
+    tree = parse("f() ! k")
+    expected = fpeg.Tree("start", [fpeg.Tree("call", ["f"])])
+    assert DropOnly().transform(tree) == expected
+    assert DropOnly().transform(pickle.loads(pickle.dumps(tree))) == expected
+
 
 def test_a_generator_puts_its_values_into_the_parent_in_the_node_s_place() -> None:
     class Splice(fpeg.Transformer):
