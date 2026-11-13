@@ -17,13 +17,20 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::print::expr_text;
-use super::{ClassItem, ErrorLabel, Expr, ExprKind, Grammar, Name, Rule, RuleBody, RuleKind, Span};
+use super::{
+    ClassItem, ErrorLabel, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody,
+    RuleKind, Span,
+};
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
 use crate::tree::{FieldId, KindId, Names};
 
 /// Template instances resolving may create before it gives up, so that a template whose
 /// arguments grow with every use cannot make it run forever.
-const MAX_RULE_INSTANCES: usize = 10_000;
+const MAX_TEMPLATE_INSTANCES: usize = 1_000;
+
+/// Expressions the arguments and bodies of all template instances may hold together, so that
+/// arguments that double with every use cannot exhaust memory.
+const MAX_INSTANCE_EXPRESSIONS: usize = 100_000;
 
 /// The tab width when a grammar sets none.
 const DEFAULT_TAB_WIDTH: u32 = 8;
@@ -126,6 +133,8 @@ struct Resolver<'g> {
     soft: HashSet<&'g str>,
     reserved: ir::Reserved,
     field_checks: Vec<FieldCheck>,
+    /// Expressions in the arguments and bodies of the template instances made so far.
+    instance_expressions: usize,
     errors: Vec<GrammarError>,
 }
 
@@ -160,6 +169,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
             .collect(),
         reserved: ir::Reserved::default(),
         field_checks: Vec::new(),
+        instance_expressions: 0,
         errors: Vec::new(),
     };
     r.directives();
@@ -188,8 +198,10 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         params: &no_params,
         levels: None,
     };
+    let ignored: Vec<&Expr> = grammar.ignore.iter().collect();
     let skip = match grammar.ignore.as_slice() {
         [] => None,
+        _ if r.too_deep(&ignored, "%ignore", Span::default()) => None,
         items => Some(choice(items.iter().map(|e| r.lower(e, plain)).collect())),
     };
     let syntactic = Scope {
@@ -374,12 +386,27 @@ impl<'g> Resolver<'g> {
         if let Some(&id) = self.instances.get(&key) {
             return id;
         }
-        if self.rules.len() >= MAX_RULE_INSTANCES {
-            let message = format!("the template {} creates too many instances", rule.name.text);
-            if !self.errors.iter().any(|e| e.message == message) {
-                self.error(message, span);
+        if !args.is_empty() {
+            // Every rule without parameters has its instance from the start.
+            let plain = self.grammar.rules.iter().filter(|r| r.params.is_empty());
+            let templates = self.instances.len() - plain.count();
+            let body: Vec<&Expr> = match &rule.body {
+                RuleBody::Alternatives(alternatives) => {
+                    alternatives.iter().map(|a| &a.expr).collect()
+                }
+                RuleBody::Precedence(_) => Vec::new(),
+            };
+            let size: usize = args.iter().chain(body).map(|e| e.measure().0).sum();
+            self.instance_expressions += size;
+            if templates >= MAX_TEMPLATE_INSTANCES
+                || self.instance_expressions > MAX_INSTANCE_EXPRESSIONS
+            {
+                let message = format!("the template {} creates too many instances", rule.name.text);
+                if !self.errors.iter().any(|e| e.message == message) {
+                    self.error(message, span);
+                }
+                return RuleId(0);
             }
-            return RuleId(0);
         }
         let id = self.allocate();
         self.instances.insert(key, id);
@@ -451,8 +478,37 @@ impl<'g> Resolver<'g> {
         }
     }
 
+    /// Report an expression that nests too deeply for the passes that recurse over it.
+    fn too_deep(&mut self, exprs: &[&Expr], what: &str, span: Span) -> bool {
+        let deep = exprs.iter().any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH);
+        if deep {
+            self.error(
+                format!("{what} nests deeper than {MAX_EXPRESSION_DEPTH} levels"),
+                span,
+            );
+        }
+        deep
+    }
+
     fn lower_rule(&mut self, pending: Pending<'g>) {
         let Pending { id, rule, args } = pending;
+        let exprs: Vec<&Expr> = match &rule.body {
+            RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
+            RuleBody::Precedence(levels) => levels
+                .iter()
+                .flat_map(|l| l.alternatives.iter().map(|a| &a.expr))
+                .collect(),
+        };
+        if self.too_deep(
+            &exprs,
+            &format!("the rule {}", rule.name.text),
+            rule.name.span,
+        ) {
+            self.rules[id.0 as usize] = Some(ir::Rule {
+                body: ir::Expr::Empty,
+            });
+            return;
+        }
         let kind = rule.kind();
         for attribute in &rule.attributes {
             if !ATTRIBUTES.contains(&attribute.text.as_str()) {
@@ -891,7 +947,16 @@ impl<'g> Resolver<'g> {
             self.error(message, span);
             return ir::Expr::Empty;
         }
-        let closed = args.iter().map(|a| substitute(a, scope.params)).collect();
+        let closed: Vec<Expr> = args.iter().map(|a| substitute(a, scope.params)).collect();
+        // An argument that takes in a parameter nests deeper with every instance.
+        if closed.iter().any(|a| a.measure().1 > MAX_EXPRESSION_DEPTH) {
+            let message = format!(
+                "the arguments of {} nest deeper than {MAX_EXPRESSION_DEPTH} levels",
+                name.text
+            );
+            self.error(message, span);
+            return ir::Expr::Empty;
+        }
         let id = self.instance(target, closed, span);
         match (scope.mode, target.kind()) {
             (Mode::Plain, RuleKind::Terminal) => ir::Expr::Call(id),

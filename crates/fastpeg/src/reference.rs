@@ -31,6 +31,11 @@ pub const DEFAULT_MAX_STEPS: u64 = 50_000_000;
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
 const STACK_BYTES: usize = 256 * 1024 * 1024;
 
+/// Matches that may enclose each other before a parse stops with the depth limit, whatever the
+/// rule bodies look like. A debug build takes about 7 KB of stack per match, so this keeps the
+/// recursion well within `STACK_BYTES`.
+const MAX_NESTED_EVALUATIONS: u32 = 20_000;
+
 /// What a failed column check expects, in an expected set.
 const INDENTATION: &str = "indentation";
 
@@ -83,7 +88,8 @@ pub enum ParseErrorKind {
 /// The limits a parse can hit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Limit {
-    /// Too deeply nested rule activations.
+    /// Too deeply nested rule activations, or matches nested deeper than the interpreter's
+    /// stack allows.
     Depth,
     /// Too many evaluation steps.
     Steps,
@@ -247,6 +253,8 @@ struct Interp<'a> {
     quiet: u32,
     steps: u64,
     depth: u32,
+    /// How many matches enclose the one in progress.
+    nesting: u32,
     limits: Limits,
 }
 
@@ -266,6 +274,7 @@ impl<'a> Interp<'a> {
             expected: BTreeSet::new(),
             quiet: 0,
             steps: 0,
+            nesting: 0,
             depth: 0,
             limits,
         }
@@ -483,7 +492,18 @@ impl<'a> Interp<'a> {
         Ok(Some(best))
     }
 
+    /// Match an expression, counting how deeply matches nest, since each one recurses.
     fn eval(&mut self, expr: &ir::Expr, pos: usize, ctx: &Ctx) -> Eval {
+        if self.nesting >= MAX_NESTED_EVALUATIONS {
+            return Err(Abort::Limit(Limit::Depth));
+        }
+        self.nesting += 1;
+        let result = self.step(expr, pos, ctx);
+        self.nesting -= 1;
+        result
+    }
+
+    fn step(&mut self, expr: &ir::Expr, pos: usize, ctx: &Ctx) -> Eval {
         use ir::Expr as E;
         self.steps += 1;
         if self.steps > self.limits.max_steps {

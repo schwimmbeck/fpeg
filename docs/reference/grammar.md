@@ -142,6 +142,7 @@ From loosest to tightest:
 - Repetition is greedy and never gives back what it matched.
 - In `e ** s` and `e ++ s` the separator `s` is a primary, so a compound separator needs parentheses. A trailing separator is not matched.
 - `()` matches the empty string.
+- Expressions nest at most 100 levels deep, counting every operator and group. A deeper grammar is an error. So is a template whose arguments keep growing from one use to the next.
 - `~` is a cut: once the sequence it stands in has passed it, a failure later in that sequence makes the innermost choice or repetition fail at once, without trying its remaining alternatives.
 
 ## Shaping the tree

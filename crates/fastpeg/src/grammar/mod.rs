@@ -16,6 +16,10 @@ mod text;
 
 pub use resolve::GrammarError;
 
+/// How deeply the expressions of a grammar may nest. Passes over an expression recurse, so a
+/// deeper grammar is rejected before they run.
+pub const MAX_EXPRESSION_DEPTH: usize = 100;
+
 /// A byte range in the grammar's source text. Grammars built in code have empty spans.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Span {
@@ -266,6 +270,26 @@ impl Expr {
     pub fn contains_field(&self) -> bool {
         matches!(self.kind, ExprKind::Field { .. })
             || self.children().into_iter().any(Expr::contains_field)
+    }
+
+    /// How many expressions this one holds, itself included, and how deeply they nest, this one
+    /// being at depth 1. It does not recurse, so it is safe on expressions of any depth.
+    #[cfg_attr(
+        not(feature = "reference"),
+        expect(
+            dead_code,
+            reason = "the resolver and the text front end serve only the reference interpreter yet"
+        )
+    )]
+    pub(crate) fn measure(&self) -> (usize, usize) {
+        let mut pending = vec![(self, 1)];
+        let (mut size, mut depth) = (0, 0);
+        while let Some((expr, level)) = pending.pop() {
+            size += 1;
+            depth = depth.max(level);
+            pending.extend(expr.children().into_iter().map(|child| (child, level + 1)));
+        }
+        (size, depth)
     }
 }
 

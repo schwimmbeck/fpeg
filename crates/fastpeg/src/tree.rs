@@ -232,12 +232,33 @@ impl Tree {
     /// front, and a field puts `name=` before the item. With `spans`, each item shows its
     /// byte span as `@start..end`.
     pub fn to_text(&self, input: &str, spans: bool) -> String {
+        /// What is left to write: an item, with a space before it or not, or a closing bracket.
+        enum Step<'t> {
+            Item(NodeRef<'t>, bool),
+            Close,
+        }
+        // An explicit stack, since trees from left recursion are as deep as they are long.
+        let mut pending: Vec<Step<'_>> = Vec::new();
+        for (i, root) in self.roots().into_iter().enumerate().rev() {
+            pending.push(Step::Item(root, i > 0));
+        }
         let mut out = String::new();
-        for (i, root) in self.roots().into_iter().enumerate() {
-            if i > 0 {
-                out.push(' ');
+        while let Some(step) = pending.pop() {
+            match step {
+                Step::Close => out.push(')'),
+                Step::Item(item, space) => {
+                    if space {
+                        out.push(' ');
+                    }
+                    item.write_head(&mut out, input, spans);
+                    if !item.is_token() {
+                        pending.push(Step::Close);
+                        for child in item.children().into_iter().rev() {
+                            pending.push(Step::Item(child, true));
+                        }
+                    }
+                }
             }
-            root.write_text(&mut out, input, spans);
         }
         out
     }
@@ -310,7 +331,8 @@ impl<'t> NodeRef<'t> {
         input.get(start as usize..end as usize).unwrap_or("")
     }
 
-    fn write_text(&self, out: &mut String, input: &str, spans: bool) {
+    /// Write a token, or a node up to its children.
+    fn write_head(&self, out: &mut String, input: &str, spans: bool) {
         if let Some(field) = self.field_name() {
             out.push_str(field);
             out.push('=');
@@ -326,20 +348,12 @@ impl<'t> NodeRef<'t> {
                 out.push_str(name);
             }
             let _ = write!(out, "{:?}", self.text(input));
-            if spans {
-                let _ = write!(out, "@{start}..{end}");
-            }
         } else {
             out.push('(');
             out.push_str(self.kind_name());
-            if spans {
-                let _ = write!(out, "@{start}..{end}");
-            }
-            for child in self.children() {
-                out.push(' ');
-                child.write_text(out, input, spans);
-            }
-            out.push(')');
+        }
+        if spans {
+            let _ = write!(out, "@{start}..{end}");
         }
     }
 }

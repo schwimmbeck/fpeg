@@ -8,11 +8,11 @@ use std::sync::OnceLock;
 
 use super::{
     Alternative, Builder, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count, ErrorLabel,
-    Expr, ExprKind, Grammar, GrammarError, Import, Level, Name, Property, Recover, Rule, RuleBody,
-    Span, Text, meta,
+    Expr, ExprKind, Grammar, GrammarError, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property,
+    Recover, Rule, RuleBody, Span, Text, meta,
 };
 use crate::lines::LineIndex;
-use crate::reference::{ParseErrorKind, Reference};
+use crate::reference::{Limit, ParseErrorKind, Reference};
 use crate::tree::NodeRef;
 
 impl Grammar {
@@ -27,24 +27,50 @@ impl Grammar {
             let lines = LineIndex::new(text);
             let line = lines.line(error.position) + 1;
             let column = lines.column(text, error.position, 1) + 1;
-            let detail = match error.kind {
-                ParseErrorKind::NoMatch { expected } => format!("expected {}", expected.join(", ")),
-                other => format!("{other:?}"),
+            let message = match error.kind {
+                ParseErrorKind::NoMatch { expected } => format!(
+                    "syntax error at line {line}, column {column}: expected {}",
+                    expected.join(", ")
+                ),
+                ParseErrorKind::Limit(limit) => {
+                    let what = match limit {
+                        Limit::Depth => "nests too deeply",
+                        Limit::Steps => "takes too long",
+                        Limit::InputSize => "is too large",
+                    };
+                    format!("the grammar text {what} to read, at line {line}, column {column}")
+                }
+                other => format!("syntax error at line {line}, column {column}: {other:?}"),
             };
             let at = error.position as u32;
             vec![GrammarError {
-                message: format!("syntax error at line {line}, column {column}: {detail}"),
+                message,
                 span: Span { start: at, end: at },
             }]
         })?;
         let mut converter = Converter {
             text,
+            depth: 0,
             errors: Vec::new(),
         };
         let mut grammar = Grammar::default();
         for root in tree.roots() {
             for item in visible(&root) {
                 converter.item(&mut grammar, &item);
+            }
+        }
+        for rule in &grammar.rules {
+            let exprs: Vec<&Expr> = match &rule.body {
+                RuleBody::Alternatives(alternatives) => {
+                    alternatives.iter().map(|a| &a.expr).collect()
+                }
+                RuleBody::Precedence(levels) => levels
+                    .iter()
+                    .flat_map(|l| l.alternatives.iter().map(|a| &a.expr))
+                    .collect(),
+            };
+            if exprs.iter().any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH) {
+                converter.too_deep(rule.span);
             }
         }
         if converter.errors.is_empty() {
@@ -80,12 +106,31 @@ fn fields<'t>(node: &NodeRef<'t>, name: &str) -> Vec<NodeRef<'t>> {
 
 struct Converter<'t> {
     text: &'t str,
+    /// How many choices, lookaheads and suffixes enclose the node being converted.
+    depth: usize,
     errors: Vec<GrammarError>,
 }
 
 impl<'t> Converter<'t> {
     fn error(&mut self, message: String, span: Span) {
         self.errors.push(GrammarError { message, span });
+    }
+
+    fn too_deep(&mut self, span: Span) {
+        let message = format!("an expression nests deeper than {MAX_EXPRESSION_DEPTH} levels");
+        if !self.errors.iter().any(|e| e.message == message) {
+            self.error(message, span);
+        }
+    }
+
+    /// Go one level deeper into an expression, unless that is too deep to convert safely.
+    fn enter(&mut self, node: &NodeRef<'_>, levels: usize) -> bool {
+        if self.depth + levels > MAX_EXPRESSION_DEPTH {
+            self.too_deep(span(node));
+            return false;
+        }
+        self.depth += levels;
+        true
     }
 
     fn item(&mut self, grammar: &mut Grammar, node: &NodeRef<'_>) {
@@ -242,10 +287,14 @@ impl<'t> Converter<'t> {
     }
 
     fn choice(&mut self, node: &NodeRef<'_>) -> Expr {
+        if !self.enter(node, 1) {
+            return Expr::new(ExprKind::Empty);
+        }
         let mut items: Vec<Expr> = fields(node, "items")
             .iter()
             .map(|s| self.sequence(s))
             .collect();
+        self.depth -= 1;
         if items.len() == 1 {
             return items.remove(0);
         }
@@ -294,10 +343,14 @@ impl<'t> Converter<'t> {
     fn prefix(&mut self, node: &NodeRef<'_>) -> Expr {
         let kind = match node.kind_name() {
             "lookahead" => {
+                if !self.enter(node, 1) {
+                    return Expr::new(ExprKind::Empty);
+                }
                 let inner = match field(node, "expr") {
                     Some(e) => self.prefix(&e),
                     None => Expr::new(ExprKind::Empty),
                 };
+                self.depth -= 1;
                 let negative = field(node, "op").is_some_and(|op| self.text_of(&op) == "!");
                 if negative {
                     ExprKind::Not(Box::new(inner))
@@ -321,11 +374,17 @@ impl<'t> Converter<'t> {
     }
 
     fn suffix(&mut self, node: &NodeRef<'_>) -> Expr {
+        let ops = fields(node, "ops");
+        // Each suffix wraps what is before it, one level deeper.
+        if !self.enter(node, ops.len()) {
+            return Expr::new(ExprKind::Empty);
+        }
         let mut expr = match field(node, "base") {
             Some(base) => self.primary(&base),
             None => Expr::new(ExprKind::Empty),
         };
-        for op in fields(node, "ops") {
+        self.depth -= ops.len();
+        for op in ops {
             let kind = match op.kind_name() {
                 "optional" => repeat(expr, 0, Some(1)),
                 "many" => repeat(expr, 0, None),
