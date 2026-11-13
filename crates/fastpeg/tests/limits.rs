@@ -3,7 +3,7 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
-use fastpeg::grammar::builder::{GrammarBuilder, def, empty, field, lit, r, r_args};
+use fastpeg::grammar::builder::{GrammarBuilder, def, empty, field, lit, on, r, r_args};
 use fastpeg::grammar::{Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH};
 use fastpeg::reference::{Limit, Limits, ParseErrorKind, Reference};
 
@@ -195,15 +195,19 @@ fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
 #[test]
 fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
     let count = usize::from(u16::MAX) + 2;
+    // The start rule uses the last flag declared.
     let flag_grammar = |flags: usize| {
         let mut builder = GrammarBuilder::new();
         for i in 0..flags {
             builder.flag(&format!("f{i}"));
         }
-        builder.rule("start", lit("a"));
+        builder.rule("start", on(&format!("f{}", flags - 1), lit("a")));
         builder
     };
     Reference::new(&flag_grammar(64).build()).expect("64 flags are allowed");
+    // A flag beyond the limit is declared all the same, so its use adds no error.
+    let errors = Reference::new(&flag_grammar(70).build()).expect_err("too many flags");
+    assert_eq!(errors.len(), 1, "{errors:?}");
     let flags = flag_grammar(65);
     let mut fields = GrammarBuilder::new();
     let named = (0..count)

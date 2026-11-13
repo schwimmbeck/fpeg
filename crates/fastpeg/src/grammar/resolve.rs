@@ -617,8 +617,11 @@ impl<'g> Resolver<'g> {
         match self.flags.get(name.text.as_str()) {
             Some(&id) => id,
             None => {
-                let message = format!("the flag {} is not declared with %flag", name.text);
-                self.error(message, name.span);
+                // A declared flag beyond the limit has its error at the limit already.
+                if !self.grammar.flags.iter().any(|f| f.text == name.text) {
+                    let message = format!("the flag {} is not declared with %flag", name.text);
+                    self.error(message, name.span);
+                }
                 FlagId(0)
             }
         }
