@@ -183,7 +183,8 @@ fn float<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
 /// The four hexadecimal digits of a `\u` escape.
 fn hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
     let digits: String = chars.by_ref().take(4).collect();
-    (digits.len() == 4)
+    // from_str_radix would also take a leading sign, which JSON does not.
+    (digits.len() == 4 && digits.chars().all(|c| c.is_ascii_hexdigit()))
         .then(|| u32::from_str_radix(&digits, 16).ok())
         .flatten()
 }

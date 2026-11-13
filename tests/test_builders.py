@@ -69,6 +69,9 @@ STRING: "\"" ([^"\\] | "\\" .)* "\"" => unquote
     assert raised.value.__notes__ == [
         "fpeg: in the builder unquote of STRING, for the token at line 1, column 1"
     ]
+    # Four hex digits, without the sign that Rust's own parser would take, as in json.
+    with pytest.raises(ValueError, match="four hex digits"):
+        values(grammar, r'"\u+123"')
 
 
 def test_list_tuple_dict_and_constants_make_json_s_values() -> None:
