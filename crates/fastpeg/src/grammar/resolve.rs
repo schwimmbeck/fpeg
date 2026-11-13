@@ -129,6 +129,8 @@ struct Resolver<'g> {
     by_name: HashMap<&'g str, &'g Rule>,
     rules: Vec<Option<ir::Rule>>,
     instances: HashMap<(String, String), RuleId>,
+    /// Instances of rules without parameters, one per name, made before any template instance.
+    plain_instances: usize,
     queue: VecDeque<Pending<'g>>,
     kinds: Interner,
     kind_display: Vec<String>,
@@ -154,6 +156,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
         by_name: HashMap::new(),
         rules: Vec::new(),
         instances: HashMap::new(),
+        plain_instances: 0,
         queue: VecDeque::new(),
         kinds: Interner::with(&["<error>", "<missing>", "<skipped>"]),
         kind_display: vec!["error".into(), "missing".into(), "skipped".into()],
@@ -197,6 +200,7 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<GrammarError
             r.instance(rule, Vec::new(), rule.name.span);
         }
     }
+    r.plain_instances = r.instances.len();
     while let Some(pending) = r.queue.pop_front() {
         r.lower_rule(pending);
     }
@@ -443,13 +447,7 @@ impl<'g> Resolver<'g> {
             return id;
         }
         if !args.is_empty() {
-            // Every rule without parameters has one instance from the start, also a rule the
-            // grammar defines twice.
-            let plain: HashSet<&str> = (self.grammar.rules.iter())
-                .filter(|r| r.params.is_empty())
-                .map(|r| r.name.text.as_str())
-                .collect();
-            let templates = self.instances.len().saturating_sub(plain.len());
+            let templates = self.instances.len() - self.plain_instances;
             if templates >= MAX_TEMPLATE_INSTANCES {
                 let message = format!("the template {} creates too many instances", rule.name.text);
                 self.error(message, span);
