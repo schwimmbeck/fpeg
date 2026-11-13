@@ -501,6 +501,15 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
         "NAME: [a-z]+\nNUM: [0-9]+"
     ).transformer_template()
     assert "    def item(self, a: Any | None, b: Any | None) -> Any:" in shared
+    # A field self cannot be a parameter, and builder text keeps its escapes.
+    odd = fpeg.Grammar(
+        r'start: self=NAME => "q\"q\u{7}\n"' + "\nNAME: [a-z]+"
+    ).transformer_template()
+    namespace = {}
+    exec(compile(odd, "<template>", "exec"), namespace)
+    start = namespace["Transformer"].start
+    assert '=> "q\\"q\\u{7}\\n" applies.' in start.__doc__
+    assert "def start(self, *children: Any)" in odd
 
 
 def test_deep_trees_transform_without_recursion() -> None:

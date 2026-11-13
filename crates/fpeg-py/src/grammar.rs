@@ -338,7 +338,9 @@ impl Grammar {
                     (field_name, count)
                 })
                 .collect();
-            let fields_fit = fields.iter().all(|(field, _)| !keywords.contains(field));
+            // A field named like a keyword or `self` cannot be a parameter.
+            let fields_fit =
+                (fields.iter()).all(|(field, _)| !keywords.contains(field) && field != "self");
             let signature = if kind.token {
                 lines.push(format!("Return the value of a token {kind_name}."));
                 "self, token: fpeg.Token".to_owned()
@@ -376,8 +378,14 @@ impl Grammar {
                     builders.join(", ")
                 ));
             }
+            // Builder text shows escapes, which a raw docstring keeps as written.
+            let raw = if lines.iter().any(|line| line.contains('\\')) {
+                "r"
+            } else {
+                ""
+            };
             let doc = if lines.len() == 1 {
-                format!("        \"\"\"{}\"\"\"\n", lines[0])
+                format!("        {raw}\"\"\"{}\"\"\"\n", lines[0])
             } else {
                 let body: Vec<String> = (lines.iter().skip(1))
                     .map(|line| {
@@ -389,7 +397,7 @@ impl Grammar {
                     })
                     .collect();
                 format!(
-                    "        \"\"\"{}\n{}\n        \"\"\"\n",
+                    "        {raw}\"\"\"{}\n{}\n        \"\"\"\n",
                     lines[0],
                     body.join("\n")
                 )
