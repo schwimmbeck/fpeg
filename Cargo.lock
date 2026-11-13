@@ -23,6 +23,7 @@ version = "0.0.0"
 dependencies = [
  "fpeg",
  "pyo3",
+ "pyo3-build-config",
 ]
 
 [[package]]

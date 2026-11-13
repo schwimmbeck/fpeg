@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+import fpeg
+import pytest
+
+
+def name_token() -> fpeg.Token:
+    # The token that a parse of (abc) by a rule start: "(" NAME ")" holds.
+    return fpeg.Token("NAME", "abc", 1, 1, 2, end_line=1, end_column=5, end_pos=4)
+
+
+def test_tokens_compare_and_hash_as_their_text() -> None:
+    token = name_token()
+    assert token == fpeg.Token("OTHER", "abc")
+    assert hash(token) == hash("abc")
+    by_text: dict[str, int] = {token: 1}
+    assert by_text["abc"] == 1
+
+
+def test_a_token_is_made_in_python_as_lark_makes_it() -> None:
+    token = fpeg.Token("NAME", "x", 3, 1, 4, end_line=1, end_column=5, end_pos=4)
+    assert (token.type, token, token.start_pos, token.line, token.column) == ("NAME", "x", 3, 1, 4)
+    assert (token.end_line, token.end_column, token.end_pos) == (1, 5, 4)
+    bare = fpeg.Token("NAME", "y")
+    assert (bare.start_pos, bare.line, bare.end_column) == (None, None, None)
+    with pytest.raises(ValueError, match="never negative"):
+        fpeg.Token("NAME", "z", -1)
+
+
+def test_a_token_shows_as_lark_s_does() -> None:
+    assert repr(name_token()) == "Token('NAME', 'abc')"
+
+
+def test_the_attributes_of_a_token_are_read_only() -> None:
+    token = name_token()
+    with pytest.raises(AttributeError):
+        token.type = "OTHER"  # type: ignore[misc] # a read-only property, which this test sets
+    with pytest.raises(AttributeError):
+        token.line = 9  # type: ignore[misc] # a read-only property, which this test sets
+
+
+def test_a_lone_surrogate_made_in_python_stays_in_value_and_repr() -> None:
+    token = fpeg.Token("S", "\ud800")
+    assert token.value == "\ud800"
+    assert repr(token) == "Token('S', '\\ud800')"

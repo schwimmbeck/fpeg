@@ -23,5 +23,9 @@ doctest = false
 fpeg.workspace = true
 pyo3 = "0.30.1"
 
+[build-dependencies]
+# Gives the build the version flags of its Python, which the token type's layout depends on.
+pyo3-build-config = "0.30.1"
+
 [lints]
 workspace = true

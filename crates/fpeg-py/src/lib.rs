@@ -5,6 +5,7 @@
 
 mod errors;
 mod grammar;
+mod token;
 
 use pyo3::pymodule;
 
@@ -22,6 +23,7 @@ mod _fpeg {
     fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
         let py = module.py();
         module.add("__version__", fpeg::VERSION)?;
+        module.add("Token", crate::token::create_type(py)?)?;
         module.add("GrammarError", py.get_type::<crate::errors::GrammarError>())?;
         Ok(())
     }

@@ -10,6 +10,7 @@ from fpeg._fpeg import (
     Diagnostic,
     Grammar,
     GrammarError,
+    Token,
     __version__,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "Diagnostic",
     "Grammar",
     "GrammarError",
+    "Token",
     "__version__",
 ]
