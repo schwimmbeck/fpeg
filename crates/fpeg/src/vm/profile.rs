@@ -71,7 +71,8 @@ impl Profile {
 pub struct ProfileRow {
     /// The name of the rules.
     pub name: String,
-    /// Whether their results are remembered.
+    /// Whether their results are remembered, in a parse that started again as in its first
+    /// run.
     pub remembered: bool,
     /// Calls, also those that a remembered result or a left recursion answered.
     pub calls: u64,
@@ -312,6 +313,11 @@ impl Profiler {
     /// The profile of the parse, which took `steps` steps and ended with `nodes` nodes and
     /// `memo_entries` remembered results.
     pub fn finish(mut self, steps: u64, nodes: usize, memo_entries: usize) -> Profile {
+        // A parse that ran out of its budget or met a limit ends inside its calls, which then
+        // run to its end.
+        while !self.active.is_empty() {
+            self.left(steps, None);
+        }
         let current = self.current;
         self.switch(steps, current);
         let mut rows: Vec<ProfileRow> = Vec::new();

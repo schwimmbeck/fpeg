@@ -76,6 +76,10 @@ fn a_profile_counts_both_runs_of_a_parse_that_started_again() {
     assert!(profile.steps > 1_000_000, "{}", profile.steps);
     let rows: u64 = profile.rows.iter().map(|row| row.steps).sum();
     assert_eq!(rows, profile.steps);
+    // The call of start that the first run left open counts to where that run ended.
+    let (start, around) = (row(&profile, "start"), row(&profile, "(parse)"));
+    assert_eq!(start.steps_with_callees, profile.steps - around.steps);
+    assert!(!row(&profile, "b").remembered);
 }
 
 #[test]
