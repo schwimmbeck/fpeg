@@ -8,7 +8,7 @@ use fpeg::builder::{
 };
 use fpeg::{
     Class, ClassItem, DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH,
-    Memo, Options, ParseErrorKind, Parser, Reference,
+    Memo, Options, ParseErrorKind, Parser, Passes, Reference,
 };
 
 /// A stack too small for printing that recursed once per level of a deep tree.
@@ -388,7 +388,7 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
 fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
     // An empty seed, and a remembered match given once, mark a tree as one that may repeat
     // nodes, and it is sized. Every node stands under one parent, so the parse may use all its
-    // steps.
+    // steps. A profile counts the steps of the program without the passes.
     for (text, input, memo) in [
         (
             "start: list\nlist: list \",\" \"a\" | ()\n",
@@ -404,7 +404,7 @@ fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
         let grammar = Grammar::from_text(text).expect("the grammar reads");
         let options = Options {
             memo,
-            ..Options::default()
+            passes: Passes::NONE,
         };
         let parser = Parser::with_options(&grammar, &options).expect("it compiles");
         let (parsed, profile) = parser.profile(&input, "start", Limits::default());

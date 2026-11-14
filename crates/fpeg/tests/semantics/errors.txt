@@ -73,3 +73,41 @@ other: "match"
 %ignore " "+
 --- "match x"
 (start NAME"match" NAME"x")
+
+=== the expected set holds the tokens of every alternative that failed at the position
+start: "x" "1" | "y" "2" | "z"
+--- "w"
+error at 0: expected "x", "y", "z"
+
+=== alternatives after one that matches nothing are never tried and expect nothing
+start: ("a" | () | "b") "c" | "d"
+--- "e"
+error at 0: expected "a", "c", "d"
+
+=== a token that matches nothing expects nothing
+start: A "x" | "z"
+A: "a"*
+--- "y"
+error at 0: expected "x", "z"
+
+=== a token whose lookahead fails is expected, though it could match nothing
+start: T "x" | "z"
+T: !"y"
+--- "y"
+error at 0: expected "z", T
+
+=== a repetition of no steps never tries its expression
+start: "a"{0} "b" | "c"
+--- "d"
+error at 0: expected "b", "c"
+
+=== a left-recursive call where its rule started gives the seed and tries no token
+start: start | (start "b")?
+--- "x"
+error at 0: expected end of input
+
+=== a label throws where its expression fails at the first byte
+start: A | "b"
+A: ("x" ^ "need x") "y"
+--- "b"
+error at 0: need x

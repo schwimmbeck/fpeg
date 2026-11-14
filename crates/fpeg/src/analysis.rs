@@ -10,9 +10,14 @@ use std::collections::{HashMap, HashSet};
 
 use crate::grammar::ClassItem;
 use crate::ir::{self, RuleId};
+use crate::tree::KindId;
 
 /// The `need` of a node that never succeeds without consuming input.
 const NEVER: u32 = u32::MAX;
+
+/// The most kinds of head tokens kept for an expression. One with more gets no test that
+/// records them.
+const MAX_HEAD_KINDS: usize = 64;
 
 /// How the children of a node are matched.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,10 +45,12 @@ enum Form {
     Unknown,
     /// The children in turn.
     Sequence,
-    /// Any of the children: a choice, a repetition, a call, and the forms that wrap one child.
+    /// Any of the children: a choice, a repetition, and the forms that wrap one child.
     Alternatives,
-    /// A token around its child.
-    Token,
+    /// A call of the rule, whose body is its child.
+    Call(RuleId),
+    /// A token of the kind around its child.
+    Token(KindId),
     /// A label around its child, which throws when its child fails.
     Label,
     /// A flag turned on or off for the child.
@@ -153,6 +160,12 @@ pub(crate) struct Start {
     pub plain: bool,
     /// Whether it can open a token before its first byte, whose failure would be recorded.
     pub tokens: bool,
+    /// Whether a failure at its first byte surely tries its head tokens: no lookahead, flag
+    /// test or end of a word before them, which can fail without trying them.
+    pub clean: bool,
+    /// Whether it can call a rule that keeps the growing loop of left recursion before its
+    /// first byte, which where its frame started gives its seed without trying a token.
+    pub growing: bool,
 }
 
 impl Start {
@@ -164,6 +177,8 @@ impl Start {
         at_once: false,
         plain: true,
         tokens: false,
+        clean: true,
+        growing: false,
     };
 
     /// What an expression whose start is unknown can start with.
@@ -174,6 +189,8 @@ impl Start {
         at_once: true,
         plain: false,
         tokens: true,
+        clean: false,
+        growing: true,
     };
 
     fn merge(self, other: Start) -> Start {
@@ -184,6 +201,8 @@ impl Start {
             at_once: self.at_once || other.at_once,
             plain: self.plain && other.plain,
             tokens: self.tokens || other.tokens,
+            clean: self.clean && other.clean,
+            growing: self.growing || other.growing,
         }
     }
 }
@@ -192,6 +211,8 @@ impl Start {
 pub(crate) struct Starts<'f> {
     node_of: &'f HashMap<*const ir::Expr, u32>,
     values: Vec<Start>,
+    /// The kinds of the head tokens of each node, sorted, or none where there are too many.
+    heads: Vec<Option<Vec<KindId>>>,
 }
 
 impl Starts<'_> {
@@ -202,6 +223,16 @@ impl Starts<'_> {
             .and_then(|&node| self.values.get(node as usize))
             .copied()
             .unwrap_or(Start::UNKNOWN)
+    }
+
+    /// The kinds of the tokens that `expr` tries at its start and that fail there, where it
+    /// cannot start with the next byte and a failure at its first byte is clean: those of
+    /// the parts of a sequence up to the first that cannot succeed without consuming input,
+    /// and of the alternatives of a choice up to the first that can, which then succeeds.
+    /// A token that can match nothing never fails. None where there are too many to keep.
+    pub fn heads(&self, expr: &ir::Expr) -> Option<&[KindId]> {
+        let node = self.node_of.get(&std::ptr::from_ref(expr))?;
+        self.heads.get(*node as usize)?.as_deref()
     }
 }
 
@@ -252,7 +283,9 @@ impl Facts {
     /// Where the skip expression tests a flag, a skip under a flag turned on or off may end
     /// elsewhere than the skip before the flag changed, so what follows it may start with any
     /// byte.
-    pub fn starts(&self, grammar: &ir::Grammar) -> Starts<'_> {
+    ///
+    /// `growing` says which rules keep the growing loop.
+    pub fn starts(&self, grammar: &ir::Grammar, growing: &[bool]) -> Starts<'_> {
         let graph = &self.graph;
         let skip_reads_flags = (grammar.skip.as_ref()).is_some_and(|s| reads_flags(grammar, s));
         let mut parents: Vec<Vec<(u32, Role)>> = vec![Vec::new(); graph.nodes.len()];
@@ -261,7 +294,8 @@ impl Facts {
                 parents[child as usize].push((node, role));
             }
         }
-        let mut values: Vec<Start> = (graph.nodes.iter()).map(Node::own_start).collect();
+        let own = |node: &Node| node.own_start(growing);
+        let mut values: Vec<Start> = graph.nodes.iter().map(own).collect();
         let mut queued = vec![true; graph.nodes.len()];
         let mut todo: Vec<u32> = (0..graph.nodes.len() as u32).collect();
         while let Some(child) = todo.pop() {
@@ -280,6 +314,10 @@ impl Facts {
                         ..start
                     },
                     Role::Flags => start,
+                    Role::Token => Start {
+                        clean: true,
+                        ..start
+                    },
                 };
                 let joined = values[parent as usize].merge(added);
                 if joined != values[parent as usize] {
@@ -296,7 +334,59 @@ impl Facts {
         Starts {
             node_of: &graph.node_of,
             values,
+            heads: self.heads(),
         }
+    }
+
+    /// The kinds of the head tokens of every node, found as the starts are: each node adds
+    /// its own, a token the kind of its own unless it can match nothing, and joins those of
+    /// the children it tries at its start before it fails there.
+    fn heads(&self) -> Vec<Option<Vec<KindId>>> {
+        let graph = &self.graph;
+        let mut parents: Vec<Vec<u32>> = vec![Vec::new(); graph.nodes.len()];
+        for node in 0..graph.nodes.len() as u32 {
+            for child in graph.head_children(node, &self.nullable) {
+                parents[child as usize].push(node);
+            }
+        }
+        let mut heads: Vec<Option<Vec<KindId>>> = (0..graph.nodes.len() as u32)
+            .map(|node| match graph.nodes[node as usize].form {
+                Form::Token(kind) => {
+                    let child = graph.children(node).first();
+                    let fails = child.is_some_and(|&c| !self.nullable[c as usize]);
+                    Some(if fails { vec![kind] } else { Vec::new() })
+                }
+                Form::Unknown => None,
+                _ => Some(Vec::new()),
+            })
+            .collect();
+        let mut queued = vec![true; graph.nodes.len()];
+        let mut todo: Vec<u32> = (0..graph.nodes.len() as u32).collect();
+        while let Some(child) = todo.pop() {
+            queued[child as usize] = false;
+            for &parent in &parents[child as usize] {
+                let joined = match (&heads[parent as usize], &heads[child as usize]) {
+                    (Some(known), Some(added)) => {
+                        let mut joined = known.clone();
+                        joined.extend(
+                            added
+                                .iter()
+                                .filter(|kind| known.binary_search(kind).is_err()),
+                        );
+                        joined.sort_unstable();
+                        (joined.len() <= MAX_HEAD_KINDS).then_some(joined)
+                    }
+                    _ => None,
+                };
+                if joined != heads[parent as usize] {
+                    heads[parent as usize] = joined;
+                    if !std::mem::replace(&mut queued[parent as usize], true) {
+                        todo.push(parent);
+                    }
+                }
+            }
+        }
+        heads
     }
 }
 
@@ -309,11 +399,13 @@ enum Role {
     AfterSkip,
     /// Under a flag turned on or off.
     Flags,
+    /// Inside a token that cannot match nothing.
+    Token,
 }
 
 impl Node {
     /// What a node adds to its start itself, before its children.
-    fn own_start(&self) -> Start {
+    fn own_start(&self, growing: &[bool]) -> Start {
         match self.form {
             Form::Bytes(bytes) => Start {
                 bytes,
@@ -322,19 +414,25 @@ impl Node {
             },
             Form::Cut | Form::Label => Start {
                 plain: false,
+                clean: false,
                 ..Start::NOTHING
             },
-            Form::Token => Start {
+            Form::Test => Start {
+                clean: false,
+                ..Start::NOTHING
+            },
+            Form::Token(_) => Start {
                 tokens: true,
                 ..Start::NOTHING
             },
+            Form::Call(rule) => Start {
+                growing: growing.get(rule.0 as usize).copied().unwrap_or(false),
+                ..Start::NOTHING
+            },
             Form::Unknown => Start::UNKNOWN,
-            Form::Empty
-            | Form::Skip
-            | Form::Test
-            | Form::Sequence
-            | Form::Alternatives
-            | Form::Flags => Start::NOTHING,
+            Form::Empty | Form::Skip | Form::Sequence | Form::Alternatives | Form::Flags => {
+                Start::NOTHING
+            }
         }
     }
 }
@@ -404,7 +502,7 @@ impl Graph {
             E::ErrorAlternative => self.push(Form::Unknown, Order::Start, NEVER, &[]),
             E::Call(rule) => {
                 // The edge is linked to the body once every rule has its node.
-                let node = self.push(Form::Alternatives, Order::Start, 1, &[0]);
+                let node = self.push(Form::Call(*rule), Order::Start, 1, &[0]);
                 self.calls.push((node, *rule));
                 node
             }
@@ -434,9 +532,9 @@ impl Graph {
                 let child = self.node(expr);
                 self.push(Form::Test, Order::Start, 0, &[child])
             }
-            E::Token { expr, .. } => {
+            E::Token { kind, expr, .. } => {
                 let child = self.node(expr);
-                self.push(Form::Token, Order::Start, 1, &[child])
+                self.push(Form::Token(*kind), Order::Start, 1, &[child])
             }
             E::Label { expr, .. } => {
                 let child = self.node(expr);
@@ -502,13 +600,45 @@ impl Graph {
                 }
                 roles
             }
-            Form::Alternatives | Form::Token | Form::Label => {
+            Form::Alternatives | Form::Call(_) | Form::Label => {
                 children.iter().map(|&child| (child, Role::Join)).collect()
             }
+            // A token that cannot match nothing fails at a byte it cannot start with, and records
+            // its own failure, whatever stands inside it. One that can match nothing fails only
+            // where its expression does without trying a token, which a lookahead can.
+            Form::Token(_) => (children.iter())
+                .map(|&child| match nullable[child as usize] {
+                    true => (child, Role::Join),
+                    false => (child, Role::Token),
+                })
+                .collect(),
             Form::Flags => children.iter().map(|&child| (child, Role::Flags)).collect(),
             Form::Bytes(_) | Form::Empty | Form::Skip | Form::Test | Form::Cut | Form::Unknown => {
                 Vec::new()
             }
+        }
+    }
+
+    /// The children whose head tokens a node tries at its start before it fails there: the
+    /// parts of a sequence up to the first that cannot succeed without consuming input, and
+    /// the alternatives of a choice up to the first that can, after which none is tried.
+    fn head_children(&self, node: u32, nullable: &[bool]) -> Vec<u32> {
+        let children = self.children(node);
+        let through = |stop: &dyn Fn(u32) -> bool| match children.iter().position(|&c| stop(c)) {
+            Some(at) => children[..=at].to_vec(),
+            None => children.to_vec(),
+        };
+        match self.nodes[node as usize].form {
+            Form::Sequence => through(&|c| !nullable[c as usize]),
+            Form::Alternatives | Form::Call(_) => through(&|c| nullable[c as usize]),
+            Form::Label | Form::Flags => children.to_vec(),
+            Form::Bytes(_)
+            | Form::Empty
+            | Form::Skip
+            | Form::Test
+            | Form::Cut
+            | Form::Unknown
+            | Form::Token(_) => Vec::new(),
         }
     }
 

@@ -121,6 +121,13 @@ impl Tables<'_> {
                 index(i, p.classes.len(), "class")?;
                 vec![(next, shape)]
             }
+            Inst::Test { test, .. } | Inst::TestFail(test)
+                if p.tests.get(test as usize).is_some_and(|t| t.after_skip)
+                    && p.skip.is_none()
+                    && p.skip_class.is_none() =>
+            {
+                return Err("tests after a skip in a grammar that ignores nothing".into());
+            }
             Inst::Test { test, target } => {
                 index(test, p.tests.len(), "test")?;
                 let jumped = match p.tests[test as usize].pop {

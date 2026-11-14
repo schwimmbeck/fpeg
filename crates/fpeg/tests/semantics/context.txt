@@ -92,3 +92,12 @@ start: %def(c, ()) r
 r: %def(c, ()) r "a" | "b"
 --- "baa"
 (start (r (r (r ~"b") ~"a") ~"a"))
+
+=== a flag turned on at the start of an alternative holds for the skip before its first token
+%flag nested
+%ignore " "+ | %if(nested) "\n"
+start: "c" | %on(nested, "a") | "b"
+--- "\na"
+(start ~"a")
+--- "\nb"
+error at 1: expected "a"

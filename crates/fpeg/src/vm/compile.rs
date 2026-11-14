@@ -43,7 +43,7 @@ pub(crate) fn compile(
         cuttable: false,
         free_cuts: HashMap::new(),
         passes: options.passes,
-        starts: options.passes.dispatch.then(|| facts.starts(grammar)),
+        starts: (options.passes.dispatch).then(|| facts.starts(grammar, &facts.left_recursive)),
         tests: Vec::new(),
         test_ids: HashMap::new(),
     };
@@ -612,20 +612,32 @@ impl Compiler<'_> {
 
     /// The test of the next byte before `expr`, if one is worth it: where `expr` cannot
     /// succeed without consuming input, does not start with every byte or with an instruction
-    /// that tests the byte anyway, and a failure before its first byte is a plain one that
-    /// records nothing. With `pop`, a mismatch pops the entry of the loop the test is in.
+    /// that tests the byte anyway, takes all its first bytes after a skip or all without one,
+    /// and a failure before its first byte is a plain one. Where `expr` would try tokens
+    /// there, the test records their failures, so it must surely try them, and with no rule
+    /// in between that keeps the growing loop. With `pop`, a mismatch pops the entry of the
+    /// loop the test is in.
     fn test_for(&mut self, expr: &ir::Expr, pop: bool) -> Option<u32> {
-        let start = self.starts.as_ref()?.of(expr);
+        let starts = self.starts.as_ref()?;
+        let start = starts.of(expr);
+        let after_skip = start.after_skip && self.has_skip;
         let worth = !start.nullable && start.bytes != Bytes::ALL && !immediate(expr);
-        if !worth || start.after_skip || !start.plain || start.tokens {
+        if !worth || !start.plain || (after_skip && start.at_once) {
             return None;
         }
+        let kinds = match start.tokens {
+            false => Box::default(),
+            true if start.clean && !start.growing => starts.heads(expr)?.into(),
+            true => return None,
+        };
         let test = ByteTest {
             bytes: start.bytes,
+            after_skip,
             pop,
+            kinds,
         };
         let next = self.tests.len() as u32;
-        let id = *self.test_ids.entry(test).or_insert(next);
+        let id = *self.test_ids.entry(test.clone()).or_insert(next);
         if id == next {
             self.tests.push(test);
         }

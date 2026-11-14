@@ -84,7 +84,15 @@ impl Program {
             }
         }
         let pop = if test.pop { "pop " } else { "" };
-        format!("{pop}[{ranges}]")
+        let skip = if test.after_skip { "skip " } else { "" };
+        let mut text = format!("{pop}{skip}[{ranges}]");
+        if !test.kinds.is_empty() {
+            text += " records";
+            for kind in &test.kinds {
+                text += &format!(" {}", self.kind_name(kind.0));
+            }
+        }
+        text
     }
 
     fn kind_name(&self, kind: u32) -> &str {

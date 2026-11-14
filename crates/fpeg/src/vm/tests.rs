@@ -531,7 +531,9 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
             let at = choice(p);
             p.tests.push(ByteTest {
                 bytes: Bytes::ALL,
+                after_skip: false,
                 pop: true,
+                kinds: Box::default(),
             });
             let test = (p.tests.len() - 1) as u32;
             p.code[at] = Inst::Test {
@@ -543,7 +545,9 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
             let at = choice(p);
             p.tests.push(ByteTest {
                 bytes: Bytes::ALL,
+                after_skip: false,
                 pop: true,
+                kinds: Box::default(),
             });
             p.code[at] = Inst::TestFail((p.tests.len() - 1) as u32);
         }),
@@ -563,7 +567,7 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
 fn a_cut_without_an_entry_of_its_own_choice_gets_a_guard() {
     // The last alternative of the group has no entry, so its cut would mark the choice of the
     // rule. The last alternative of the rule has none around it and needs no guard.
-    let program = parser("start: (\"a\" | \"b\" ~ \"c\") \"d\" | \"e\" ~ \"f\"\n").program;
+    let program = plain("start: (\"a\" | \"b\" ~ \"c\") \"d\" | \"e\" ~ \"f\"\n").program;
     let expected = "\
 rule start:
      0  Choice 22

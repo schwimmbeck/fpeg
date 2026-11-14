@@ -814,17 +814,32 @@ impl<'p, 'i> Machine<'p, 'i> {
         }
     }
 
-    /// Whether the next byte may start the code a test stands before. A mismatch pops the entry
-    /// of the loop the test is in, where the test says so.
+    /// Whether the next byte, at the position or after the skip, may start the code a test
+    /// stands before. A skip that the skip cache cannot answer runs in that code, and the
+    /// test lets it. A mismatch records the failures of the tokens the code would have tried
+    /// there, and pops the entry of the loop the test is in, where the test says so.
     fn next_byte_fits(&mut self, index: u32) -> bool {
         let program = self.program;
         let Some(test) = program.tests.get(index as usize) else {
             return true;
         };
-        let next = self.input.as_bytes().get(self.pos as usize);
+        let at = match (test.after_skip, program.skip_class, self.skip_cache) {
+            (false, _, _) => self.pos,
+            (true, Some(class), _) => self.pos + self.run_of(class).0 as u32,
+            (true, None, Some(last)) if (last.start, last.flags) == (self.pos, self.flags) => {
+                last.end
+            }
+            (true, None, _) => return true,
+        };
+        let next = self.input.as_bytes().get(at as usize);
         let fits = next.is_some_and(|&byte| test.bytes.contains(byte));
-        if !fits && test.pop {
-            self.stack.pop();
+        if !fits {
+            for &kind in &test.kinds {
+                self.record(at, Expected::Kind(kind));
+            }
+            if test.pop {
+                self.stack.pop();
+            }
         }
         fits
     }

@@ -148,12 +148,18 @@ pub(crate) enum Inst {
     },
 }
 
-/// What a `Test` looks at: the bytes that the code after it can start with.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// What a `Test` looks at: the bytes that the code after it can start with, and what a
+/// mismatch records.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ByteTest {
     pub bytes: Bytes,
+    /// Whether the byte after the skip is tested, not the byte at the position.
+    pub after_skip: bool,
     /// Whether a mismatch pops the entry on top, that of the loop whose step the test is at.
     pub pop: bool,
+    /// The kinds of the tokens the code would have tried and failed, which a mismatch records
+    /// at the tested byte.
+    pub kinds: Box<[KindId]>,
 }
 
 /// A character class as the machine tests it: one bit for each ASCII character, and what
