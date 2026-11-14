@@ -109,6 +109,16 @@ impl Tree {
         }
     }
 
+    /// Make room for `entries` more entries in every column, so that appending them moves none.
+    pub(crate) fn reserve(&mut self, entries: usize) {
+        self.kinds.reserve(entries);
+        self.flags.reserve(entries);
+        self.starts.reserve(entries);
+        self.ends.reserve(entries);
+        self.sizes.reserve(entries);
+        self.fields.reserve(entries);
+    }
+
     /// Append a token.
     pub(crate) fn push_token(
         &mut self,

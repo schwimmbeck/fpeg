@@ -1195,20 +1195,25 @@ impl<'p, 'i> Machine<'p, 'i> {
         (self.nodes.len() + tokens(&self.children) + tokens(&self.items)) as u64
     }
 
-    /// Lay out the items of a successful parse as the top level of a tree, in postorder. A tree
-    /// that may repeat shared nodes is sized first, and refused before any of it is built where
-    /// its repeats would take more steps than the parse has left. What the arena holds, the
-    /// steps of the parse made.
+    /// Lay out the items of a successful parse as the top level of a tree, in postorder, into
+    /// columns sized first. A tree that may repeat shared nodes is counted exactly, and refused
+    /// before any of it is built where its repeats would take more steps than the parse has left.
+    /// What the arena holds, the steps of the parse made. Any other tree has at most the
+    /// arena's entries.
     pub fn tree(&self) -> Result<Tree, Limit> {
-        if self.shared {
+        let entries = if self.shared {
             let left = self.limits.max_steps.saturating_sub(self.steps);
             let entries = self.tree_entries();
             let repeats = entries.saturating_sub(self.arena_entries());
             if entries > u64::from(u32::MAX) || repeats.saturating_mul(TREE_ENTRY_STEPS) > left {
                 return Err(Limit::Steps);
             }
-        }
+            entries
+        } else {
+            self.arena_entries()
+        };
         let mut tree = Tree::empty(Arc::clone(&self.program.names));
+        tree.reserve(entries as usize);
         // The nodes being laid out, with the index of the next child of each and the length of
         // the tree when it started. An explicit stack, since trees can be as deep as long.
         let mut open: Vec<(Item, u32, usize)> = Vec::new();
