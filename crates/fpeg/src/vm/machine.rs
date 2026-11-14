@@ -241,7 +241,8 @@ pub(crate) struct Machine<'p, 'i> {
     /// The length of the arena at the newest remembered match that holds a node. The nodes
     /// below it stay, since remembered items point at them.
     protected: u32,
-    /// Whether a remembered match was given again, so that two parents may hold one node.
+    /// Whether a remembered match or an empty seed was given again, so that two parents may
+    /// hold one node.
     shared: bool,
     token: Option<OpenToken>,
     flags: u64,
@@ -784,8 +785,8 @@ impl<'p, 'i> Machine<'p, 'i> {
 
     /// A left-recursive use: give the seed of the frame, or fail while it has none. A pass can
     /// use a seed twice only while the seed is empty, since after a seed that consumed input
-    /// the position is another. So a seed doubles no tree that grows, and unlike a remembered
-    /// match it needs no count of the tree's entries.
+    /// the position is another. An empty seed that holds items can be given at every call in
+    /// the pass, and its nodes stand under as many parents, as those of a remembered match do.
     fn use_entry(&mut self, index: u32) -> Result<(), Stop> {
         self.dependency = self.dependency.min(index);
         let frame = self.frames.get_mut(index as usize);
@@ -797,6 +798,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             return self.fail();
         };
         self.steps += u64::from(seed.count);
+        self.shared |= seed.end == self.pos && seed.count > 0;
         let items = self.seeds.get(seed.range()).unwrap_or_default();
         self.items.extend_from_slice(items);
         self.pos = seed.end;

@@ -348,6 +348,29 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
 }
 
 #[test]
+fn an_empty_seed_of_left_recursion_given_at_every_call_counts_its_tree() {
+    // The first match of `a` is empty and holds a thousand nodes. In the next pass `c3` calls
+    // `a` a thousand times where it started, and each call is given that seed, so the tree
+    // repeats the thousand nodes a thousand times: over a million entries from about 18,000
+    // steps, which no setting of the memo may build.
+    let text = "start: a\na: a &\"x\" c3 \"x\" | e3\n\
+                c1: a a a a a a a a a a\nc2: c1 c1 c1 c1 c1 c1 c1 c1 c1 c1\n\
+                c3: c2 c2 c2 c2 c2 c2 c2 c2 c2 c2\ne1: n n n n n n n n n n\n\
+                e2: e1 e1 e1 e1 e1 e1 e1 e1 e1 e1\ne3: e2 e2 e2 e2 e2 e2 e2 e2 e2 e2\nn: ()\n";
+    let grammar = Grammar::from_text(text).expect("the grammar reads");
+    let limits = Limits {
+        max_steps: 100_000,
+        ..Limits::default()
+    };
+    for memo in [Memo::Grammar, Memo::Off, Memo::All] {
+        let parser = Parser::with_options(&grammar, &Options { memo }).expect("it compiles");
+        let error = (parser.parse_with("x", "start", limits))
+            .expect_err("a larger tree than the steps allow");
+        assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps), "{memo:?}");
+    }
+}
+
+#[test]
 fn a_tree_as_deep_as_its_input_prints_without_recursion() {
     let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
         .expect("the grammar reads");
