@@ -159,7 +159,7 @@ Some work that a grammar seems to ask for, the parser leaves out, and none of it
 - A small rule that calls itself nowhere becomes part of the rules that call it.
 - A rule whose alternatives start with the rule itself, before the others, as the levels of a precedence block do, runs as a loop over its operators.
 
-The profile counts what the grammar asks for, with none of this, so that every rule keeps its calls and failures. A parse outside the profile takes fewer steps.
+The profile counts what the grammar asks for, with none of this but the loop, so that every rule keeps its calls and failures, and a rule that runs as a loop repeats what it repeats in the parse. A parse outside the profile takes fewer steps.
 
 ## What else costs
 

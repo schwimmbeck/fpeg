@@ -56,6 +56,16 @@ fn a_profile_counts_the_grammar_as_written_whatever_passes_the_parser_runs() {
 }
 
 #[test]
+fn a_profile_remembers_the_rules_that_the_parse_remembers() {
+    // `b` runs as a loop in the parse, which remembers it as little as any rule that the
+    // alternatives of two rules start with, so that its second call repeats the first.
+    let text = "start: p | q\np: b \"x\"\nq: b \"y\"\nb: b \"+\" | \"n\"\n";
+    let profile = profile(text, "n+y");
+    let b = row(&profile, "b");
+    assert_eq!((b.remembered, b.repeats, b.memo_hits), (false, 1, 0));
+}
+
+#[test]
 fn a_profile_counts_both_runs_of_a_parse_that_started_again() {
     // `b` is matched twice at every level, which nothing remembered by default saves, until
     // the parse runs out of its budget and starts again with every rule remembered.
@@ -134,11 +144,44 @@ fn a_profile_counts_the_steps_of_a_template_that_calls_itself_once() {
 }
 
 #[test]
+fn a_profile_runs_the_levels_of_a_precedence_block_as_the_parse_does() {
+    // Kept as the growing loop with nothing remembered, each level would grow again in every
+    // pass of the level above, until the parse started again with every rule remembered. So
+    // the levels run as loops where the parse runs them so, and are remembered where not.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
+    let grammar = std::fs::read_to_string(root.join("expressions.fpeg"));
+    let input = std::fs::read_to_string(root.join("samples").join("expressions").join("mixed.c"));
+    let grammar = Grammar::from_text(&grammar.expect("the grammar")).expect("it reads");
+    let input = input.expect("the sample");
+    for left_loop in [true, false] {
+        let options = Options {
+            passes: Passes {
+                left_loop,
+                ..Passes::ALL
+            },
+            ..Options::default()
+        };
+        let parser = Parser::with_options(&grammar, &options).expect("the grammar compiles");
+        let profile = parser.profile(&input, "start", Limits::default()).1;
+        assert_eq!(profile.restarts, 0, "{left_loop}: {} steps", profile.steps);
+    }
+}
+
+#[test]
 fn a_profile_counts_the_passes_that_grow_a_left_recursion() {
-    let profile = profile("start: chain\nchain: chain \"-\" \"1\" | \"1\"\n", "1-1-1");
-    let chain = row(&profile, "chain");
-    // The call from start, and one use of the entry in each of four passes, which repeats
-    // nothing that remembering the rule would answer.
+    // Run as a loop, as in the parse, the rule is called once.
+    let looped = profile("start: chain\nchain: chain \"-\" \"1\" | \"1\"\n", "1-1-1");
+    let chain = row(&looped, "chain");
+    assert_eq!(
+        (chain.calls, chain.repeats, chain.growths, chain.failures),
+        (1, 0, 2, 0)
+    );
+    // Through another rule it keeps the growing loop: the call from start, and one use of the
+    // entry in each of four passes, which repeats nothing that remembering the rule would
+    // answer.
+    let text = "start: chain\nchain: link \"1\" | \"1\"\nlink: chain \"-\"\n";
+    let growing = profile(text, "1-1-1");
+    let chain = row(&growing, "chain");
     assert_eq!(
         (chain.calls, chain.repeats, chain.growths, chain.failures),
         (5, 0, 2, 0)

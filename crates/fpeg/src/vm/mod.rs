@@ -155,7 +155,7 @@ pub struct Parser {
     options: Options,
     /// The programs of other options, each compiled when first needed, or none where the
     /// compiler refuses it: without the passes for a profile, and with every rule
-    /// remembered for a restart, also without the passes.
+    /// remembered for a restart, also without the passes. See [`Parser::program_for`].
     plain: OnceLock<Option<Program>>,
     remembering: OnceLock<Option<Program>>,
     plain_remembering: OnceLock<Option<Program>>,
@@ -194,7 +194,9 @@ impl Parser {
     }
 
     /// The program without the passes where `plain`, and with every rule remembered where
-    /// `remembering`.
+    /// `remembering`. Without the passes, a rule that the parse runs as a loop runs as one
+    /// still: kept as the growing loop, it would be remembered, and would answer calls that
+    /// the parse repeats.
     fn program_for(&self, plain: bool, remembering: bool) -> &Program {
         let options = Options {
             memo: if remembering {
@@ -203,7 +205,10 @@ impl Parser {
                 self.options.memo
             },
             passes: if plain {
-                Passes::NONE
+                Passes {
+                    left_loop: self.options.passes.left_loop,
+                    ..Passes::NONE
+                }
             } else {
                 self.options.passes
             },
@@ -290,7 +295,9 @@ impl Parser {
     /// answer. For finding the rules that take the time. The counting slows the parse.
     ///
     /// The parse runs without the passes of the optimizer, so that every rule keeps the calls,
-    /// failures and steps of the grammar as written. A parse with them takes fewer steps.
+    /// failures and steps of the grammar as written, but for left recursion run as a loop,
+    /// where the parse runs it so, which decides the calls the parse repeats. A parse with the
+    /// passes takes fewer steps.
     pub fn profile(
         &self,
         input: &str,

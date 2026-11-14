@@ -290,6 +290,13 @@ impl Profiler {
         }
     }
 
+    /// A pass of the loop of left recursion that the newest call runs made its match longer.
+    pub fn loop_grew(&mut self) {
+        if let Some(rule) = self.active.last().map(|call| call.rule) {
+            self.grew(rule);
+        }
+    }
+
     /// The profile of the parse, which took `steps` steps and ended with `nodes` nodes and
     /// `memo_entries` remembered results.
     pub fn finish(mut self, steps: u64, nodes: usize, memo_entries: usize) -> Profile {

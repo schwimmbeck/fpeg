@@ -675,6 +675,9 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::SeedGrow(target) => match self.stack.pop() {
                     Some(Entry::Choice { saved, .. }) if self.pos > saved.pos => {
+                        if let Some(profiler) = self.profiler.as_deref_mut() {
+                            profiler.loop_grew();
+                        }
                         self.pc = target;
                     }
                     Some(Entry::Choice { alt, saved, .. }) => {
