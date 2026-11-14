@@ -55,13 +55,17 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 - [Your first grammar](tutorial/first-grammar.md): JSON from nothing to Python objects.
 - [From a tree to your own objects](tutorial/transformer.md): a `Transformer` that builds a syntax tree and computes values.
 
+## Guides
+
+- [Performance](guide/performance.md): seeing where a parse spends its work, and what to change in a grammar.
+
 ## Reference
 
 - [Grammar language](reference/grammar.md): the syntax of grammars.
 - [Semantics](reference/semantics.md): what a grammar means.
 - [Parse tree](reference/tree.md): nodes, tokens, fields and spans.
-- [Python API](reference/python-api.md): `Grammar`, `Tree`, `Token`, `Transformer` and the errors.
-- [Command line](reference/cli.md): `fpeg check` and `fpeg parse`.
+- [Python API](reference/python-api.md): `Grammar`, `Tree`, `Token`, `Transformer`, `Interpreter`, `Visitor` and the errors.
+- [Command line](reference/cli.md): `fpeg check`, `fpeg parse` and `fpeg profile`.
 - [Diagnostics](reference/diagnostics/index.md): every problem a grammar can have, with its code.
 
 ```{toctree}
@@ -70,6 +74,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 roadmap
 tutorial/first-grammar
 tutorial/transformer
+guide/performance
 reference/grammar
 reference/semantics
 reference/tree
