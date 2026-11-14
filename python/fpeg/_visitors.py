@@ -11,7 +11,7 @@ every node and does not recurse.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, cast
 
 from fpeg import _fpeg
 from fpeg._fpeg import Token, Tree
@@ -38,9 +38,10 @@ _NO_METHOD: Final = object()
 _NO_VALUE = _fpeg.NO_VALUE
 
 # The attributes under which a class keeps how its methods are called: those of trees built in
-# Python, which have no grammar, and those of terminals.
-_OWNED: Final = "_fpeg_owned"
-_TOKENS: Final = "_fpeg_tokens"
+# Python, which have no grammar, and those of terminals. No identifier, so that no rule and no
+# method can have their names.
+_OWNED: Final = "_fpeg owned"
+_TOKENS: Final = "_fpeg tokens"
 
 
 def _kept(cls: type, attribute: str) -> dict[str, Any]:
@@ -124,8 +125,13 @@ def _token_mode(cls: type, name: Any) -> int | None:
 
 def _note(error: BaseException, where: str, line: int | None, column: int | None) -> None:
     """Say on an error where it came from, once: the innermost method says it."""
-    notes = getattr(error, "__notes__", ())
-    if any(isinstance(note, str) and note.startswith("fpeg: ") for note in notes):
+    notes: object = getattr(error, "__notes__", [])
+    # A note cannot be added where the notes are no list, and trying would replace the error.
+    if not isinstance(notes, list):
+        return
+    if any(
+        isinstance(note, str) and note.startswith("fpeg: ") for note in cast(list[object], notes)
+    ):
         return
     place = "" if line is None else f" at line {line}, column {column}"
     error.add_note(f"fpeg: {where}{place}")

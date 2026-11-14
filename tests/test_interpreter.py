@@ -234,6 +234,20 @@ def test_strict_makes_every_public_method_name_a_rule_or_terminal() -> None:
         Typo().visit(parse("x = 1;"))
 
 
+def test_a_node_may_have_the_name_of_what_a_class_keeps_for_its_walks() -> None:
+    kept = fpeg.Grammar("start: NAME -> _fpeg_tokens\nNAME: [a-z]+")
+
+    class Kept(fpeg.Interpreter):
+        def _fpeg_tokens(self, node: fpeg.Tree) -> list[Any]:
+            return self.visit_children(node)
+
+        def _fpeg_owned(self, node: fpeg.Tree) -> str:
+            return "owned"
+
+    assert Kept().visit(kept.parse("a")) == ["a"]
+    assert Kept().visit(fpeg.Tree("_fpeg_owned", [])) == "owned"
+
+
 def test_a_rule_named_like_a_method_of_the_base_class_is_no_handler() -> None:
     visits = fpeg.Grammar("start: visit\nvisit: NAME\nNAME: [a-z]+")
     assert fpeg.Interpreter().visit(visits.parse("a")) == [["a"]]

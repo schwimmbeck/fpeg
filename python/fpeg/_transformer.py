@@ -226,7 +226,9 @@ def _noted(call: Callable[[], Any], where: str) -> Any:
     try:
         return call()
     except BaseException as error:
-        error.add_note(f"fpeg: {where}")
+        # A note cannot be added where the notes are no list, and trying would replace the error.
+        if isinstance(getattr(error, "__notes__", []), list):
+            error.add_note(f"fpeg: {where}")
         raise
 
 

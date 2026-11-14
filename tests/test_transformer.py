@@ -39,6 +39,24 @@ def test_a_rule_named_like_a_method_of_type_is_looked_for_on_the_class_only() ->
     assert fpeg.Visitor().visit(tree) is tree
 
 
+def test_an_error_whose_notes_are_no_list_is_raised_as_it_is() -> None:
+    class Odd(Exception):
+        pass
+
+    def odd(*args: Any) -> None:
+        error = Odd("mine")
+        error.__notes__ = ("not a list",)  # type: ignore[assignment] # what the test is about
+        raise error
+
+    name = parse("f()").children[0].children[0]
+    transformer = type("T", (fpeg.Transformer,), {"NAME": odd})
+    interpreter = type("I", (fpeg.Interpreter,), {"NAME": odd})
+    for run in [transformer().transform, interpreter().visit]:
+        with pytest.raises(Odd) as raised:
+            run(name)
+        assert raised.value.__notes__ == ("not a list",)
+
+
 def test_strict_takes_overrides_of_the_methods_of_the_base_class() -> None:
     class Calls(fpeg.Transformer, strict=True):
         def transform(self, tree: Any) -> Any:
