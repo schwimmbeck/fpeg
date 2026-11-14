@@ -13,7 +13,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | `bench_python.py` | Python source: CPython, tree-sitter, LibCST and Lark on one real source file |
 | `bench_ord.py` | the first real application: its Lark pipeline from source text to a Python `ast` |
 | `rust/` | Rust with criterion. JSON: fpeg's parsing machine, pest generated, pest_vm and serde_json. Expressions: the machine on a generated expression of a C-like language, by what it remembers. Passes: the machine on seven workloads with every pass of the optimizer and with each left out, and a parse that starts again with every rule remembered |
-| `results/<date>-<platform>/` | recorded runs, committed as data |
+| `results/<date>-<platform>/` | recorded runs, committed as data, a letter after the date for each later run of a day |
 
 `corpora/` and `.cache/` are local and ignored by git.
 

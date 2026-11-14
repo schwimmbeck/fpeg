@@ -6,7 +6,8 @@
 Prepares the inputs, runs the pyperf suites and the criterion suite, and writes ``results.json``,
 a ``summary.md`` and the raw pyperf files to ``benchmarks/.cache/last-run``. With ``--pgo`` the
 criterion suite runs a second time, built with a profile of fpeg's machine. With ``--record`` a
-complete run is then moved to ``benchmarks/results/<date>-<platform>``.
+complete run is then moved to ``benchmarks/results/<date>-<platform>``, with a letter after the
+date for each later run of the same day.
 """
 
 import argparse
@@ -17,6 +18,7 @@ import os
 import platform
 import re
 import shutil
+import string
 import subprocess
 import sys
 import tomllib
@@ -339,6 +341,19 @@ def summary(title: str, mode: str, env: Environment, rows: list[Row]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def record_folder(today: str, platform_name: str) -> Path:
+    """Find the folder for a recorded run of the day on the platform.
+
+    A later run of the same day takes a letter after the date, so that in order of names the last
+    is the newest.
+    """
+    for letter in ["", *string.ascii_lowercase[1:]]:
+        folder = RESULTS / f"{today}{letter}-{platform_name}"
+        if not folder.exists():
+            return folder
+    raise SystemExit(f"every record of {today} on {platform_name} is taken")
+
+
 def main() -> None:
     """Parse the command line and run the chosen suites."""
     parser = argparse.ArgumentParser(description="Run the benchmark suites and write the results.")
@@ -353,14 +368,11 @@ def main() -> None:
     args = parser.parse_args()
 
     today = datetime.date.today().isoformat()
-    title = f"{today}-{PLATFORM_NAMES.get(sys.platform, sys.platform)}"
-    record = RESULTS / title
-    if args.record:
-        if args.suite or not args.pgo or args.mode not in RECORD_MODES:
-            modes = " or ".join(RECORD_MODES)
-            raise SystemExit(f"--record needs every suite, --pgo and the mode {modes}")
-        if record.exists():
-            raise SystemExit(f"{record} exists already, delete it to record again")
+    record = record_folder(today, PLATFORM_NAMES.get(sys.platform, sys.platform))
+    title = record.name
+    if args.record and (args.suite or not args.pgo or args.mode not in RECORD_MODES):
+        modes = " or ".join(RECORD_MODES)
+        raise SystemExit(f"--record needs every suite, --pgo and the mode {modes}")
     shutil.rmtree(LAST_RUN, ignore_errors=True)
     LAST_RUN.mkdir(parents=True)
 

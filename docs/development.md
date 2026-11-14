@@ -123,7 +123,7 @@ This prepares the inputs, runs every suite and writes a summary and the raw resu
 | `--mode rigorous` | twice the pyperf worker processes. The Rust suite measures as in the default mode |
 | `--mode smoke` | one value per Python benchmark and criterion's quick mode, to check that every suite runs |
 | `--pgo` | run the Rust suite a second time, built with a profile that a short run of its passes suite trained, as the suite `rust-pgo`. It needs rustup's component `llvm-tools` |
-| `--record` | move the finished run to `benchmarks/results/<date>-<platform>` to commit it. It needs every suite, `--pgo` and the default or rigorous mode |
+| `--record` | move the finished run to `benchmarks/results/<date>-<platform>` to commit it, with a letter after the date for each later run of the same day. It needs every suite, `--pgo` and the default or rigorous mode |
 
 A full run takes several minutes. Close other programs while it runs, and record only on a quiet machine. `benchmarks/README.md` describes the files a run writes.
 

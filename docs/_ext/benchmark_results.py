@@ -3,10 +3,11 @@
 
 """The directive `benchmark-results`: the newest recorded benchmark run of each platform.
 
-`benchmarks/run.py --record` writes each run to `benchmarks/results/<date>-<platform>`, with
-its tables in `summary.md`. The directive reads the newest folder of each platform and puts
-its tables into the page as they stand, a level of heading lower, so that the page shows what
-was measured and never a number typed by hand.
+`benchmarks/run.py --record` writes each run to `benchmarks/results/<date>-<platform>`, a
+letter after the date for each later run of a day, with its tables in `summary.md`. The
+directive reads the newest folder of each platform and puts its tables into the page as they
+stand, a level of heading lower, so that the page shows what was measured and never a number
+typed by hand.
 """
 
 from pathlib import Path
@@ -23,7 +24,8 @@ RESULTS = Path(__file__).resolve().parents[2] / "benchmarks" / "results"
 def newest_runs() -> dict[str, Path]:
     """Find the summary of the newest run of each platform, by platform name."""
     newest: dict[str, Path] = {}
-    # A folder is named `<date>-<platform>`, so in order of names the last is the newest.
+    # A folder is named `<date>-<platform>`, a letter after the date for each later run of a
+    # day, so in order of names the last is the newest.
     for folder in sorted(RESULTS.iterdir()):
         summary = folder / "summary.md"
         if summary.is_file():
