@@ -123,6 +123,9 @@ impl<P> Plans<P> {
 
     fn insert(&self, class: &Bound<'_, PyType>, plan: Arc<P>) -> PyResult<Arc<P>> {
         let weak = PyWeakrefReference::new(class)?.unbind();
+        // What is taken out under the lock is dropped after it. Dropping the last reference to
+        // a class runs Python code, which may walk a tree of this grammar and want the lock.
+        let mut alive = Vec::new();
         let mut plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         // Another thread may have made the same plan meanwhile, and then its plan is kept.
         if let Some(kept) = plans.get(&address(class))
@@ -130,12 +133,21 @@ impl<P> Plans<P> {
         {
             return Ok(Arc::clone(&kept.plan));
         }
-        plans.retain(|_, kept| kept.class.bind(class.py()).upgrade().is_some());
+        let gone = plans.extract_if(|_, kept| match kept.class.bind(class.py()).upgrade() {
+            Some(known) => {
+                alive.push(known);
+                false
+            }
+            None => true,
+        });
+        let mut gone: Vec<Kept<P>> = gone.map(|(_, kept)| kept).collect();
         let kept = Kept {
             class: weak,
             plan: Arc::clone(&plan),
         };
-        plans.insert(address(class), kept);
+        gone.extend(plans.insert(address(class), kept));
+        drop(plans);
+        drop((alive, gone));
         Ok(plan)
     }
 }
