@@ -58,7 +58,11 @@ The Rust workspace with the core, the command line and the Python binding as emp
 - Recovery that still returns a tree, with error and missing nodes, for broken input.
 - Rendering of errors with source snippets.
 
-## M9 Tooling and the first release
+## M9 Known limits, revisited
+
+- Every known limit of the engine, the Python binding, the checks and the bundled grammars, collected since M1 and decided one by one before the first release: fixed where a fix pays, otherwise kept and stated on a page of known limits.
+
+## M10 Tooling and the first release
 
 - A language server for grammar files, a formatter and editor highlighting.
 - Wheels for all platforms and version 0.1.0.
