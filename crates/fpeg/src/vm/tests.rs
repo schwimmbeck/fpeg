@@ -334,13 +334,23 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 8] = [
+    let breaks: [Break; 10] = [
         ("no rule 1000", |p| {
             let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
             p.code[call] = Inst::MemoCall(1_000);
         }),
         ("remembers a rule that is not remembered", |p| {
             p.rules.iter_mut().for_each(|rule| rule.memo = false);
+        }),
+        ("remembers a rule that is left recursive", |p| {
+            p.rules.iter_mut().for_each(|rule| rule.recursive = true);
+        }),
+        ("calls a rule that needs a frame", |p| {
+            let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
+            let Inst::MemoCall(rule) = p.code[call] else {
+                return;
+            };
+            p.code[call] = Inst::Call(p.rules[rule as usize].pc);
         }),
         ("expects [Choice, Label] on top", |p| {
             let at = choice(p);

@@ -11,9 +11,9 @@
 //! it found them, every instruction is reached with one shape only, and every index names an
 //! entry of its table.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use super::program::{Inst, Program};
+use super::program::{Inst, Program, RuleInfo};
 use crate::resolve::MAX_FLAGS;
 
 /// The entries of the machine's stack, as far as the verifier tells them apart. Calls are
@@ -48,7 +48,7 @@ impl Shape {
 
 /// Check a program, or describe the first problem found.
 pub(crate) fn verify(program: &Program) -> Result<(), String> {
-    let rules: HashSet<u32> = program.rules.iter().map(|r| r.pc).collect();
+    let rules: HashMap<u32, &RuleInfo> = program.rules.iter().map(|r| (r.pc, r)).collect();
     let shared: HashSet<u32> = program.shared.iter().copied().collect();
     let mut roots: Vec<u32> = program.rules.iter().map(|r| r.pc).collect();
     roots.extend(&program.shared);
@@ -87,7 +87,8 @@ pub(crate) fn verify(program: &Program) -> Result<(), String> {
 
 struct Tables<'p> {
     program: &'p Program,
-    rules: &'p HashSet<u32>,
+    /// The rules by the entry of their routine.
+    rules: &'p HashMap<u32, &'p RuleInfo>,
     shared: &'p HashSet<u32>,
 }
 
@@ -154,11 +155,19 @@ impl Tables<'_> {
                 Vec::new()
             }
             Inst::Fail => Vec::new(),
-            Inst::Call(target) => match self.rules.contains(&target) {
-                true => vec![(next, shape)],
-                false => return Err("calls no rule".into()),
+            // A rule on a left cycle needs the frame of `LrCall`, a remembered one that of
+            // `MemoCall`.
+            Inst::Call(target) => match self.rules.get(&target) {
+                Some(info) if info.recursive || info.memo => {
+                    return Err("calls a rule that needs a frame".into());
+                }
+                Some(_) => vec![(next, shape)],
+                None => return Err("calls no rule".into()),
             },
             Inst::MemoCall(rule) => match p.rules.get(rule as usize) {
+                Some(info) if info.recursive => {
+                    return Err("remembers a rule that is left recursive".into());
+                }
                 Some(info) if info.memo => vec![(next, shape)],
                 Some(_) => return Err("remembers a rule that is not remembered".into()),
                 None => return Err(format!("no rule {rule}")),
