@@ -282,6 +282,8 @@ A flag holds for the whole extent of `e`, including the rules it calls and the s
 
 ### Indentation
 
+Status: syntax now, effect in M6.
+
 ```fpeg
 block: NEWLINE %indent((%same stmt)+)
 ```
@@ -295,6 +297,8 @@ block: NEWLINE %indent((%same stmt)+)
 The reference column is 0 at the start of a parse. Columns count code points from the start of the line, starting at 0, and a form feed sets the count back to 0.
 
 ### Captures
+
+Status: syntax now, effect in M6.
 
 ```fpeg
 RAW_STRING: "r" %def(hashes, "#"*) "\"" (!("\"" %ref(hashes)) .)* "\"" %ref(hashes)
