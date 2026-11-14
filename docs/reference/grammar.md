@@ -119,14 +119,17 @@ An unknown attribute is an error.
 A parser may try a rule at one position of the input more than once, when an alternative that used the rule fails and the next one starts with it again. A rule marked `@memo` is matched once at each position, and every later call there gets the stored result.
 
 ```fpeg
-start: item "." | item "!" | item
+start: dot | bang | item
+dot: item "."
+bang: item "!"
 @memo
 item: "(" start ")" | "x"
 ```
 
 - Remembering never changes what a grammar matches or the tree it gives, only the work a parse takes. It pays for a rule that is tried again and again and takes long to match, and costs a lookup for every call otherwise.
-- The levels of a [precedence block](#operator-precedence) are remembered without a mark, since each level tries the next one again whenever its own operator does not follow. `@nomemo` on the block turns that off for its levels, and `@memo` on a block changes nothing.
-- A left-recursive rule is remembered without a mark as well, for the same reason: the last pass over it, which finds that the match grows no further, tries its other alternatives again. `@nomemo` turns that off.
+- A rule that a choice tries twice at one position is remembered without a mark: one that two alternatives of a choice start with, as `item` in `start: item "." | item "!" | item`, or a part that can end after a failed try and the part after it, as in `item? item`. Only the rules that a choice starts with itself count, not those they call in turn, as `item` above through `dot` and `bang`, and terminals do not.
+- A left-recursive rule is remembered without a mark where each pass over it tries its other alternatives again, as the last pass, which finds that the match grows no further, does. A rule whose alternatives start with the rule itself before the others, as the levels of a [precedence block](#operator-precedence) do, runs as a loop that tries them once and is not.
+- `@nomemo` turns remembering without a mark off for a rule, and on a block for each of its levels. `@memo` on a block changes nothing.
 - No other rule is remembered unless it is marked. On a rule with parameters a mark holds for every use.
 - A rule cannot be `@memo` and `@nomemo` at once ([E302](diagnostics/E302.md)).
 

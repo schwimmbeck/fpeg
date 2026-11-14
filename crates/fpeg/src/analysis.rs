@@ -311,6 +311,33 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
 }
 
 impl Facts {
+    /// The rules that a choice point can call twice at one position: through the starts of
+    /// two of its alternatives, or of a part that can end after a failed try, as `e?` and
+    /// `e+` can, and what follows it. Only the calls an expression makes itself count, not
+    /// those of the rules it calls, since remembering a rule saves the calls it makes in
+    /// turn. Calls inside a token, of terminals, take about what remembering them would, a
+    /// rule's calls of itself at its start are its left recursion, which its seed answers,
+    /// and a lookahead calls quietly, which the memo keeps apart from other calls.
+    pub fn tried_twice(&self, grammar: &ir::Grammar) -> Vec<bool> {
+        let mut walk = Twice {
+            facts: self,
+            twice: vec![false; grammar.rules.len()],
+            shared: HashMap::new(),
+            rule: RuleId(0),
+        };
+        for (i, rule) in grammar.rules.iter().enumerate() {
+            walk.rule = RuleId(i as u32);
+            walk.calls(&rule.body);
+        }
+        walk.twice
+    }
+
+    /// Whether an expression of the grammar can succeed without consuming input.
+    fn nullable_expr(&self, expr: &ir::Expr) -> bool {
+        let node = self.graph.node_of.get(&std::ptr::from_ref(expr));
+        node.is_none_or(|&node| self.nullable[node as usize])
+    }
+
     /// Whether the rule can succeed without consuming input.
     pub fn rule_nullable(&self, rule: RuleId) -> bool {
         let body = self.graph.bodies.get(rule.0 as usize);
@@ -480,6 +507,118 @@ impl Node {
             }
         }
     }
+}
+
+/// The walk of [`Facts::tried_twice`] over the bodies of the rules.
+struct Twice<'f> {
+    facts: &'f Facts,
+    twice: Vec<bool>,
+    /// The rules each shared part calls at its start.
+    shared: HashMap<*const ir::Expr, Vec<u32>>,
+    /// The rule whose body is walked.
+    rule: RuleId,
+}
+
+impl Twice<'_> {
+    fn mark(&mut self, calls: &[u32]) {
+        for &called in calls {
+            if called != self.rule.0
+                && let Some(twice) = self.twice.get_mut(called as usize)
+            {
+                *twice = true;
+            }
+        }
+    }
+
+    /// Whether a part of a sequence can end after a try that failed, so that what follows
+    /// it starts where the try did.
+    fn goes_on_after_failing(&self, part: &ir::Expr) -> bool {
+        match part {
+            ir::Expr::Repeat { min, max, .. } => max.is_none_or(|max| max > *min),
+            _ => self.facts.nullable_expr(part),
+        }
+    }
+
+    /// The rules `expr` calls at its start, sorted, marking those its choice points call
+    /// twice. It recurses as deeply as the expression nests, which the resolver bounds.
+    fn calls(&mut self, expr: &ir::Expr) -> Vec<u32> {
+        use ir::Expr as E;
+        match expr {
+            E::Call(rule) => vec![rule.0],
+            E::Seq(parts) => {
+                let starts: Vec<Vec<u32>> = parts.iter().map(|part| self.calls(part)).collect();
+                // What the sequence goes on with after each part, from the last part back.
+                let mut after: Vec<u32> = Vec::new();
+                for (part, calls) in parts.iter().zip(&starts).rev() {
+                    if self.goes_on_after_failing(part) {
+                        let both = common(calls, &after);
+                        self.mark(&both);
+                    }
+                    after = match self.facts.nullable_expr(part) {
+                        true => union(calls, &after),
+                        false => calls.clone(),
+                    };
+                }
+                after
+            }
+            E::Choice(alternatives) => {
+                let mut seen = Vec::new();
+                for alternative in alternatives {
+                    let calls = self.calls(alternative);
+                    let both = common(&calls, &seen);
+                    self.mark(&both);
+                    seen = union(&seen, &calls);
+                }
+                seen
+            }
+            E::Repeat { max: Some(0), .. } | E::Token { .. } | E::And(_) | E::Not(_) => Vec::new(),
+            E::Repeat { expr, .. }
+            | E::Node { expr, .. }
+            | E::Transparent { expr, .. }
+            | E::Field { expr, .. }
+            | E::Unreserved(expr)
+            | E::FlagOn { expr, .. }
+            | E::FlagOff { expr, .. }
+            | E::Indent { expr, .. }
+            | E::Def { expr, .. }
+            | E::Label { expr, .. } => self.calls(expr),
+            E::Shared(inner) => {
+                let key = std::sync::Arc::as_ptr(inner);
+                if let Some(calls) = self.shared.get(&key) {
+                    return calls.clone();
+                }
+                let calls = self.calls(inner);
+                self.shared.insert(key, calls.clone());
+                calls
+            }
+            E::Empty
+            | E::Literal { .. }
+            | E::Class(_)
+            | E::Any
+            | E::Cut
+            | E::Skip
+            | E::WordEnd
+            | E::FlagTest { .. }
+            | E::Same { .. }
+            | E::Ref { .. }
+            | E::ErrorAlternative => Vec::new(),
+        }
+    }
+}
+
+/// The rules in both sorted lists.
+fn common(a: &[u32], b: &[u32]) -> Vec<u32> {
+    (a.iter().copied())
+        .filter(|rule| b.binary_search(rule).is_ok())
+        .collect()
+}
+
+/// The rules in either sorted list, sorted.
+fn union(a: &[u32], b: &[u32]) -> Vec<u32> {
+    let mut all = [a, b].concat();
+    all.sort_unstable();
+    all.dedup();
+    all
 }
 
 /// The kinds of head tokens of both, sorted, or none where there are too many to keep.

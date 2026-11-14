@@ -70,8 +70,9 @@ pub(crate) fn compile(
     if options.passes.dispatch {
         c.starts = Some(facts.starts(grammar, &growing));
     }
-    let memo: Vec<bool> = (grammar.rules.iter().zip(&facts.left_recursive))
-        .map(|(rule, &recursive)| remembered(options.memo, rule, recursive))
+    let twice = facts.tried_twice(grammar);
+    let memo: Vec<bool> = (0..grammar.rules.len())
+        .map(|i| remembered(options.memo, &grammar.rules[i], growing[i] || twice[i]))
         .collect();
     if options.passes.inline {
         c.inline = c.inlinable(&memo, &facts.recursive);
@@ -193,15 +194,14 @@ pub(crate) fn compile(
     })
 }
 
-/// Whether the results of a rule are remembered.
-fn remembered(memo: Memo, rule: &ir::Rule, left_recursive: bool) -> bool {
+/// Whether the results of a rule are remembered, `repeated` where by default it is: where a
+/// choice point can call it twice at one position, or it keeps the growing loop of left
+/// recursion, whose pass that finds the match grown no further runs its body again.
+fn remembered(memo: Memo, rule: &ir::Rule, repeated: bool) -> bool {
     match (memo, rule.memo) {
         (Memo::Off, _) | (Memo::Grammar, ir::MemoMark::NoMemo) => false,
         (Memo::All, _) | (Memo::Grammar, ir::MemoMark::Memo) => true,
-        // A level is tried again by the level above it whenever that one's operator does
-        // not follow, and a rule on a left cycle by the pass that finds its match grown no
-        // further.
-        (Memo::Grammar, ir::MemoMark::None) => rule.level || left_recursive,
+        (Memo::Grammar, ir::MemoMark::None) => repeated,
     }
 }
 

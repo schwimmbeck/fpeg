@@ -352,21 +352,21 @@ fn code_that_cannot_start_with_the_next_byte_is_jumped_past() {
 7  Test pop [a-c] 18
 8  Test [a] 12
 9  Choice 12
-10  Call A
+10  MemoCall A
 11  Commit 17
 12  Test [b] 16
 13  Choice 16
-14  Call B
+14  MemoCall B
 15  Commit 17
 16  Char 'c'
 17  LoopCommit 7
 18  Test [a] 22
 19  Choice 22
-20  Call A
+20  MemoCall A
 21  Commit 22
 22  Test [b] 26
 23  Choice 26
-24  Call B
+24  MemoCall B
 25  Commit 34
 26  Choice 32
 27  LabelChoice 30
@@ -375,7 +375,7 @@ fn code_that_cannot_start_with_the_next_byte_is_jumped_past() {
 30  Throw \"need x\"
 31  Commit 34
 32  TestFail [a]
-33  Call A
+33  MemoCall A
 34  Ret";
     assert_eq!(routine(&program, "WORD"), expected);
 }
@@ -760,26 +760,24 @@ fn the_options_decide_which_calls_remember() {
 }
 
 #[test]
-fn the_levels_of_a_precedence_block_are_remembered_unless_it_says_no() {
-    let text = |mark: &str| {
-        format!(
-            "start: expr\n{mark}expr: %precedence {{\n    neg: \"-\" neg -> neg\n    atom: \"1\"\n}}\n"
-        )
+fn the_expression_grammar_remembers_the_levels_tried_twice_and_no_others() {
+    let text = include_str!("../../grammars/expressions.fpeg");
+    let remembered = |text: &str| {
+        let rules = parser(text).program.rules;
+        let names = rules.iter().filter(|rule| rule.memo);
+        names.map(|rule| rule.name.clone()).collect::<Vec<_>>()
     };
-    let remembered = |mark: &str| {
-        let code = plain(&text(mark)).program.code;
-        let calls = code.iter().filter(|i| matches!(i, Inst::MemoCall(_)));
-        calls.count()
-    };
-    // The calls of `neg` from the block and from itself, the call of `atom` that `neg` falls
-    // through to, and those that start a parse from either level.
-    assert_eq!(["", "@nomemo\n"].map(remembered), [5, 0]);
+    // Both alternatives of `conditional` start with `or`, and so do both of the level above
+    // with `conditional`. Every other level runs as a loop or is tried once at a position.
+    assert_eq!(remembered(text), ["conditional", "or"]);
+    let unmarked = text.replace("expr: %precedence", "@nomemo\nexpr: %precedence");
+    assert_eq!(remembered(&unmarked), Vec::<String>::new());
 }
 
 #[test]
-fn a_remembered_rule_is_matched_once_at_a_position() {
-    // Each alternative of `start` matches `item` afresh, so without the mark thirty levels of
-    // brackets take 3^30 matches of the innermost one.
+fn a_rule_that_a_choice_tries_twice_is_matched_once_at_a_position() {
+    // Each alternative of `start` starts with `item`, which is remembered without a mark, and
+    // without it thirty levels of brackets take 3^30 matches of the innermost one.
     let text = |mark: &str| {
         format!("start: item \".\" | item \"!\" | item\n{mark}item: \"(\" start \")\" | \"x\"\n")
     };
@@ -788,11 +786,11 @@ fn a_remembered_rule_is_matched_once_at_a_position() {
         max_steps: 100_000,
         ..Limits::default()
     };
-    let marked = parser(&text("@memo\n")).parse_with(&input, "start", limits);
-    assert!(marked.is_ok(), "{marked:?}");
-    let plain = parser(&text("")).parse_with(&input, "start", limits);
+    let remembered = parser(&text("")).parse_with(&input, "start", limits);
+    assert!(remembered.is_ok(), "{remembered:?}");
+    let unmarked = parser(&text("@nomemo\n")).parse_with(&input, "start", limits);
     assert_eq!(
-        plain.err().map(|error| error.kind),
+        unmarked.err().map(|error| error.kind),
         Some(ParseErrorKind::Limit(Limit::Steps))
     );
 }

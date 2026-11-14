@@ -283,7 +283,10 @@ fn profile_prints_a_row_for_each_rule_and_the_ignored_text() {
 
 #[test]
 fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
-    let grammar = "start: item \".\" | item \"!\" | item\nitem: \"(\" start \")\" | \"x\"\n";
+    // `item` is tried again through `dot` and `bang`, which remembering by default does not
+    // look through.
+    let grammar = "start: dot | bang | item\ndot: item \".\"\nbang: item \"!\"\n\
+                   item: \"(\" start \")\" | \"x\"\n";
     let paths = files(
         "suggest",
         &[("again.fpeg", grammar), ("input.txt", "((((((x))))))")],

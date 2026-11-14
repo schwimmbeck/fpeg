@@ -59,7 +59,7 @@ fn a_profile_counts_the_grammar_as_written_whatever_passes_the_parser_runs() {
 fn a_profile_counts_calls_and_those_that_repeat_one() {
     let grammar =
         |mark: &str| format!("start: item \".\" | item \"!\" | item\n{mark}item: \"x\"\n");
-    let plain = profile(&grammar(""), "x");
+    let plain = profile(&grammar("@nomemo\n"), "x");
     let item = row(&plain, "item");
     assert_eq!((item.calls, item.repeats, item.failures), (3, 2, 0));
     assert_eq!(

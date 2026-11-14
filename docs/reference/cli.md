@@ -67,7 +67,9 @@ fpeg profile [--start RULE] [--json] GRAMMAR INPUT...
 Parses the input files and prints what each rule did, summed over the inputs, the rules that took the most steps first. With this grammar in `again.fpeg`
 
 ```fpeg
-start: item "." | item "!" | item
+start: dot | bang | item
+dot: item "."
+bang: item "!"
 item: "(" start ")" | "x"
 ```
 
@@ -75,13 +77,17 @@ the input `((((x))))` gives:
 
 ```text
 rule     calls  failed  steps  share  with callees  given back  repeats  hits  stored  grown
-item       363       0   4473  71.1%          6273           0      358     0       0      0
-start      121       0   1815  28.9%          6288           0      116     0       0      0
+item       363       0   4473  66.0%          6753           0      358     0       0      0
+start      121       0   1331  19.6%          6772           0      116     0       0      0
+bang       121     121    484   7.1%          5505         237      116     0       0      0
+dot        121     121    484   7.1%          5505         237      116     0       0      0
 (parse)      0       0      2   0.0%             0           0        0     0       0      0
 
-6290 steps, at most 27 entries on the stack and 10 nodes, 0 results remembered
+6774 steps, at most 37 entries on the stack and 10 nodes, 0 results remembered
 @memo on item: 358 of its 363 calls repeat an earlier one, about 98% of all steps
 @memo on start: 116 of its 121 calls repeat an earlier one, about 95% of all steps
+@memo on bang: 116 of its 121 calls repeat an earlier one, about 77% of all steps
+@memo on dot: 116 of its 121 calls repeat an earlier one, about 77% of all steps
 ```
 
 A step is one instruction of the parser, the unit its step limit counts. The profile runs the parser without its optimizations, so that every rule keeps the calls, failures and steps of the grammar as written, and a parse outside a profile takes fewer steps. The numbers of steps change from one version of fpeg to the next, their proportions are what to read.

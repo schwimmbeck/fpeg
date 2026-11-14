@@ -251,6 +251,6 @@ for found in fpeg.check(both):
 
 ## What it costs
 
-A level is tried at every operand, and each try runs down through the levels below it. fpeg remembers the result of a level at a position, so that the levels above reuse it, and does so by default for the levels of every precedence block and for left recursive rules. Nothing has to be set. [Performance](performance.md) says how to see where a parse spends its work.
+A level is tried at every operand, and each try runs down through the levels below it. fpeg runs a level whose alternatives start with the level itself as a loop over its operators, which matches it once at each operand, and remembers the result of a level that the level above tries twice at a position, so that the second try reuses it. Nothing has to be set. [Performance](performance.md) says how to see where a parse spends its work.
 
 The syntax in full is in the reference of the [grammar language](../reference/grammar.md#operator-precedence), and what it means in the [semantics](../reference/semantics.md).

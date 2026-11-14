@@ -875,7 +875,6 @@ impl<'g> Resolver<'g> {
                 span: rule.name.span,
                 body: ir::Expr::Empty,
                 memo: ir::MemoMark::None,
-                level: false,
             });
             return;
         }
@@ -976,7 +975,6 @@ impl<'g> Resolver<'g> {
                 RuleBody::Alternatives(_) => memo,
                 RuleBody::Precedence(_) => ir::MemoMark::None,
             },
-            level: false,
         });
     }
 
@@ -1123,7 +1121,6 @@ impl<'g> Resolver<'g> {
                 span: level.name.span,
                 body: choice(lowered),
                 memo,
-                level: true,
             });
         }
         match ids.first() {

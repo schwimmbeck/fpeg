@@ -4,10 +4,12 @@ A grammar decides most of the time a parse takes: how often the parser tries som
 
 ## Look before changing
 
-`fpeg profile` parses inputs and counts what each rule did. Take a grammar whose three alternatives all begin with the same rule, in `again.fpeg`:
+`fpeg profile` parses inputs and counts what each rule did. Take a grammar whose three alternatives all begin with the same rule, two of them through rules of their own, in `again.fpeg`:
 
 ```fpeg
-start: item "." | item "!" | item
+start: dot | bang | item
+dot: item "."
+bang: item "!"
 item: "(" start ")" | "x"
 ```
 
@@ -19,16 +21,20 @@ For the input `((((x))))` it prints:
 
 ```text
 rule     calls  failed  steps  share  with callees  given back  repeats  hits  stored  grown
-item       363       0   4473  71.1%          6273           0      358     0       0      0
-start      121       0   1815  28.9%          6288           0      116     0       0      0
+item       363       0   4473  66.0%          6753           0      358     0       0      0
+start      121       0   1331  19.6%          6772           0      116     0       0      0
+bang       121     121    484   7.1%          5505         237      116     0       0      0
+dot        121     121    484   7.1%          5505         237      116     0       0      0
 (parse)      0       0      2   0.0%             0           0        0     0       0      0
 
-6290 steps, at most 27 entries on the stack and 10 nodes, 0 results remembered
+6774 steps, at most 37 entries on the stack and 10 nodes, 0 results remembered
 @memo on item: 358 of its 363 calls repeat an earlier one, about 98% of all steps
 @memo on start: 116 of its 121 calls repeat an earlier one, about 95% of all steps
+@memo on bang: 116 of its 121 calls repeat an earlier one, about 77% of all steps
+@memo on dot: 116 of its 121 calls repeat an earlier one, about 77% of all steps
 ```
 
-A step is one instruction of the parser. Nine characters take 6290 of them, and the column `repeats` says why: of 363 calls of `item`, 358 are at a position where `item` was called before. Where `item "."` fails at the dot, `item "!"` parses the same item again, and at every level of the parentheses that triples the work. The [command line reference](../reference/cli.md#fpeg-profile) explains every column.
+A step is one instruction of the parser. Nine characters take 6774 of them, and the column `repeats` says why: of 363 calls of `item`, 358 are at a position where `item` was called before. Where `dot` fails at the dot, `bang` parses the same item again, and so does the last alternative, and at every level of the parentheses that triples the work. The [command line reference](../reference/cli.md#fpeg-profile) explains every column.
 
 The numbers of steps change from one version of fpeg to the next. Their proportions are what to read.
 
@@ -37,23 +43,28 @@ The numbers of steps change from one version of fpeg to the next. Their proporti
 The profile ends with what it would try. `@memo` on a rule makes the parser remember each result of the rule with the position it was called at, and answer the next call there from memory:
 
 ```fpeg
-start: item "." | item "!" | item
+start: dot | bang | item
+dot: item "."
+bang: item "!"
 @memo
 item: "(" start ")" | "x"
 ```
 
 ```text
 rule     calls  failed  steps  share  with callees  given back  repeats  hits  stored  grown
-start        5       0     90  55.2%           161           0        0     0       0      0
-item        15       0     71  43.6%           143           0       10    10       5      0
-(parse)      0       0      2   1.2%             0           0        0     0       0      0
+item        15       0     71  38.8%           159           0       10    10       5      0
+start        5       0     60  32.8%           181           0        0     0       0      0
+bang         5       5     25  13.7%            25          25        0     0       0      0
+dot          5       5     25  13.7%           164          25        0     0       0      0
+(parse)      0       0      2   1.1%             0           0        0     0       0      0
 
-163 steps, at most 27 entries on the stack and 10 nodes, 5 results remembered
+183 steps, at most 37 entries on the stack and 10 nodes, 5 results remembered
 ```
 
-The same input takes 163 steps. Ten of the fifteen calls of `item` are answered from the five results that were remembered.
+The same input takes 183 steps. Ten of the fifteen calls of `item` are answered from the five results that were remembered.
 
-- The levels of a precedence block and the rules that are left recursive are remembered without a mark, since they repeat by their nature.
+- A rule that a choice tries twice at one position is remembered without a mark: one that two of its alternatives start with, as in `start: item "." | item "!" | item`, or a part that can end after a failed try and the part after it, as in `item? item`. Only the rules that a choice starts with itself count, not those they call in turn, as `item` above through `dot` and `bang`, and terminals do not, which take about as long to match again as to look up.
+- A left-recursive rule is remembered without a mark where each pass over it tries its other alternatives again. One whose alternatives start with the rule itself before the others, as the levels of a precedence block do, runs as a loop that tries them once and is not.
 - `@memo` adds a rule to those, and `@nomemo` takes one out.
 - A remembered result takes memory until the parse ends. Remember the rules that repeat, not every rule: a rule that is never called twice at a position only pays for storing.
 
@@ -114,7 +125,9 @@ A cut saves the tries that would follow a failure, so it shortens the parse of a
 A grammar can make a parse take time that grows fast with the input, as the first grammar of this guide does, and input may come from anywhere. So every parse has a limit on its steps and one on how deep rule calls nest, and stops with a `LimitError` at either. A rule that calls itself counts at every level of the nesting, while a small rule that does not may be compiled into the rules that call it and count not at all. The defaults are high enough for real input, and `parse` takes lower ones:
 
 ```python
-again = fpeg.Grammar('start: item "." | item "!" | item\nitem: "(" start ")" | "x"')
+again = fpeg.Grammar(
+    'start: dot | bang | item\ndot: item "."\nbang: item "!"\nitem: "(" start ")" | "x"'
+)
 try:
     again.parse("(" * 40 + "x" + ")" * 40, max_steps=100_000)
 except fpeg.LimitError as error:
