@@ -335,6 +335,14 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
     };
     let tree = doubling(10).parse("", "start").expect("the input parses");
     assert_eq!(tree.len(), 1 << 11);
+    // An entry laid out counts as the steps it would have taken to make it unshared, so 8,192
+    // entries need over 40,000 steps, though the parse takes a few hundred.
+    let limits = Limits {
+        max_steps: 20_000,
+        ..Limits::default()
+    };
+    let error = (doubling(12).parse_with("", "start", limits)).expect_err("the entries weigh more");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
     // Twenty levels are two million nodes, from a parse of a few hundred steps. Few enough to
     // build, should the limit ever fail to stop it.
     let limits = Limits {

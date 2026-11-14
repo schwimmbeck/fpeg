@@ -182,6 +182,11 @@ struct Frame {
     outer_dependency: u32,
 }
 
+/// The steps that an entry of a tree with shared nodes counts as when it is laid out: what
+/// the cheapest entry costs a parse that shares nothing, so that sharing builds no larger
+/// tree than the same steps could without it.
+const TREE_ENTRY_STEPS: u64 = 5;
+
 /// No frame, where an index of [`Machine::frames`] is expected.
 const NO_FRAME: u32 = u32::MAX;
 
@@ -1168,13 +1173,14 @@ impl<'p, 'i> Machine<'p, 'i> {
         roots.fold(0, |sum, item| sum.saturating_add(size(&sizes, item)))
     }
 
-    /// Lay out the items of a successful parse as the top level of a tree, in postorder. Each
-    /// entry counts as a step, so a tree that repeats shared nodes beyond the steps the parse
-    /// has left is refused before any of it is built.
+    /// Lay out the items of a successful parse as the top level of a tree, in postorder. A tree
+    /// that repeats shared nodes is sized first, and refused before any of it is built where
+    /// its entries would take more steps than the parse has left.
     pub fn tree(&self) -> Result<Tree, Limit> {
         if self.shared {
             let left = self.limits.max_steps.saturating_sub(self.steps);
-            if self.tree_entries() > left.min(u64::from(u32::MAX)) {
+            let entries = self.tree_entries();
+            if entries > u64::from(u32::MAX) || entries.saturating_mul(TREE_ENTRY_STEPS) > left {
                 return Err(Limit::Steps);
             }
         }
