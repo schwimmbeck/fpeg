@@ -7,6 +7,7 @@
 //! routine of its own that every use calls, and every repetition compiles its expression once,
 //! so the program grows linearly with the grammar.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -38,7 +39,9 @@ pub(crate) fn compile(
         code: Vec::new(),
         strings: Vec::new(),
         string_ids: HashMap::new(),
+        strings_of: HashMap::new(),
         classes: Vec::new(),
+        classes_of: HashMap::new(),
         bounds: Vec::new(),
         calls: Vec::new(),
         shared: HashMap::new(),
@@ -95,10 +98,9 @@ pub(crate) fn compile(
     }
     // Skipping is `e*` of the skip expression `e`, a span where `e` repeats a class.
     let skip_class = match &grammar.skip {
-        Some(skip) if options.passes.skip => span(skip, 0).map(|(set, _)| {
-            c.classes.push(Class::new(&set));
-            (c.classes.len() - 1) as u32
-        }),
+        Some(skip) if options.passes.skip => {
+            span(skip, 0).map(|(points, set, _)| c.class(points, &set))
+        }
         _ => None,
     };
     let skip = grammar
@@ -325,7 +327,11 @@ struct Compiler<'f> {
     code: Vec<Inst>,
     strings: Vec<Box<[u8]>>,
     string_ids: HashMap<Box<[u8]>, u32>,
+    /// The string and the class of each literal and class compiled so far, by its address,
+    /// since a body compiled into its callers compiles again at each call.
+    strings_of: HashMap<*const ir::Expr, u32>,
     classes: Vec<Class>,
+    classes_of: HashMap<*const ir::Expr, u32>,
     bounds: Vec<(u32, u32)>,
     /// Calls to point at the routine of the rule they call, once every rule has one.
     calls: Vec<(usize, RuleId)>,
@@ -384,19 +390,19 @@ fn after_call(expr: &ir::Expr, rule: RuleId) -> Option<&[ir::Expr]> {
 }
 
 /// The code points of a class, or of a literal of one code point that ignores no case.
-fn span_set(expr: &ir::Expr) -> Option<ir::CharSet> {
+fn span_set(expr: &ir::Expr) -> Option<Cow<'_, ir::CharSet>> {
     match expr {
-        ir::Expr::Class(set) => Some((**set).clone()),
+        ir::Expr::Class(set) => Some(Cow::Borrowed(set)),
         ir::Expr::Literal {
             text,
             case_insensitive: false,
         } => {
             let mut chars = text.chars();
             match (chars.next(), chars.next()) {
-                (Some(c), None) => Some(ir::CharSet {
+                (Some(c), None) => Some(Cow::Owned(ir::CharSet {
                     negated: false,
                     items: vec![ClassItem::Range(c, c)],
-                }),
+                })),
                 _ => None,
             }
         }
@@ -404,24 +410,26 @@ fn span_set(expr: &ir::Expr) -> Option<ir::CharSet> {
     }
 }
 
-/// The code points and the fewest of them for a span that matches `e{min,}` exactly: `c{min,}`
-/// of a class or one code point `c`, `(c*){min,}`, `(c+)*` and `(c+)+`. A step that matches
-/// nothing is the last and satisfies the minimum, so `(c*){min,}` takes the run whatever `min`
-/// says, while `(c+){2,}` never matches, since its first step takes the whole run.
-fn span(expr: &ir::Expr, min: u32) -> Option<(ir::CharSet, u32)> {
-    match expr {
+/// The expression of the code points, the code points and the fewest of them for a span that
+/// matches `e{min,}` exactly: `c{min,}` of a class or one code point `c`, `(c*){min,}`, `(c+)*`
+/// and `(c+)+`. A step that matches nothing is the last and satisfies the minimum, so
+/// `(c*){min,}` takes the run whatever `min` says, while `(c+){2,}` never matches, since its
+/// first step takes the whole run.
+fn span(expr: &ir::Expr, min: u32) -> Option<(&ir::Expr, Cow<'_, ir::CharSet>, u32)> {
+    let (points, min) = match expr {
         ir::Expr::Repeat {
             expr: inner,
             min: 0,
             max: None,
-        } => span_set(inner).map(|set| (set, 0)),
+        } => (&**inner, 0),
         ir::Expr::Repeat {
             expr: inner,
             min: 1,
             max: None,
-        } if min <= 1 => span_set(inner).map(|set| (set, min)),
-        _ => span_set(expr).map(|set| (set, min)),
-    }
+        } if min <= 1 => (&**inner, min),
+        _ => (expr, min),
+    };
+    span_set(points).map(|set| (points, set, min))
 }
 
 impl<'f> Compiler<'f> {
@@ -655,10 +663,10 @@ impl<'f> Compiler<'f> {
             E::Literal {
                 text,
                 case_insensitive,
-            } => self.literal(text.as_bytes(), *case_insensitive),
+            } => self.literal(expr, text.as_bytes(), *case_insensitive),
             E::Class(set) => {
-                self.classes.push(Class::new(set));
-                self.emit(Inst::Class((self.classes.len() - 1) as u32));
+                let class = self.class(expr, set);
+                self.emit(Inst::Class(class));
             }
             E::Any => {
                 self.emit(Inst::Any);
@@ -855,7 +863,8 @@ impl<'f> Compiler<'f> {
         }
     }
 
-    fn literal(&mut self, bytes: &[u8], case_insensitive: bool) {
+    /// Compile the literal `expr` of these bytes.
+    fn literal(&mut self, expr: &ir::Expr, bytes: &[u8], case_insensitive: bool) {
         let folds = case_insensitive && bytes.iter().any(u8::is_ascii_alphabetic);
         match bytes {
             [] => {}
@@ -863,11 +872,19 @@ impl<'f> Compiler<'f> {
                 self.emit(Inst::Char(*byte));
             }
             _ => {
-                let next = self.strings.len() as u32;
-                let id = *self.string_ids.entry(bytes.into()).or_insert(next);
-                if id == next {
-                    self.strings.push(bytes.into());
-                }
+                let key = std::ptr::from_ref(expr);
+                let id = match self.strings_of.get(&key) {
+                    Some(&id) => id,
+                    None => {
+                        let next = self.strings.len() as u32;
+                        let id = *self.string_ids.entry(bytes.into()).or_insert(next);
+                        if id == next {
+                            self.strings.push(bytes.into());
+                        }
+                        self.strings_of.insert(key, id);
+                        id
+                    }
+                };
                 self.emit(if folds {
                     Inst::StrFold(id)
                 } else {
@@ -964,19 +981,20 @@ impl<'f> Compiler<'f> {
         }
     }
 
-    /// The code points of the first alternative of `expr` and the alternatives after it,
-    /// where a loop over `expr` can split as `c* (e c*)*`: the first alternative is a class
-    /// or one code point, maybe through a call compiled as its body, and no other holds a
-    /// free cut. Both forms take `c` where it matches and try `e` where it does not, and a
-    /// step of `e` that matches nothing ends both, since `c*` then matches nothing either.
-    fn split(&mut self, expr: &'f ir::Expr) -> Option<(ir::CharSet, &'f [ir::Expr])> {
+    /// The class of the first alternative of `expr` and the alternatives after it, where a
+    /// loop over `expr` can split as `c* (e c*)*`: the first alternative is a class or one
+    /// code point, maybe through a call compiled as its body, and no other holds a free cut.
+    /// Both forms take `c` where it matches and try `e` where it does not, and a step of `e`
+    /// that matches nothing ends both, since `c*` then matches nothing either.
+    fn split(&mut self, expr: &'f ir::Expr) -> Option<(u32, &'f [ir::Expr])> {
         let ir::Expr::Choice(alternatives) = self.seen_through(expr) else {
             return None;
         };
         let (first, rest) = alternatives.split_first()?;
-        let set = span_set(self.seen_through(first))?;
+        let points = self.seen_through(first);
+        let set = span_set(points)?;
         let free = rest.iter().any(|alternative| self.free_cut(alternative));
-        (self.passes.split && !rest.is_empty() && !free).then_some((set, rest))
+        (self.passes.split && !rest.is_empty() && !free).then(|| (self.class(points, &set), rest))
     }
 
     /// `expr`, or the body it compiles as where it is a call compiled into its caller.
@@ -989,18 +1007,25 @@ impl<'f> Compiler<'f> {
         }
     }
 
-    /// The class of a span, added to the program.
-    fn class(&mut self, set: &ir::CharSet) -> u32 {
+    /// The class of `set`, the code points of the expression `points`, added to the program
+    /// once for each such expression.
+    fn class(&mut self, points: &ir::Expr, set: &ir::CharSet) -> u32 {
+        let key = std::ptr::from_ref(points);
+        if let Some(&class) = self.classes_of.get(&key) {
+            return class;
+        }
         self.classes.push(Class::new(set));
-        (self.classes.len() - 1) as u32
+        let class = (self.classes.len() - 1) as u32;
+        self.classes_of.insert(key, class);
+        class
     }
 
     fn repeat(&mut self, expr: &'f ir::Expr, min: u32, max: Option<u32>) {
         if self.passes.span
             && max.is_none()
-            && let Some((set, min)) = span(expr, min)
+            && let Some((points, set, min)) = span(expr, min)
         {
-            let class = self.class(&set);
+            let class = self.class(points, &set);
             self.emit(Inst::Span { class, min });
             return;
         }
@@ -1023,8 +1048,7 @@ impl<'f> Compiler<'f> {
                     self.patch(test);
                 }
             }
-            (0, None) if let Some((set, rest)) = self.split(expr) => {
-                let class = self.class(&set);
+            (0, None) if let Some((class, rest)) = self.split(expr) => {
                 self.emit(Inst::Span { class, min: 0 });
                 let choice = self.emit(Inst::Choice(0));
                 let step = self.here();

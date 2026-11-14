@@ -902,6 +902,15 @@ fn nested_separated_repetitions_compile_to_code_linear_in_their_depth() {
 }
 
 #[test]
+fn a_rule_compiled_into_its_callers_adds_its_classes_to_the_program_once() {
+    // Copied at every call, a class of many code points would take memory with each.
+    let calls = vec!["word"; 100].join(" ");
+    let parser = parser(&format!("start: {calls}\nword: [a-z] [a-z0-9]*\n"));
+    assert!(parser.program.code.len() > 200, "{parser:?}");
+    assert_eq!(parser.program.classes.len(), 2);
+}
+
+#[test]
 fn a_long_sequence_of_parts_that_may_be_empty_compiles_in_linear_time() {
     // The search for left recursion comes back to the sequence once per part, and finding its
     // left children afresh each time made the search quadratic in the number of parts.
