@@ -17,7 +17,8 @@ import sys
 import types
 import weakref
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, ClassVar, TypeVar, cast
+from dataclasses import dataclass
+from typing import Any, ClassVar, Literal, TypeVar, cast
 
 from fpeg import _fpeg
 from fpeg._fpeg import Discard, Token, Tree
@@ -35,7 +36,37 @@ TOKEN = 8
 # The keyword-only parameters a method may take beside its children or fields, as bits.
 EXTRAS = {"meta": 1, "node": 2, "children": 4}
 
+# How columns count, as the native scan reads it.
+COLUMN_UNITS = {"code points": 0, "utf-8": 1, "utf-16": 2}
+
 _Callable = TypeVar("_Callable")
+
+
+@dataclass(frozen=True)
+class Positions:
+    """Which attributes of a value receive the position of the node or token it was made for.
+
+    `types` are the classes whose instances get them. Lines count from `line_base`, columns
+    from `column_base` in the `column_unit`: code points, UTF-8 bytes or UTF-16 units.
+    """
+
+    start_line: str
+    start_column: str
+    end_line: str
+    end_column: str
+    types: type | tuple[type, ...]
+    line_base: int = 1
+    column_base: int = 0
+    column_unit: Literal["code points", "utf-8", "utf-16"] = "code points"
+
+
+def _ast_positions() -> Positions:
+    """Make the preset `"ast"`: the attributes of Python's `ast`, imported only when asked for."""
+    import ast
+
+    return Positions(
+        "lineno", "col_offset", "end_lineno", "end_col_offset", ast.AST, column_unit="utf-8"
+    )
 
 
 class _VArgs:
@@ -88,15 +119,30 @@ class Transformer:
     value into the parent in the node's place.
 
     `class T(Transformer, strict=True)` makes every public method of `T` name a rule or terminal
-    of the grammar it meets.
+    of the grammar it meets. `class T(Transformer, positions="ast")` gives each value made for
+    a node or token of a parse its position, where the value is an `ast.AST` that has none yet,
+    and a `Positions` record names other attributes. Subclasses keep the positions of their base.
     """
 
     __fpeg_strict__: ClassVar[bool] = False
     __fpeg_reserved__: ClassVar[frozenset[str]]
+    __fpeg_positions__: ClassVar[Positions | None] = None
 
-    def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
+    def __init_subclass__(
+        cls,
+        *,
+        strict: bool = False,
+        positions: Positions | Literal["ast"] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init_subclass__(**kwargs)
         cls.__fpeg_strict__ = strict
+        if positions == "ast":
+            cls.__fpeg_positions__ = _ast_positions()
+        elif isinstance(positions, Positions):
+            cls.__fpeg_positions__ = positions
+        elif positions is not None:
+            raise TypeError(f"positions takes 'ast' or a Positions, not {positions!r}")
 
     def __init__(self, visit_tokens: bool = True) -> None:
         """Make a transformer. Without `visit_tokens` the methods of terminals are not called."""
@@ -441,11 +487,16 @@ def _owned_convention(cls: type, name: str) -> tuple[int, tuple[str, ...], int]:
 
 def _make_plan(
     cls: type, kinds: list[tuple[str, bool, tuple[tuple[str, bool], ...]]]
-) -> tuple[list[tuple[int, str, int, tuple[str, ...], int]], bool, bool]:
+) -> tuple[
+    list[tuple[int, str, int, tuple[str, ...], int]],
+    bool,
+    bool,
+    tuple[str, str, str, str, tuple[type, ...], int, int, int] | None,
+]:
     """Make the plan of a transformer class for a grammar.
 
-    It says for each kind with a method how the method is called. The native scan asks for
-    it once per class and grammar.
+    It says for each kind with a method how the method is called, and which positions the
+    values get. The native scan asks for it once per class and grammar.
     """
     names = {name for name, _, _ in kinds}
     if getattr(cls, "__fpeg_strict__", False):
@@ -463,7 +514,21 @@ def _make_plan(
                 conventions[(method, token)] = node_convention(cls, method, dict(fields))
         mode, field_names, extras = conventions[(method, token)]
         entries.append((kind, method, mode, field_names, extras))
-    return entries, _overrides(cls, "__default__"), _overrides(cls, "__default_token__")
+    positions: Positions | None = getattr(cls, "__fpeg_positions__", None)
+    stamp = None
+    if positions is not None:
+        classes = positions.types if isinstance(positions.types, tuple) else (positions.types,)
+        stamp = (
+            positions.start_line,
+            positions.start_column,
+            positions.end_line,
+            positions.end_column,
+            classes,
+            positions.line_base,
+            positions.column_base,
+            COLUMN_UNITS[positions.column_unit],
+        )
+    return entries, _overrides(cls, "__default__"), _overrides(cls, "__default_token__"), stamp
 
 
 def check_strict(cls: type, names: Iterable[str]) -> None:

@@ -83,6 +83,56 @@ pub struct Plan {
     /// Whether the class overrides `__default__` and `__default_token__`.
     default_node: bool,
     default_token: bool,
+    /// The positions the values get, if the class asks for them.
+    positions: Option<Stamp>,
+}
+
+/// How columns count, by the codes of `fpeg._transformer`.
+#[derive(Clone, Copy)]
+enum Unit {
+    CodePoints,
+    Utf8,
+    Utf16,
+}
+
+/// The positions a transformer class gives its values: the attributes of the start line and
+/// column and of the end line and column, the classes whose instances get them, and how lines
+/// and columns count.
+struct Stamp {
+    names: [Py<PyString>; 4],
+    types: Py<PyTuple>,
+    line_base: i64,
+    column_base: i64,
+    unit: Unit,
+}
+
+/// The positions of a plan as `fpeg._transformer` gives them.
+type StampEntry = (String, String, String, String, Py<PyTuple>, i64, i64, u8);
+
+impl Stamp {
+    fn from_entry(py: Python<'_>, entry: StampEntry) -> PyResult<Stamp> {
+        let (start_line, start_column, end_line, end_column, types, line_base, column_base, unit) =
+            entry;
+        let unit = match unit {
+            0 => Unit::CodePoints,
+            1 => Unit::Utf8,
+            2 => Unit::Utf16,
+            _ => return Err(PyValueError::new_err(format!("no column unit {unit}"))),
+        };
+        let name = |text: &str| PyString::intern(py, text).unbind();
+        Ok(Stamp {
+            names: [
+                name(&start_line),
+                name(&start_column),
+                name(&end_line),
+                name(&end_column),
+            ],
+            types,
+            line_base,
+            column_base,
+            unit,
+        })
+    }
 }
 
 /// The plans of a grammar, one per class, by the address of the class. The classes are held
@@ -185,7 +235,15 @@ fn plan_for(
     }
     type Entry = (usize, String, u8, Vec<String>, u8);
     let made = make_plan.call1((class, kind_table(py, core)?))?;
-    let (entries, default_node, default_token): (Vec<Entry>, bool, bool) = made.extract()?;
+    let (entries, default_node, default_token, positions): (
+        Vec<Entry>,
+        bool,
+        bool,
+        Option<StampEntry>,
+    ) = made.extract()?;
+    let positions = positions
+        .map(|entry| Stamp::from_entry(py, entry))
+        .transpose()?;
     let mut handlers: Vec<Option<Handler>> = (0..core.kind_names.len()).map(|_| None).collect();
     for (kind, name, mode, field_names, extras) in entries {
         let known = core.name_fields.get(kind).map_or(&[][..], Vec::as_slice);
@@ -215,6 +273,7 @@ fn plan_for(
         handlers,
         default_node,
         default_token,
+        positions,
     });
     core.plans.insert(class, plan)
 }
@@ -369,7 +428,7 @@ impl<'py, 'p> Scan<'py, 'p> {
     }
 
     /// Push what a method returned: nothing for `Discard`, each value of a generator, or the
-    /// value.
+    /// value, each with the position of the entry where the class asks for it.
     fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
         if result.is(&self.discard) {
             self.spliced = Some(entry as u32);
@@ -383,6 +442,7 @@ impl<'py, 'p> Scan<'py, 'p> {
                 let value = value?;
                 // A yielded Discard puts nothing, as a returned one does.
                 if !value.is(&self.discard) {
+                    self.stamp(entry, &value)?;
                     self.stack.push(Value {
                         entry: entry as u32,
                         field,
@@ -391,6 +451,7 @@ impl<'py, 'p> Scan<'py, 'p> {
                 }
             }
         } else {
+            self.stamp(entry, &result)?;
             self.stack.push(Value {
                 entry: entry as u32,
                 field,
@@ -398,6 +459,56 @@ impl<'py, 'p> Scan<'py, 'p> {
             });
         }
         Ok(())
+    }
+
+    /// Give a value the position of its entry, where the class asks for positions and the value
+    /// is an instance of their classes without the first attribute yet. A value passed up from a
+    /// child has its own already.
+    fn stamp(&self, entry: usize, value: &Bound<'py, PyAny>) -> PyResult<()> {
+        let Some(stamp) = &self.plan.positions else {
+            return Ok(());
+        };
+        let py = self.py;
+        if !value.is_instance(stamp.types.bind(py))?
+            || value.getattr_opt(stamp.names[0].bind(py))?.is_some()
+        {
+            return Ok(());
+        }
+        let Some(node) = self.parsed.tree.node(entry) else {
+            return Ok(());
+        };
+        let (start, end) = node.span();
+        let (start_line, start_column) = self.position(start, stamp);
+        let (end_line, end_column) = self.position(end, stamp);
+        for (name, number) in
+            stamp
+                .names
+                .iter()
+                .zip([start_line, start_column, end_line, end_column])
+        {
+            value.setattr(name.bind(py), number)?;
+        }
+        Ok(())
+    }
+
+    /// The line and column of a byte offset as a stamp counts them.
+    fn position(&self, offset: u32, stamp: &Stamp) -> (i64, i64) {
+        let parsed = self.parsed;
+        let lines = parsed.lines();
+        let offset = offset as usize;
+        let start = lines.line_start(offset);
+        let column = match stamp.unit {
+            Unit::Utf8 => offset - start,
+            Unit::CodePoints => {
+                lines.char_offset(&parsed.source, offset) - lines.char_offset(&parsed.source, start)
+            }
+            Unit::Utf16 => {
+                (parsed.source.get(start..offset)).map_or(0, |text| text.encode_utf16().count())
+            }
+        };
+        // Lines and columns of a text that fits in memory fit 63 bits.
+        let line = lines.line(offset) as i64 + stamp.line_base;
+        (line, column as i64 + stamp.column_base)
     }
 
     fn token(&mut self, node: NodeRef<'_>) -> PyResult<()> {

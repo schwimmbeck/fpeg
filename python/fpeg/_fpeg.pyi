@@ -219,7 +219,12 @@ def scan(
     view: Tree,
     make_plan: Callable[
         [type, list[tuple[str, bool, tuple[tuple[str, bool], ...]]]],
-        tuple[list[tuple[int, str, int, tuple[str, ...], int]], bool, bool],
+        tuple[
+            list[tuple[int, str, int, tuple[str, ...], int]],
+            bool,
+            bool,
+            tuple[str, str, str, str, tuple[type, ...], int, int, int] | None,
+        ],
     ],
 ) -> tuple[Any, ...] | list[Any]: ...
 def token_value(token: Token) -> Any: ...

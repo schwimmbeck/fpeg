@@ -23,7 +23,7 @@ from fpeg._fpeg import (
     __version__,
     check,
 )
-from fpeg._transformer import Transformer, v_args
+from fpeg._transformer import Positions, Transformer, v_args
 from fpeg._visitors import Interpreter, Visitor
 
 __all__ = [
@@ -35,6 +35,7 @@ __all__ = [
     "LimitError",
     "Meta",
     "ParseError",
+    "Positions",
     "Token",
     "Transformer",
     "Tree",

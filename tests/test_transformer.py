@@ -666,3 +666,88 @@ def test_deep_trees_transform_without_recursion() -> None:
             return 1 + (children[0] if children else 0)
 
     assert Depth().transform(tree) == 1500
+
+
+SUMS = fpeg.Grammar(r"""
+start: expr
+expr: left=atom "+" right=atom -> add | value=atom
+atom: name=NAME | "(" inner=expr ")"
+NAME: [a-zé\u{1D51E}]+
+%ignore " "+
+""")
+
+
+class ToAst(fpeg.Transformer, positions="ast"):
+    def start(self, children: list[Any]) -> Any:
+        return children[0]
+
+    def add(self, left: Any, right: Any) -> Any:
+        import ast
+
+        return ast.BinOp(left, ast.Add(), right)
+
+    def expr(self, value: Any) -> Any:
+        return value
+
+    def atom(self, name: Any, inner: Any) -> Any:
+        return name if name is not None else inner
+
+    def NAME(self, token: fpeg.Token) -> Any:
+        import ast
+
+        return ast.Name(str(token), ast.Load())
+
+
+def test_positions_ast_gives_values_the_positions_python_s_ast_has() -> None:
+    import ast
+
+    # Columns count UTF-8 bytes, and the parenthesized name keeps its own position.
+    text = "é + (b)"
+    mine = ToAst().transform(SUMS.parse(text))
+    theirs = ast.parse(text, mode="eval").body
+    assert ast.dump(mine, include_attributes=True) == ast.dump(theirs, include_attributes=True)
+
+
+def test_a_subclass_keeps_the_positions_of_its_base() -> None:
+    class Again(ToAst):
+        pass
+
+    assert Again().transform(SUMS.parse("b")).end_col_offset == 1
+
+
+class Spot:
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+
+
+def test_a_positions_record_names_the_attributes_the_units_and_the_classes() -> None:
+    record = fpeg.Positions("line", "column", "end_line", "end_column", Spot, 0, 1, "utf-16")
+
+    class Spots(fpeg.Transformer, positions=record):
+        def start(self, children: list[Any]) -> Any:
+            return children[0]
+
+        def NAME(self, token: fpeg.Token) -> Any:
+            return Spot() if token == "b" else str(token)
+
+        def atom(self, name: Any, inner: Any) -> Any:
+            return name
+
+        def add(self, left: Any, right: Any) -> Any:
+            return (left, right)
+
+    fraktur_a = "\U0001d51e"
+    first, second = Spots().transform(SUMS.parse(fraktur_a + " + b"))
+    # A value of no class the record names stays as it is, and the first letter, beyond the
+    # Basic Multilingual Plane, takes two UTF-16 units.
+    assert first == fraktur_a
+    assert (second.line, second.column, second.end_line, second.end_column) == (0, 6, 0, 7)
+
+
+def test_positions_take_ast_or_a_record() -> None:
+    with pytest.raises(TypeError, match="positions takes 'ast' or a Positions"):
+
+        class Wrong(fpeg.Transformer, positions="lsp"):  # type: ignore[call-arg]  # the wrong value is the test
+            pass

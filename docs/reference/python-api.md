@@ -180,6 +180,31 @@ except ValueError as error:
     assert error.__notes__ == ["fpeg: in Failing.pair, for the node pair at line 1, column 1"]
 ```
 
+`class T(fpeg.Transformer, positions="ast")` gives the values made for the nodes and tokens of a parse their positions: a value that is an `ast.AST` without a `lineno` gets `lineno`, `col_offset`, `end_lineno` and `end_col_offset`, lines from 1 and columns from 0 in UTF-8 bytes, as `ast` counts them. A value passed up from a child keeps its own, as `(a)` keeps the position of `a` in Python. `fpeg.Positions(start_line, start_column, end_line, end_column, types, line_base=1, column_base=0, column_unit="code points")` names other attributes, the classes whose instances get them, and how lines and columns count, in `"code points"`, `"utf-8"` bytes or `"utf-16"` units. A subclass keeps the positions of its base. A tree built in Python has no positions to give.
+
+```python
+import ast
+
+sums = fpeg.Grammar(r"""
+start: left=NAME "+" right=NAME
+NAME: [a-zé]+
+%ignore " "+
+""")
+
+
+class ToAst(fpeg.Transformer, positions="ast"):
+    def start(self, left, right):
+        return ast.BinOp(left, ast.Add(), right)
+
+    def NAME(self, token):
+        return ast.Name(str(token), ast.Load())
+
+
+total = ToAst().transform(sums.parse("é + b"))
+assert (total.col_offset, total.end_col_offset) == (0, 6)
+assert (total.left.col_offset, total.left.end_col_offset) == (0, 2)
+```
+
 `grammar.transformer_template(name)` writes a starting transformer for a grammar: a method for every rule that makes nodes and every terminal, the parameters of a node's method named after its fields with type hints from how many items each holds, the builders a method replaces, and `strict=True`. A transparent rule `?name` whose every match leaves one visible item never makes a node, so it gets no method.
 
 ```python
