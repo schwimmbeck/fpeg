@@ -15,9 +15,9 @@ grammar.fpeg:1:8: error[E201]: unknown rule item
 other.fpeg:3:14: warning[W101]: this alternative is never tried, since the one before it cannot fail
 ```
 
-A line holds the file, the line and the column of the finding, both counted from 1 and the column in code points, then `error` or `warning` with the [diagnostic code](diagnostics/index.md), and the message. An error keeps the grammar from being used. A warning is about a grammar that works, and likely not as meant. It is given once the grammar has no error left. A grammar without findings prints nothing.
+A line holds the file, the line and the column of the finding, both counted from 1 and the column in code points, then `error` or `warning` with the [diagnostic code](diagnostics/index.md), and the message. An error keeps the grammar from being used. A warning is about a grammar that works, and likely not as meant. Warnings are given once the grammar reads and resolves, also beside the errors of forms that a later milestone brings ([E501](diagnostics/E501.md)), since those leave the rest of the grammar as it is. A grammar without findings prints nothing.
 
-The exit status is 0 when no grammar has an error and 1 otherwise, so a build can run the command as a check. With `--strict` a warning fails the command as an error does.
+The exit status is 0 when no grammar has an error, 1 otherwise, and 2 for a command line `fpeg` cannot understand, so a build can run the command as a check. With `--strict` a warning fails the command as an error does.
 
 ## fpeg parse
 
