@@ -111,6 +111,7 @@ class Grammar:
         *,
         max_steps: int | None = None,
         max_depth: int | None = None,
+        max_memory: int | None = None,
     ) -> Tree | Token: ...
     def transformer_template(self, name: str = "Transformer") -> str: ...
 

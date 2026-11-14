@@ -149,6 +149,9 @@ def test_limits_end_a_parse_with_a_limit_error() -> None:
     with pytest.raises(fpeg.LimitError) as raised:
         nested.parse("(" * 40 + ")" * 40, max_depth=10)
     assert raised.value.limit == "depth"
+    with pytest.raises(fpeg.LimitError) as raised:
+        grammar.parse(", ".join(["x = 1"] * 1_000), max_memory=1_000)
+    assert raised.value.limit == "memory"
 
 
 def test_an_input_with_a_lone_surrogate_cannot_be_parsed() -> None:

@@ -339,7 +339,7 @@ assert result == [Assign("x", 1), Assign("y", 2)]
 
 ## Errors
 
-A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps` and `max_depth` lower the limits for a parse, whose defaults suit untrusted input.
+A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps`, `max_depth` and `max_memory` lower the limits for a parse, whose defaults suit untrusted input. `max_memory` is in bytes, and its default grows with the text: 4 KiB for each byte, at least 64 MiB and at most 4 GiB.
 
 ```python
 try:

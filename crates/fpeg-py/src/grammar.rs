@@ -260,7 +260,9 @@ impl Grammar {
     /// a `Tree` for a node, a `Token` for a token. Raises `ParseError` when the text does not
     /// match, and `LimitError` when the parse takes more steps, nests deeper or needs more memory
     /// than allowed.
-    #[pyo3(signature = (text, start = "start", *, max_steps = None, max_depth = None))]
+    #[pyo3(signature = (
+        text, start = "start", *, max_steps = None, max_depth = None, max_memory = None
+    ))]
     fn parse(
         &self,
         py: Python<'_>,
@@ -268,6 +270,7 @@ impl Grammar {
         start: &str,
         max_steps: Option<u64>,
         max_depth: Option<u32>,
+        max_memory: Option<u64>,
     ) -> PyResult<Py<PyAny>> {
         let core = &self.core;
         match core.parser.single_item(start) {
@@ -288,7 +291,7 @@ impl Grammar {
         let limits = Limits {
             max_steps: max_steps.unwrap_or(DEFAULT_MAX_STEPS),
             max_depth: max_depth.unwrap_or(DEFAULT_MAX_DEPTH),
-            ..Limits::default()
+            max_memory_bytes: max_memory,
         };
         let result = if source.len() >= DETACH_MIN_BYTES {
             py.detach(|| core.parser.parse_with(&source, start, limits))
