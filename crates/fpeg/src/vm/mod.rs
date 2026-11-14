@@ -298,7 +298,8 @@ impl Parser {
     /// The parse runs without the passes of the optimizer, so that every rule keeps the calls,
     /// failures and steps of the grammar as written, but for left recursion run as a loop,
     /// where the parse runs it so, which decides the calls the parse repeats. A parse with the
-    /// passes takes fewer steps.
+    /// passes takes fewer steps on most grammars, though not on all, since a test of the next
+    /// byte that passes over no code adds one.
     pub fn profile(
         &self,
         input: &str,

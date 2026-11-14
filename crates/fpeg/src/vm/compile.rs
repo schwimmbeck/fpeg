@@ -1092,7 +1092,6 @@ impl<'f> Compiler<'f> {
         }
     }
 
-    /// `Open`, the expression, and the instruction that closes what it collected.
     /// The alternatives as a choice where a cut can mark an entry of the routine.
     fn inside_choice(&mut self, alternatives: &'f [ir::Expr]) {
         let outer = std::mem::replace(&mut self.cuttable, true);
@@ -1100,6 +1099,7 @@ impl<'f> Compiler<'f> {
         self.cuttable = outer;
     }
 
+    /// `Open`, the expression, and the instruction that closes what it collected.
     fn collect(&mut self, expr: &'f ir::Expr, close: Inst) {
         self.emit(Inst::Open);
         self.expr(expr);

@@ -90,7 +90,7 @@ dot        121     121    484   7.1%          5505         237      116     0   
 @memo on dot: 116 of its 121 calls repeat an earlier one, about 77% of all steps
 ```
 
-A step is one instruction of the parser, the unit its step limit counts. The profile runs the parser without its optimizations, but for left recursion run as a loop, so that every rule keeps the calls, failures and steps of the grammar as written, and a parse outside a profile takes fewer steps. The numbers of steps change from one version of fpeg to the next, their proportions are what to read.
+A step is one instruction of the parser, the unit its step limit counts. The profile runs the parser without its optimizations, but for left recursion run as a loop, so that every rule keeps the calls, failures and steps of the grammar as written, and a parse outside a profile takes fewer steps on most grammars. The numbers of steps change from one version of fpeg to the next, their proportions are what to read.
 
 | Column | Meaning |
 |---|---|

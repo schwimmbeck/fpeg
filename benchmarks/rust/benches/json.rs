@@ -47,7 +47,7 @@ fn json(c: &mut Criterion) {
                 .len()
         })
     });
-    // What counting the work of every rule adds to the parse above.
+    // The parse above with the work of every rule counted, which runs it without the passes.
     group.bench_function("fpeg machine with its profile, tree", |b| {
         b.iter(|| {
             let (tree, profile) = parser.profile(&text, "start", fpeg::Limits::default());
