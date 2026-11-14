@@ -118,6 +118,16 @@ enum Entry {
     /// A call of a rule that is remembered or on a left cycle. What it needs is the newest of
     /// [`Machine::frames`], so that the entries keep their size.
     Frame,
+    /// A loop of left recursion, whose state is the newest of [`Machine::loops`].
+    Loop,
+}
+
+/// A loop of left recursion in progress: the height of the items when it started, and its
+/// seed, the match of the pass before with its items in [`Machine::seeds`].
+#[derive(Clone, Copy, Debug)]
+struct Seeded {
+    items: u32,
+    seed: Option<Match>,
 }
 
 /// What a remembered result depends on: the rule, the position, the flags that are on, and
@@ -323,8 +333,10 @@ pub(crate) struct Machine<'p, 'i> {
     /// The calls in progress of rules that are remembered or on a left cycle, one for each
     /// `Frame` entry of the stack.
     frames: Vec<Frame>,
-    /// The items of the seeds of the frames of left recursion, the newest frame's last.
+    /// The items of the seeds of the frames and loops of left recursion, the newest last.
     seeds: Vec<Item>,
+    /// The loops of left recursion in progress, one for each `Loop` entry of the stack.
+    loops: Vec<Seeded>,
     /// The newest frame of left recursion, or [`NO_FRAME`].
     newest_recursion: u32,
     /// The serial of the next frame of left recursion.
@@ -382,6 +394,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             children: Vec::new(),
             frames: Vec::new(),
             seeds: Vec::new(),
+            loops: Vec::new(),
             newest_recursion: NO_FRAME,
             serial: 0,
             dependency: NO_FRAME,
@@ -536,6 +549,46 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Inst::TestFail(test) => {
                     let fits = self.next_byte_fits(test);
                     self.test(fits)?;
+                }
+                Inst::SeedOpen => {
+                    self.stack.push(Entry::Loop);
+                    self.loops.push(Seeded {
+                        items: self.items.len() as u32,
+                        seed: None,
+                    });
+                    self.pc += 1;
+                }
+                Inst::SeedKeep => {
+                    self.keep_seed()?;
+                    self.pc += 1;
+                }
+                Inst::SeedUse => {
+                    let seed = self.loops.last().and_then(|state| state.seed);
+                    if let Some(seed) = seed {
+                        let items = self.seeds.get(seed.range()).unwrap_or_default();
+                        self.steps += items.len() as u64;
+                        self.items.extend_from_slice(items);
+                    }
+                    self.pc += 1;
+                }
+                Inst::SeedGrow(target) => match self.stack.pop() {
+                    Some(Entry::Choice { saved, .. }) if self.pos > saved.pos => {
+                        self.pc = target;
+                    }
+                    Some(Entry::Choice { alt, saved, .. }) => {
+                        self.restore(saved);
+                        self.pc = alt;
+                    }
+                    _ => return Err(Stop::NoMatch),
+                },
+                Inst::SeedClose => {
+                    self.stack.pop();
+                    if let Some(seed) = self.loops.pop().and_then(|state| state.seed) {
+                        let items = self.seeds.get(seed.range()).unwrap_or_default();
+                        self.items.extend_from_slice(items);
+                        self.seeds.truncate(seed.first as usize);
+                    }
+                    self.pc += 1;
                 }
                 Inst::Choice(alt) => self.push(Entry::Choice {
                     alt,
@@ -883,6 +936,40 @@ impl<'p, 'i> Machine<'p, 'i> {
         }
     }
 
+    /// Keep the items that the newest loop made since it started as its seed, which ends at
+    /// the position, in place of the seed before.
+    fn keep_seed(&mut self) -> Result<(), Stop> {
+        let Some(state) = self.loops.last_mut() else {
+            return Ok(());
+        };
+        let made = self.items.get(state.items as usize..).unwrap_or_default();
+        self.steps += made.len() as u64;
+        let first = state
+            .seed
+            .map_or(self.seeds.len(), |seed| seed.first as usize);
+        self.seeds.truncate(first);
+        // Indices are 32 bits wide. Every kept item costs a step, so a limit of steps stops
+        // first.
+        let Ok(first) = u32::try_from(first) else {
+            return Err(Stop::Limit(Limit::Steps));
+        };
+        self.seeds.extend_from_slice(made);
+        state.seed = Some(Match {
+            end: self.pos,
+            first,
+            count: made.len() as u32,
+        });
+        self.items.truncate(state.items as usize);
+        Ok(())
+    }
+
+    /// Take the newest loop off, with its seed.
+    fn drop_loop(&mut self) {
+        if let Some(seed) = self.loops.pop().and_then(|state| state.seed) {
+            self.seeds.truncate(seed.first as usize);
+        }
+    }
+
     /// Call a rule that is remembered or on a left cycle: give what the table of left recursion
     /// or the memo holds for it here, or push a frame and run its routine.
     fn call_frame(&mut self, rule: u32, recursive: bool) -> Result<(), Stop> {
@@ -1206,6 +1293,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.flags = saved;
                     None
                 }
+                Entry::Loop => {
+                    self.drop_loop();
+                    None
+                }
             };
             if let Some((alt, saved, quiet)) = caught {
                 self.end_failed_token(Some(self.stack.len()));
@@ -1234,7 +1325,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     *cut = true;
                     break;
                 }
-                Entry::Call { .. } | Entry::Frame | Entry::Predicate { .. } => break,
+                Entry::Call { .. } | Entry::Frame | Entry::Loop | Entry::Predicate { .. } => break,
                 Entry::Label { .. }
                 | Entry::Sub { .. }
                 | Entry::Open { .. }
@@ -1285,6 +1376,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.profile_left(false);
                 }
                 Entry::Flags { saved } => self.flags = saved,
+                Entry::Loop => self.drop_loop(),
                 // The skip routine, which a `Skip` before its return called, ends here too.
                 Entry::Sub { ret } => {
                     let called = ret

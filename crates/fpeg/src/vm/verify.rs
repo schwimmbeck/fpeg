@@ -27,6 +27,7 @@ enum Entry {
     Open,
     Mark,
     Flags,
+    Loop,
 }
 
 /// What holds before an instruction: the entries its routine pushed, oldest first, whether a
@@ -145,6 +146,23 @@ impl Tables<'_> {
                     return Err("pops before it fails".into());
                 }
                 vec![(next, shape)]
+            }
+            Inst::SeedOpen => vec![(next, shape.with(Entry::Loop))],
+            Inst::SeedKeep => {
+                top(&shape, &[Entry::Loop])?;
+                vec![(next, shape)]
+            }
+            Inst::SeedUse => match shape.entries.contains(&Entry::Loop) {
+                true => vec![(next, shape)],
+                false => return Err("uses a seed outside a loop".into()),
+            },
+            Inst::SeedGrow(target) => {
+                top(&shape, &[Entry::Choice])?;
+                vec![(target, popped(&shape))]
+            }
+            Inst::SeedClose => {
+                top(&shape, &[Entry::Loop])?;
+                vec![(next, popped(&shape))]
             }
             Inst::Choice(target) => vec![(next, shape.with(Entry::Choice)), (target, shape)],
             Inst::LabelChoice(target) => vec![(next, shape.with(Entry::Label)), (target, shape)],

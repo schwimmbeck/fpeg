@@ -91,6 +91,8 @@ pub(crate) struct Facts {
     pub recursive: Vec<bool>,
     graph: Graph,
     nullable: Vec<bool>,
+    /// The cycle of left children each node lies on, as the number of one of its nodes.
+    left_component: Vec<u32>,
 }
 
 /// A set of bytes, one bit each.
@@ -195,7 +197,7 @@ impl Start {
         growing: true,
     };
 
-    fn merge(self, other: Start) -> Start {
+    pub fn merge(self, other: Start) -> Start {
         Start {
             bytes: self.bytes.union(other.bytes),
             nullable: self.nullable || other.nullable,
@@ -236,6 +238,34 @@ impl Starts<'_> {
         let node = self.node_of.get(&std::ptr::from_ref(expr))?;
         self.heads.get(*node as usize)?.as_deref()
     }
+
+    /// What the parts, matched in turn, start with, and the kinds of their head tokens, as
+    /// for a sequence of them.
+    pub fn sequence(&self, parts: &[ir::Expr]) -> (Start, Option<Vec<KindId>>) {
+        let mut start = Start::NOTHING;
+        let mut heads = Some(Vec::new());
+        let mut after_skip = false;
+        start.nullable = true;
+        for part in parts {
+            if matches!(part, ir::Expr::Skip) {
+                after_skip = true;
+                continue;
+            }
+            let found = self.of(part);
+            start = start.merge(Start {
+                after_skip: found.after_skip || (after_skip && found.at_once),
+                at_once: found.at_once && !after_skip,
+                nullable: true,
+                ..found
+            });
+            heads = joined(heads, self.heads(part));
+            if !found.nullable {
+                start.nullable = false;
+                break;
+            }
+        }
+        (start, heads)
+    }
 }
 
 /// Find the facts of a grammar.
@@ -268,18 +298,39 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
         }
     }
     let nullable = graph.nullable();
-    let left = graph.cyclic(&graph.left_counts(&nullable));
+    let (left, left_component) = graph.cyclic(&graph.left_counts(&nullable));
     let all: Vec<u32> = graph.nodes.iter().map(|node| node.len).collect();
-    let anywhere = graph.cyclic(&all);
+    let (anywhere, _) = graph.cyclic(&all);
     Facts {
         left_recursive: graph.bodies.iter().map(|&b| left[b as usize]).collect(),
         recursive: graph.bodies.iter().map(|&b| anywhere[b as usize]).collect(),
         graph,
         nullable,
+        left_component,
     }
 }
 
 impl Facts {
+    /// Whether the rule can succeed without consuming input.
+    pub fn rule_nullable(&self, rule: RuleId) -> bool {
+        let body = self.graph.bodies.get(rule.0 as usize);
+        body.is_some_and(|&body| self.nullable[body as usize])
+    }
+
+    /// Whether `expr`, which the body of a rule on a left cycle starts with, can call the
+    /// rule before it consumes input. The rule's body starts with `expr`, so `expr` can
+    /// exactly where it lies on a cycle of left children with the body.
+    pub fn reaches_at_start(&self, expr: &ir::Expr, rule: RuleId) -> bool {
+        let node = self.graph.node_of.get(&std::ptr::from_ref(expr));
+        let body = self.graph.bodies.get(rule.0 as usize);
+        match (node, body) {
+            (Some(&node), Some(&body)) => {
+                self.left_component[node as usize] == self.left_component[body as usize]
+            }
+            _ => true,
+        }
+    }
+
     /// What every expression can start with. A node's start is what it adds itself, joined
     /// with what each child it starts with adds through its role. Starts only grow, each a
     /// bounded number of times, by a byte or a fact, and each growth is passed once along
@@ -370,21 +421,10 @@ impl Facts {
         while let Some(child) = todo.pop() {
             queued[child as usize] = false;
             for &parent in &parents[child as usize] {
-                let joined = match (&heads[parent as usize], &heads[child as usize]) {
-                    (Some(known), Some(added)) => {
-                        let mut joined = known.clone();
-                        joined.extend(
-                            added
-                                .iter()
-                                .filter(|kind| known.binary_search(kind).is_err()),
-                        );
-                        joined.sort_unstable();
-                        (joined.len() <= MAX_HEAD_KINDS).then_some(joined)
-                    }
-                    _ => None,
-                };
-                if joined != heads[parent as usize] {
-                    heads[parent as usize] = joined;
+                let added = heads[child as usize].as_deref();
+                let grown = joined(heads[parent as usize].clone(), added);
+                if grown != heads[parent as usize] {
+                    heads[parent as usize] = grown;
                     if !std::mem::replace(&mut queued[parent as usize], true) {
                         todo.push(parent);
                     }
@@ -440,6 +480,17 @@ impl Node {
             }
         }
     }
+}
+
+/// The kinds of head tokens of both, sorted, or none where there are too many to keep.
+pub(crate) fn joined(known: Option<Vec<KindId>>, added: Option<&[KindId]>) -> Option<Vec<KindId>> {
+    let (mut known, added) = (known?, added?);
+    let new: Vec<KindId> = (added.iter().copied())
+        .filter(|kind| known.binary_search(kind).is_err())
+        .collect();
+    known.extend(new);
+    known.sort_unstable();
+    (known.len() <= MAX_HEAD_KINDS).then_some(known)
 }
 
 /// Whether `expr` or a rule it calls tests a flag. Each rule and shared part is looked at once.
@@ -698,10 +749,10 @@ impl Graph {
             .collect()
     }
 
-    /// Which nodes lie on a cycle through the first `counts` children of each node, found
-    /// with Tarjan's algorithm on an explicit stack, since chains of rules can be as long as
-    /// the grammar.
-    fn cyclic(&self, counts: &[u32]) -> Vec<bool> {
+    /// Which nodes lie on a cycle through the first `counts` children of each node, and the
+    /// strongly connected part of each, found with Tarjan's algorithm on an explicit stack,
+    /// since chains of rules can be as long as the grammar.
+    fn cyclic(&self, counts: &[u32]) -> (Vec<bool>, Vec<u32>) {
         const UNSEEN: u32 = u32::MAX;
         let count = self.nodes.len();
         let mut index = vec![UNSEEN; count];
@@ -709,6 +760,7 @@ impl Graph {
         let mut on_stack = vec![false; count];
         let mut stack: Vec<u32> = Vec::new();
         let mut cyclic = vec![false; count];
+        let mut component = vec![0; count];
         let mut next_index = 0;
         // Each node being visited with the position of its next child.
         let mut visiting: Vec<(u32, usize)> = Vec::new();
@@ -748,6 +800,7 @@ impl Graph {
                     let mut members = Vec::new();
                     while let Some(member) = stack.pop() {
                         on_stack[member as usize] = false;
+                        component[member as usize] = index[node as usize];
                         members.push(member);
                         if member == node {
                             break;
@@ -761,6 +814,6 @@ impl Graph {
                 }
             }
         }
-        cyclic
+        (cyclic, component)
     }
 }

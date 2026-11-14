@@ -52,6 +52,18 @@ pub(crate) enum Inst {
     /// Go on when the next byte fits the test with this index, and otherwise fail, as the
     /// code after it would.
     TestFail(u32),
+    /// Start a loop of left recursion: push its entry and note the height of the items.
+    SeedOpen,
+    /// Keep the items since the loop started as its seed, which ends at the position.
+    SeedKeep,
+    /// Push the items of the seed of the newest loop, where a call of its rule stood.
+    SeedUse,
+    /// End a pass of the loop: pop the choice entry on top, and where the pass ended further
+    /// than the seed jump to the target, otherwise go back to the seed as a failure caught
+    /// by that entry would.
+    SeedGrow(u32),
+    /// Give the seed as the match of the loop and pop its entry.
+    SeedClose,
     /// Push a choice entry that catches a failure and resumes at the target.
     Choice(u32),
     /// Pop the choice or label entry on top and jump.

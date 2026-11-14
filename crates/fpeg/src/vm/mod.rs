@@ -57,6 +57,9 @@ pub struct Passes {
     /// Match `(c | e)*`, where `c` is a class, as `c* (e c*)*`, so that each run of the class
     /// takes one instruction.
     pub split: bool,
+    /// Run a directly left-recursive rule of the right shape as a loop over its seed, in
+    /// place of the growing loop with its frame and a second run of the base.
+    pub left_loop: bool,
 }
 
 impl Passes {
@@ -68,6 +71,7 @@ impl Passes {
         dispatch: true,
         inline: true,
         split: true,
+        left_loop: true,
     };
     /// No pass: the plain machine.
     pub const NONE: Passes = Passes {
@@ -77,6 +81,7 @@ impl Passes {
         dispatch: false,
         inline: false,
         split: false,
+        left_loop: false,
     };
 }
 

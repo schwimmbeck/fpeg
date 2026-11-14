@@ -12,11 +12,12 @@ use std::sync::Arc;
 
 use super::program::{ByteTest, Class, Inst, Program, RuleInfo};
 use super::{Memo, Options, Passes};
-use crate::analysis::{self, Bytes, Starts};
+use crate::analysis::{self, Bytes, Start, Starts};
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{ClassItem, Span};
 use crate::ir::{self, RuleId};
 use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
+use crate::tree::KindId;
 
 /// The most expressions a rule may have, counting those of the rules it inlines in turn,
 /// for its calls to compile as its body.
@@ -47,12 +48,28 @@ pub(crate) fn compile(
         cuttable: false,
         free_cuts: HashMap::new(),
         passes: options.passes,
-        starts: (options.passes.dispatch).then(|| facts.starts(grammar, &facts.left_recursive)),
+        starts: None,
         tests: Vec::new(),
         test_ids: HashMap::new(),
         rules: &grammar.rules,
         inline: Vec::new(),
+        seed_rule: None,
     };
+    let loops: Vec<Option<Loop<'_>>> = (0..grammar.rules.len())
+        .map(|i| {
+            let candidate = options.passes.left_loop && facts.left_recursive[i];
+            candidate
+                .then(|| c.loop_of(RuleId(i as u32), &facts))
+                .flatten()
+        })
+        .collect();
+    // A rule that runs as a loop has no frame of left recursion.
+    let growing: Vec<bool> = (facts.left_recursive.iter().zip(&loops))
+        .map(|(&recursive, looped)| recursive && looped.is_none())
+        .collect();
+    if options.passes.dispatch {
+        c.starts = Some(facts.starts(grammar, &growing));
+    }
     let memo: Vec<bool> = (grammar.rules.iter().zip(&facts.left_recursive))
         .map(|(rule, &recursive)| remembered(options.memo, rule, recursive))
         .collect();
@@ -60,16 +77,19 @@ pub(crate) fn compile(
         c.inline = c.inlinable(&memo, &facts.recursive);
     }
     let mut rules = Vec::new();
-    for (rule, &recursive) in grammar.rules.iter().zip(&facts.left_recursive) {
+    for (i, rule) in grammar.rules.iter().enumerate() {
         rules.push(RuleInfo {
             name: rule.name.clone(),
             pc: c.here(),
-            memo: remembered(options.memo, rule, recursive),
-            recursive,
+            memo: memo[i],
+            recursive: growing[i],
         });
         // A cut ends at the call of its rule.
         c.cuttable = false;
-        c.expr(&rule.body);
+        match &loops[i] {
+            Some(looped) => c.left_loop(RuleId(i as u32), looped),
+            None => c.expr(&rule.body),
+        }
         c.emit(Inst::Ret);
     }
     // Skipping is `e*` of the skip expression `e`, a span where `e` repeats a class.
@@ -329,6 +349,38 @@ struct Compiler<'f> {
     rules: &'f [ir::Rule],
     /// Whether the calls of each rule compile as its body.
     inline: Vec<bool>,
+    /// The rule whose next call compiles as `SeedUse`: the leading call of a recursive
+    /// alternative of a loop.
+    seed_rule: Option<RuleId>,
+}
+
+/// A rule that runs as a loop: its recursive alternatives, each with the parts that follow
+/// its leading call, and its base alternatives.
+struct Loop<'f> {
+    recursive: &'f [ir::Expr],
+    rests: Vec<&'f [ir::Expr]>,
+    base: &'f [ir::Expr],
+}
+
+/// The parts that follow the leading call of `rule` in `expr`, if `expr` starts with one:
+/// through nodes and fields, and as the first part of a sequence.
+fn after_call(expr: &ir::Expr, rule: RuleId) -> Option<&[ir::Expr]> {
+    match expr {
+        ir::Expr::Call(called) if *called == rule => Some(&[]),
+        ir::Expr::Node { expr, .. }
+        | ir::Expr::Transparent { expr, .. }
+        | ir::Expr::Field { expr, .. } => after_call(expr, rule),
+        ir::Expr::Seq(parts) => {
+            let (first, rest) = parts.split_first()?;
+            match after_call(first, rule)? {
+                [] => Some(rest),
+                // A call nested deeper than the first part of this sequence has parts of its
+                // own after it, which this form does not take apart.
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// The code points of a class, or of a literal of one code point that ignores no case.
@@ -433,6 +485,122 @@ impl<'f> Compiler<'f> {
         Ok(size.min(MAX_INLINE_EXPRESSIONS + 1))
     }
 
+    /// How `rule`, which lies on a left cycle, runs as a loop, if it can: where its body is a
+    /// choice of recursive alternatives, each starting with a call of the rule itself, before
+    /// base alternatives that cannot reach the rule where they start, and the rule cannot
+    /// match nothing and holds no free cut. That is the growing loop of the semantics for
+    /// this shape: in a pass with a seed every base alternative before the one that matched
+    /// fails again, the recursive ones are tried in order on the seed, and the first that
+    /// matches ends the pass, which grows only where it ends further. A pass in which none
+    /// matches leaves the seed, since the base alternative that matched would end where the
+    /// first seed ended.
+    fn loop_of(&mut self, rule: RuleId, facts: &analysis::Facts) -> Option<Loop<'f>> {
+        let rules: &'f [ir::Rule] = self.rules;
+        let ir::Expr::Choice(alternatives) = &rules.get(rule.0 as usize)?.body else {
+            return None;
+        };
+        let rests: Vec<&'f [ir::Expr]> = (alternatives.iter())
+            .map_while(|alternative| after_call(alternative, rule))
+            .collect();
+        let (recursive, base) = alternatives.split_at(rests.len());
+        let shaped = !recursive.is_empty() && !base.is_empty() && !facts.rule_nullable(rule);
+        if !shaped
+            || base
+                .iter()
+                .any(|alternative| facts.reaches_at_start(alternative, rule))
+            || alternatives
+                .iter()
+                .any(|alternative| self.free_cut(alternative))
+        {
+            return None;
+        }
+        Some(Loop {
+            recursive,
+            rests,
+            base,
+        })
+    }
+
+    /// Compile a rule as the loop of [`Compiler::loop_of`]: `SeedOpen`, the base, and then
+    /// `SeedKeep` and a choice of the recursive alternatives, each with `SeedUse` for its
+    /// leading call, that grows the seed and goes round again where it ends further, until
+    /// `SeedClose` gives the seed.
+    fn left_loop(&mut self, rule: RuleId, looped: &Loop<'f>) {
+        let Some((last, others)) = looped.recursive.split_last() else {
+            return;
+        };
+        self.emit(Inst::SeedOpen);
+        match looped.base {
+            [one] => self.expr(one),
+            _ => self.choice(looped.base),
+        }
+        let top = self.emit(Inst::SeedKeep) as u32;
+        // The tests look at what follows the seed, where the recursive alternatives go on.
+        let exit =
+            (self.rests_test(&looped.rests)).map(|test| self.emit(Inst::Test { test, target: 0 }));
+        let all = self.rests_bytes(&looped.rests);
+        let choice = self.emit(Inst::Choice(0));
+        let mut commits = Vec::new();
+        for (alternative, rest) in others.iter().zip(&looped.rests) {
+            let test = (self.rests_bytes(&[rest]) != all)
+                .then(|| self.rests_test(&[rest]))
+                .flatten()
+                .map(|test| self.emit(Inst::Test { test, target: 0 }));
+            let alt = self.emit(Inst::Choice(0));
+            self.seed_rule = Some(rule);
+            self.inside(true, alternative);
+            commits.push(self.emit(Inst::Commit(0)));
+            self.patch(alt);
+            if let Some(test) = test {
+                self.patch(test);
+            }
+        }
+        let rest = looped.rests.last().copied().unwrap_or_default();
+        if self.rests_bytes(&[rest]) != all
+            && let Some(test) = self.rests_test(&[rest])
+        {
+            self.emit(Inst::TestFail(test));
+        }
+        self.seed_rule = Some(rule);
+        self.inside(true, last);
+        for commit in commits {
+            self.patch(commit);
+        }
+        self.emit(Inst::SeedGrow(top));
+        self.patch(choice);
+        if let Some(exit) = exit {
+            self.patch(exit);
+        }
+        self.emit(Inst::SeedClose);
+    }
+
+    /// The first bytes of code that goes on with one of these sequences of parts, where
+    /// dispatch is on.
+    fn rests_bytes(&self, rests: &[&[ir::Expr]]) -> Option<Bytes> {
+        let starts = self.starts.as_ref()?;
+        let union = |bytes: Bytes, parts: &&[ir::Expr]| bytes.union(starts.sequence(parts).0.bytes);
+        Some(rests.iter().fold(Bytes::default(), union))
+    }
+
+    /// The test before code that goes on with one of these sequences of parts, tried in
+    /// turn, if one is worth it.
+    fn rests_test(&mut self, rests: &[&[ir::Expr]]) -> Option<u32> {
+        let starts = self.starts.as_ref()?;
+        let mut found: Option<(Start, Option<Vec<KindId>>)> = None;
+        for parts in rests {
+            let (start, heads) = starts.sequence(parts);
+            found = Some(match found {
+                Some((known, known_heads)) => (
+                    known.merge(start),
+                    analysis::joined(known_heads, heads.as_deref()),
+                ),
+                None => (start, heads),
+            });
+        }
+        let (start, heads) = found?;
+        self.test(start, heads, false, false)
+    }
+
     /// The body that a call of `rule` compiles as, if it is inlined.
     fn inlined(&self, rule: RuleId) -> Option<&'f ir::Expr> {
         let rules: &'f [ir::Rule] = self.rules;
@@ -494,6 +662,10 @@ impl<'f> Compiler<'f> {
             }
             E::Any => {
                 self.emit(Inst::Any);
+            }
+            E::Call(rule) if self.seed_rule == Some(*rule) => {
+                self.seed_rule = None;
+                self.emit(Inst::SeedUse);
             }
             // What stands around the call is not known to the body, as for a shared part.
             E::Call(rule) => match self.inlined(*rule) {
@@ -715,14 +887,28 @@ impl<'f> Compiler<'f> {
     fn test_for(&mut self, expr: &ir::Expr, pop: bool) -> Option<u32> {
         let starts = self.starts.as_ref()?;
         let start = starts.of(expr);
+        let heads = starts.heads(expr).map(<[KindId]>::to_vec);
+        let immediate = self.immediate(expr);
+        self.test(start, heads, immediate, pop)
+    }
+
+    /// The test before code with this start and these head kinds, as [`Compiler::test_for`]
+    /// finds it, `immediate` where the code tests a byte at once.
+    fn test(
+        &mut self,
+        start: Start,
+        heads: Option<Vec<KindId>>,
+        immediate: bool,
+        pop: bool,
+    ) -> Option<u32> {
         let after_skip = start.after_skip && self.has_skip;
-        let worth = !start.nullable && start.bytes != Bytes::ALL && !self.immediate(expr);
+        let worth = !start.nullable && start.bytes != Bytes::ALL && !immediate;
         if !worth || !start.plain || (after_skip && start.at_once) {
             return None;
         }
-        let kinds = match start.tokens {
+        let kinds: Box<[KindId]> = match start.tokens {
             false => Box::default(),
-            true if start.clean && !start.growing => starts.heads(expr)?.into(),
+            true if start.clean && !start.growing => heads?.into(),
             true => return None,
         };
         let test = ByteTest {

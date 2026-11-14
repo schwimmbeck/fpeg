@@ -429,6 +429,53 @@ fn rules_that_call_each_other_where_nothing_is_tried_compile_into_their_callers(
 }
 
 #[test]
+fn direct_left_recursion_runs_as_a_loop_over_its_seed() {
+    let text =
+        "start: sum\nsum: sum \"+\" N -> plus\n    | sum \"-\" N -> minus\n    | N\nN: \"1\"\n";
+    let only_loops = Passes {
+        left_loop: true,
+        ..Passes::NONE
+    };
+    let program = parser_with(text, only_loops).program;
+    // The base, then a pass over the recursive alternatives, each with the seed where its call
+    // of `sum` stood, for as long as one matches and ends further.
+    let expected = "\
+4  SeedOpen
+5  Open
+6  TokenOpen N
+7  Call N
+8  TokenClose
+9  CloseNode sum
+10  SeedKeep
+11  Choice 33
+12  Choice 23
+13  Open
+14  SeedUse
+15  TokenOpen \"+\"
+16  Char '+'
+17  TokenClose hidden
+18  TokenOpen N
+19  Call N
+20  TokenClose
+21  CloseNode plus
+22  Commit 32
+23  Open
+24  SeedUse
+25  TokenOpen \"-\"
+26  Char '-'
+27  TokenClose hidden
+28  TokenOpen N
+29  Call N
+30  TokenClose
+31  CloseNode minus
+32  SeedGrow 10
+33  SeedClose
+34  Ret";
+    assert_eq!(routine(&program, "sum"), expected);
+    assert!(!program.rules.iter().any(|rule| rule.recursive));
+}
+
+#[test]
 fn a_loop_over_a_class_and_other_alternatives_takes_runs_of_the_class() {
     // `(CHAR | "\\" .)*` as `CHAR* ("\\" . CHAR*)*`, the class reached through the call of
     // `CHAR`, compiled as its body.
@@ -548,7 +595,7 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 14] = [
+    let breaks: [Break; 16] = [
         ("no rule 1000", |p| {
             let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
             p.code[call] = Inst::MemoCall(1_000);
@@ -625,6 +672,14 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
                 kinds: Box::default(),
             });
             p.code[at] = Inst::TestFail((p.tests.len() - 1) as u32);
+        }),
+        ("uses a seed outside a loop", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::SeedUse;
+        }),
+        ("expects [Loop] on top", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::SeedClose;
         }),
     ];
     for (problem, broken) in breaks {
@@ -771,7 +826,7 @@ fn the_rules_on_left_cycles_and_no_others_take_part_in_left_recursion() {
         ("start: !\"a\" \"b\" start?\n", vec![]),
     ];
     for (text, expected) in cases {
-        let rules = parser(text).program.rules;
+        let rules = plain(text).program.rules;
         let recursive = rules.iter().filter(|rule| rule.recursive);
         let names: Vec<&str> = recursive.map(|rule| rule.name.as_str()).collect();
         assert_eq!(names, expected, "{text}");
