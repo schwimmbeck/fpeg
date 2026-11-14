@@ -111,7 +111,7 @@ A cut saves the tries that would follow a failure, so it shortens the parse of a
 
 ## Limits
 
-A grammar can make a parse take time that grows fast with the input, as the first grammar of this guide does, and input may come from anywhere. So every parse has a limit on its steps and one on how deep rule calls nest, and stops with a `LimitError` at either. The defaults are high enough for real input, and `parse` takes lower ones:
+A grammar can make a parse take time that grows fast with the input, as the first grammar of this guide does, and input may come from anywhere. So every parse has a limit on its steps and one on how deep rule calls nest, and stops with a `LimitError` at either. A rule that calls itself counts at every level of the nesting, while a small rule that does not may be compiled into the rules that call it and count not at all. The defaults are high enough for real input, and `parse` takes lower ones:
 
 ```python
 again = fpeg.Grammar('start: item "." | item "!" | item\nitem: "(" start ")" | "x"')

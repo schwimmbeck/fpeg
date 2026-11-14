@@ -18,6 +18,10 @@ use crate::grammar::{ClassItem, Span};
 use crate::ir::{self, RuleId};
 use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
 
+/// The most expressions a rule may have, counting those of the rules it inlines in turn,
+/// for its calls to compile as its body.
+const MAX_INLINE_EXPRESSIONS: usize = 24;
+
 /// Compile a resolved grammar, or report what the machine cannot run yet.
 pub(crate) fn compile(
     grammar: &ir::Grammar,
@@ -46,20 +50,21 @@ pub(crate) fn compile(
         starts: (options.passes.dispatch).then(|| facts.starts(grammar, &facts.left_recursive)),
         tests: Vec::new(),
         test_ids: HashMap::new(),
+        rules: &grammar.rules,
+        inline: Vec::new(),
     };
+    let memo: Vec<bool> = (grammar.rules.iter().zip(&facts.left_recursive))
+        .map(|(rule, &recursive)| remembered(options.memo, rule, recursive))
+        .collect();
+    if options.passes.inline {
+        c.inline = c.inlinable(&memo, &facts.recursive);
+    }
     let mut rules = Vec::new();
     for (rule, &recursive) in grammar.rules.iter().zip(&facts.left_recursive) {
         rules.push(RuleInfo {
             name: rule.name.clone(),
             pc: c.here(),
-            memo: match (options.memo, rule.memo) {
-                (Memo::Off, _) | (Memo::Grammar, ir::MemoMark::NoMemo) => false,
-                (Memo::All, _) | (Memo::Grammar, ir::MemoMark::Memo) => true,
-                // A level is tried again by the level above it whenever that one's
-                // operator does not follow, and a rule on a left cycle by the pass that
-                // finds its match grown no further.
-                (Memo::Grammar, ir::MemoMark::None) => rule.level || recursive,
-            },
+            memo: remembered(options.memo, rule, recursive),
             recursive,
         });
         // A cut ends at the call of its rule.
@@ -98,6 +103,8 @@ pub(crate) fn compile(
     let mut names: Vec<&String> = grammar.entry.keys().collect();
     names.sort();
     let mut entries = HashMap::new();
+    // An entry runs once a parse, so it calls its rule rather than holding a copy of it.
+    let inline = std::mem::take(&mut c.inline);
     for name in names {
         entries.insert(name.clone(), c.here());
         c.cuttable = false;
@@ -107,6 +114,7 @@ pub(crate) fn compile(
         }
         c.emit(Inst::End);
     }
+    c.inline = inline;
     while let Some((index, expr)) = c.queue.pop() {
         c.shared_pcs[index] = c.here();
         // A cut passes the call of a shared part, and what stands around its uses is not
@@ -163,6 +171,18 @@ pub(crate) fn compile(
         single_item: grammar.single_item.clone(),
         passes: options.passes,
     })
+}
+
+/// Whether the results of a rule are remembered.
+fn remembered(memo: Memo, rule: &ir::Rule, left_recursive: bool) -> bool {
+    match (memo, rule.memo) {
+        (Memo::Off, _) | (Memo::Grammar, ir::MemoMark::NoMemo) => false,
+        (Memo::All, _) | (Memo::Grammar, ir::MemoMark::Memo) => true,
+        // A level is tried again by the level above it whenever that one's operator does
+        // not follow, and a rule on a left cycle by the pass that finds its match grown no
+        // further.
+        (Memo::Grammar, ir::MemoMark::None) => rule.level || left_recursive,
+    }
 }
 
 /// The bit of a flag in the machine's flag register. A resolved grammar has at most 64 flags,
@@ -306,6 +326,9 @@ struct Compiler<'f> {
     starts: Option<Starts<'f>>,
     tests: Vec<ByteTest>,
     test_ids: HashMap<ByteTest, u32>,
+    rules: &'f [ir::Rule],
+    /// Whether the calls of each rule compile as its body.
+    inline: Vec<bool>,
 }
 
 /// The code points of a class, or of a literal of one code point that ignores no case.
@@ -349,18 +372,86 @@ fn span(expr: &ir::Expr, min: u32) -> Option<(ir::CharSet, u32)> {
     }
 }
 
-/// Whether the code of `expr` starts with an instruction that tests a byte, so that a test
-/// before it saves nothing.
-fn immediate(expr: &ir::Expr) -> bool {
-    match expr {
-        ir::Expr::Literal { text, .. } => !text.is_empty(),
-        ir::Expr::Class(_) | ir::Expr::Any => true,
-        ir::Expr::Seq(parts) => parts.first().is_some_and(immediate),
-        _ => false,
+impl<'f> Compiler<'f> {
+    /// The rules whose calls compile as their bodies: rules that are not remembered, call
+    /// themselves nowhere and hold no free cut, which would reach past the call, with at
+    /// most [`MAX_INLINE_EXPRESSIONS`] expressions, a call they inline counted with the body
+    /// it compiles as. So a call never compiles to more, and a chain of rules that call each
+    /// other breaks into calls every so many links. Each candidate is sized once those it
+    /// calls are, on an explicit stack, since chains of rules can be as long as the grammar.
+    fn inlinable(&mut self, memo: &[bool], recursive: &[bool]) -> Vec<bool> {
+        let candidate: Vec<bool> = (0..self.rules.len())
+            .map(|i| !memo[i] && !recursive[i] && !self.free_cut(&self.rules[i].body))
+            .collect();
+        let mut sizes: Vec<Option<usize>> = vec![None; self.rules.len()];
+        for root in 0..self.rules.len() {
+            let mut stack = vec![root];
+            while let Some(&rule) = stack.last() {
+                if !candidate[rule] || sizes[rule].is_some() {
+                    stack.pop();
+                    continue;
+                }
+                match self.inlined_size(rule, &candidate, &sizes) {
+                    Ok(size) => sizes[rule] = Some(size),
+                    Err(callee) => stack.push(callee),
+                }
+            }
+        }
+        let fits = |size: Option<usize>| size.is_some_and(|size| size <= MAX_INLINE_EXPRESSIONS);
+        (0..self.rules.len()).map(|i| fits(sizes[i])).collect()
     }
-}
 
-impl Compiler<'_> {
+    /// How many expressions the body of a candidate compiles to, at most one past the most
+    /// that fit, or a candidate it calls that is not sized yet. A shared part counts once, as
+    /// its call. A repetition of no steps compiles to nothing, and the analysis sees no call in
+    /// it, so a candidate may call itself there.
+    fn inlined_size(
+        &self,
+        rule: usize,
+        candidate: &[bool],
+        sizes: &[Option<usize>],
+    ) -> Result<usize, usize> {
+        let mut size = 0;
+        let mut todo = vec![&self.rules[rule].body];
+        while let Some(expr) = todo.pop() {
+            if size > MAX_INLINE_EXPRESSIONS {
+                break;
+            }
+            size += 1;
+            match expr {
+                ir::Expr::Call(callee) if candidate.get(callee.0 as usize) == Some(&true) => {
+                    match sizes[callee.0 as usize] {
+                        Some(inner) if inner <= MAX_INLINE_EXPRESSIONS => size += inner,
+                        Some(_) => {}
+                        None => return Err(callee.0 as usize),
+                    }
+                }
+                ir::Expr::Shared(_) | ir::Expr::Repeat { max: Some(0), .. } => {}
+                _ => todo.extend(expr.children()),
+            }
+        }
+        Ok(size.min(MAX_INLINE_EXPRESSIONS + 1))
+    }
+
+    /// The body that a call of `rule` compiles as, if it is inlined.
+    fn inlined(&self, rule: RuleId) -> Option<&'f ir::Expr> {
+        let rules: &'f [ir::Rule] = self.rules;
+        (self.inline.get(rule.0 as usize) == Some(&true))
+            .then(|| rules.get(rule.0 as usize).map(|r| &r.body))
+            .flatten()
+    }
+
+    /// Whether the code of `expr` starts with an instruction that tests a byte, so that a
+    /// test before it saves nothing.
+    fn immediate(&self, expr: &ir::Expr) -> bool {
+        match expr {
+            ir::Expr::Literal { text, .. } => !text.is_empty(),
+            ir::Expr::Class(_) | ir::Expr::Any => true,
+            ir::Expr::Seq(parts) => parts.first().is_some_and(|part| self.immediate(part)),
+            ir::Expr::Call(rule) => self.inlined(*rule).is_some_and(|body| self.immediate(body)),
+            _ => false,
+        }
+    }
     fn here(&self) -> u32 {
         // The length is checked against u32 once the program is complete.
         self.code.len() as u32
@@ -404,10 +495,14 @@ impl Compiler<'_> {
             E::Any => {
                 self.emit(Inst::Any);
             }
-            E::Call(rule) => {
-                let at = self.emit(Inst::Call(0));
-                self.calls.push((at, *rule));
-            }
+            // What stands around the call is not known to the body, as for a shared part.
+            E::Call(rule) => match self.inlined(*rule) {
+                Some(body) => self.inside(true, body),
+                None => {
+                    let at = self.emit(Inst::Call(0));
+                    self.calls.push((at, *rule));
+                }
+            },
             E::Seq(parts) => {
                 for part in parts {
                     self.expr(part);
@@ -621,7 +716,7 @@ impl Compiler<'_> {
         let starts = self.starts.as_ref()?;
         let start = starts.of(expr);
         let after_skip = start.after_skip && self.has_skip;
-        let worth = !start.nullable && start.bytes != Bytes::ALL && !immediate(expr);
+        let worth = !start.nullable && start.bytes != Bytes::ALL && !self.immediate(expr);
         if !worth || !start.plain || (after_skip && start.at_once) {
             return None;
         }

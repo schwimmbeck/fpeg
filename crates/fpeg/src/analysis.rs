@@ -87,6 +87,8 @@ pub(crate) struct Facts {
     /// Whether the rule can call itself where it started, through calls that consume nothing
     /// before them.
     pub left_recursive: Vec<bool>,
+    /// Whether the rule can call itself anywhere in its body.
+    pub recursive: Vec<bool>,
     graph: Graph,
     nullable: Vec<bool>,
 }
@@ -266,9 +268,12 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
         }
     }
     let nullable = graph.nullable();
-    let cyclic = graph.cyclic(&nullable);
+    let left = graph.cyclic(&graph.left_counts(&nullable));
+    let all: Vec<u32> = graph.nodes.iter().map(|node| node.len).collect();
+    let anywhere = graph.cyclic(&all);
     Facts {
-        left_recursive: graph.bodies.iter().map(|&b| cyclic[b as usize]).collect(),
+        left_recursive: graph.bodies.iter().map(|&b| left[b as usize]).collect(),
+        recursive: graph.bodies.iter().map(|&b| anywhere[b as usize]).collect(),
         graph,
         nullable,
     }
@@ -693,11 +698,11 @@ impl Graph {
             .collect()
     }
 
-    /// Which nodes lie on a cycle of left children, found with Tarjan's algorithm on an
-    /// explicit stack, since chains of rules can be as long as the grammar.
-    fn cyclic(&self, nullable: &[bool]) -> Vec<bool> {
+    /// Which nodes lie on a cycle through the first `counts` children of each node, found
+    /// with Tarjan's algorithm on an explicit stack, since chains of rules can be as long as
+    /// the grammar.
+    fn cyclic(&self, counts: &[u32]) -> Vec<bool> {
         const UNSEEN: u32 = u32::MAX;
-        let left_counts = self.left_counts(nullable);
         let count = self.nodes.len();
         let mut index = vec![UNSEEN; count];
         let mut low = vec![0; count];
@@ -718,7 +723,7 @@ impl Graph {
             on_stack[root as usize] = true;
             visiting.push((root, 0));
             while let Some(&mut (node, ref mut next)) = visiting.last_mut() {
-                let left = &self.children(node)[..left_counts[node as usize] as usize];
+                let left = &self.children(node)[..counts[node as usize] as usize];
                 if let Some(&child) = left.get(*next) {
                     *next += 1;
                     if child == node {

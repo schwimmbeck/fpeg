@@ -609,6 +609,7 @@ pub fn sampled_passes(sample: u64) -> Passes {
         span: !rng.chance(PASS_OFF_PERCENT),
         skip: !rng.chance(PASS_OFF_PERCENT),
         dispatch: !rng.chance(PASS_OFF_PERCENT),
+        inline: !rng.chance(PASS_OFF_PERCENT),
     }
 }
 

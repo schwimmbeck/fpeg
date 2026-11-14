@@ -34,6 +34,30 @@ fn grammar_errors(text: &str) -> Vec<String> {
 }
 
 #[test]
+fn a_rule_compiled_into_its_callers_makes_no_activation() {
+    // A chain of eight rules. Compiled into each other they make no activation under that of
+    // the start rule, and as calls they nest eight deep under it.
+    let mut text = "start: r1\nr8: \"x\"\n".to_owned();
+    for i in 1..8 {
+        text += &format!("r{i}: r{}\n", i + 1);
+    }
+    let grammar = Grammar::from_text(&text).expect("the grammar reads");
+    let limits = Limits {
+        max_depth: 2,
+        ..Limits::default()
+    };
+    let inlined = Parser::new(&grammar).expect("it compiles");
+    assert!(inlined.parse_with("x", "start", limits).is_ok());
+    let options = Options {
+        passes: Passes::NONE,
+        ..Options::default()
+    };
+    let calls = Parser::with_options(&grammar, &options).expect("it compiles");
+    let error = (calls.parse_with("x", "start", limits)).expect_err("too deep");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
+}
+
+#[test]
 fn nesting_deeper_than_the_depth_limit_is_an_error_not_a_stack_overflow() {
     let reference = nesting();
     // Just under the default depth, so the default is shown to fit the interpreter's stack.

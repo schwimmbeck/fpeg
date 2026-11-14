@@ -24,9 +24,10 @@ pub(crate) const END_OF_INPUT: &str = "end of input";
 /// How far a parse may go before it stops with [`ParseErrorKind::Limit`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
-    /// The deepest nesting of rule activations. A fixed cap on nested matches, which keeps the
-    /// reference interpreter within its own stack, stops a parse with the same limit whatever
-    /// this allows.
+    /// The deepest nesting of rule activations. A rule that calls itself makes one at every
+    /// level, while a small rule that does not may be compiled into its callers and make none.
+    /// A fixed cap on nested matches, which keeps the reference interpreter within its own
+    /// stack, stops a parse with the same limit whatever this allows.
     pub max_depth: u32,
     /// The number of steps, counted as for [`DEFAULT_MAX_STEPS`]. The reference interpreter
     /// counts steps of its own.

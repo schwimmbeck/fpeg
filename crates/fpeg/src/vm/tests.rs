@@ -21,15 +21,26 @@ fn parser(text: &str) -> Parser {
     Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"))
 }
 
-/// A parser without the passes of the optimizer, whose program shows the plain templates.
-fn plain(text: &str) -> Parser {
+/// A parser with these passes of the optimizer.
+fn parser_with(text: &str, passes: Passes) -> Parser {
     let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
     let options = Options {
-        passes: Passes::NONE,
+        passes,
         ..Options::default()
     };
     Parser::with_options(&grammar, &options).unwrap_or_else(|e| panic!("{e:?}"))
 }
+
+/// A parser without the passes of the optimizer, whose program shows the plain templates.
+fn plain(text: &str) -> Parser {
+    parser_with(text, Passes::NONE)
+}
+
+/// Every pass but inlining, so that the routines of the rules show in their callers' code.
+const CALLS_STAY: Passes = Passes {
+    inline: false,
+    ..Passes::ALL
+};
 
 /// The disassembly of the routine of one rule.
 fn routine(program: &Program, rule: &str) -> String {
@@ -289,13 +300,13 @@ entry start:
 
 #[test]
 fn repetitions_of_a_class_compile_to_one_span() {
-    let program = parser(concat!(
+    let text = concat!(
         "start: A B C\n",
         "A: [a-z]* \" \"+ [0-9]{3,} \"é\"*\n",
         "B: ([a-z]+)* ([a-z]+)+ ([a-z]*){2,}\n",
         "C: ([a-z]+){2,} [a-z]{2,4} \"ab\"*\n",
-    ))
-    .program;
+    );
+    let program = parser_with(text, CALLS_STAY).program;
     // The first step of `([a-z]+){2,}` takes the whole run, so a second step never matches,
     // and the repetition stays.
     let expected = "\
@@ -326,13 +337,13 @@ fn repetitions_of_a_class_compile_to_one_span() {
 
 #[test]
 fn code_that_cannot_start_with_the_next_byte_is_jumped_past() {
-    let program = parser(concat!(
+    let text = concat!(
         "start: WORD\n",
         "WORD: (A | B | \"c\")* A? (B | (\"x\" ^ \"need x\") | A)\n",
         "A: \"a\" \"1\"\n",
         "B: \"b\" \"2\"\n",
-    ))
-    .program;
+    );
+    let program = parser_with(text, CALLS_STAY).program;
     // The step of the loop pops its entry where it cannot start. No test stands before `"c"`,
     // which tests the byte at once, or before the label, which would throw where its
     // expression fails.
@@ -367,6 +378,54 @@ fn code_that_cannot_start_with_the_next_byte_is_jumped_past() {
 33  Call A
 34  Ret";
     assert_eq!(routine(&program, "WORD"), expected);
+}
+
+#[test]
+fn small_rules_compile_into_their_callers() {
+    let program = parser(concat!(
+        "start: A B C D E\n",
+        "A: \"a\" X\n",
+        "X: \"x\"\n",
+        "@memo\nB: \"b\"\n",
+        "C: \"c\" C?\n",
+        "D: \"d\" ~ \"e\"\n",
+        "E: \"1\" \"2\" \"3\" \"4\" \"5\" \"6\" \"7\" \"8\" \"9\" \"10\" \"11\" \"12\" \"13\" \"14\" ",
+        "\"15\" \"16\" \"17\" \"18\" \"19\" \"20\" \"21\" \"22\" \"23\" \"24\"\n",
+    ))
+    .program;
+    // `A` with `X` in it. Calls stay where the rule is remembered, calls itself, holds a cut
+    // that would reach past its call, or has more than 24 expressions.
+    let expected = "\
+0  Open
+1  TokenOpen A
+2  Char 'a'
+3  Char 'x'
+4  TokenClose
+5  TokenOpen B
+6  MemoCall B
+7  TokenClose
+8  TokenOpen C
+9  Call C
+10  TokenClose
+11  TokenOpen D
+12  Call D
+13  TokenClose
+14  TokenOpen E
+15  Call E
+16  TokenClose
+17  CloseNode start
+18  Ret";
+    assert_eq!(routine(&program, "start"), expected);
+}
+
+#[test]
+fn rules_that_call_each_other_where_nothing_is_tried_compile_into_their_callers() {
+    // A repetition of no steps never tries its expression, so neither call is made.
+    let program = parser("start: A\nA: B{0} \"x\"\nB: A{0} \"y\"\n").program;
+    assert_eq!(
+        routine(&program, "start"),
+        "0  Open\n1  TokenOpen A\n2  Char 'x'\n3  TokenClose\n4  CloseNode start\n5  Ret"
+    );
 }
 
 #[test]
@@ -637,7 +696,7 @@ fn the_levels_of_a_precedence_block_are_remembered_unless_it_says_no() {
         )
     };
     let remembered = |mark: &str| {
-        let code = parser(&text(mark)).program.code;
+        let code = plain(&text(mark)).program.code;
         let calls = code.iter().filter(|i| matches!(i, Inst::MemoCall(_)));
         calls.count()
     };

@@ -51,6 +51,9 @@ pub struct Passes {
     /// Test the next byte before an alternative, an optional expression or a step of a loop,
     /// and jump past it where it cannot start with that byte.
     pub dispatch: bool,
+    /// Compile a call of a small rule as the rule's body, so that it takes no call and no
+    /// return, and no activation of the depth limit.
+    pub inline: bool,
 }
 
 impl Passes {
@@ -60,6 +63,7 @@ impl Passes {
         span: true,
         skip: true,
         dispatch: true,
+        inline: true,
     };
     /// No pass: the plain machine.
     pub const NONE: Passes = Passes {
@@ -67,6 +71,7 @@ impl Passes {
         span: false,
         skip: false,
         dispatch: false,
+        inline: false,
     };
 }
 
