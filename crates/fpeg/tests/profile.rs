@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use fpeg::{Grammar, Limits, Parser, Profile, ProfileRow};
+use fpeg::{Grammar, Limits, Options, Parser, Passes, Profile, ProfileRow};
 
 fn profile(grammar: &str, input: &str) -> Profile {
     let grammar = Grammar::from_text(grammar).expect("the grammar reads");
@@ -38,6 +38,21 @@ fn the_rows_of_a_profile_sum_to_the_steps_of_the_parse() {
         assert_eq!(rows, profile.steps, "{name}");
         assert!(row(&profile, "(parse)").steps > 0, "{name}");
     }
+}
+
+#[test]
+fn a_profile_counts_the_grammar_as_written_whatever_passes_the_parser_runs() {
+    let grammar = Grammar::from_text("start: WORD+\nWORD: [a-z]+\n%ignore \" \"+\n");
+    let grammar = grammar.expect("the grammar reads");
+    let [optimized, plain] = [Passes::ALL, Passes::NONE].map(|passes| {
+        let options = Options {
+            passes,
+            ..Options::default()
+        };
+        let parser = Parser::with_options(&grammar, &options).expect("the grammar compiles");
+        parser.profile("ab  cd ef", "start", Limits::default()).1
+    });
+    assert_eq!(optimized, plain);
 }
 
 #[test]

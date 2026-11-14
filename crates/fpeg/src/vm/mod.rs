@@ -16,9 +16,11 @@ mod verify;
 mod tests;
 
 use std::fmt;
+use std::sync::OnceLock;
 
 use crate::diag::Diagnostic;
 use crate::grammar::Grammar;
+use crate::ir;
 use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
 use crate::tree::{Kind, Names, Tree};
 use machine::{Machine, Stop};
@@ -95,6 +97,12 @@ pub enum Memo {
 /// ```
 pub struct Parser {
     program: Program,
+    /// The grammar as resolved, for the programs of other options.
+    grammar: ir::Grammar,
+    options: Options,
+    /// The program without the passes, compiled on the first profile, or none when the
+    /// compiler refuses it.
+    plain: OnceLock<Option<Program>>,
 }
 
 // Not derived: the program would print every instruction.
@@ -118,16 +126,28 @@ impl Parser {
     /// Compile a grammar as [`Parser::new`] does, with parts of the engine turned off or on.
     pub fn with_options(grammar: &Grammar, options: &Options) -> Result<Parser, Vec<Diagnostic>> {
         let resolved = crate::resolve::resolve(grammar)?;
-        let program = compile::compile(&resolved, options)?;
-        #[cfg(feature = "reference")]
-        if let Err(problem) = verify::verify(&program) {
-            return Err(vec![Diagnostic {
-                code: crate::diag::DiagnosticCode::Internal,
-                message: format!("the compiler made a program that fails verification: {problem}"),
-                span: crate::grammar::Span::default(),
-            }]);
+        let program = build(&resolved, options)?;
+        Ok(Parser {
+            program,
+            grammar: resolved,
+            options: *options,
+            plain: OnceLock::new(),
+        })
+    }
+
+    /// The program without the passes.
+    fn plain(&self) -> &Program {
+        if self.options.passes == Passes::NONE {
+            return &self.program;
         }
-        Ok(Parser { program })
+        let options = Options {
+            passes: Passes::NONE,
+            ..self.options
+        };
+        let plain = self
+            .plain
+            .get_or_init(|| build(&self.grammar, &options).ok());
+        plain.as_ref().unwrap_or(&self.program)
     }
 
     /// Parse the whole input from the rule `start`, with the default limits.
@@ -140,81 +160,23 @@ impl Parser {
     /// A parse that fails is run a second time to collect what was expected at the farthest
     /// failure, so a valid input never pays for it.
     pub fn parse_with(&self, input: &str, start: &str, limits: Limits) -> Result<Tree, ParseError> {
-        self.run(input, start, limits, false).0
+        run(&self.program, input, start, limits, false).0
     }
 
     /// Parse as [`Parser::parse_with`] does and count what each rule did: how often it was
     /// called and failed, the steps spent in it, and what remembering it answered or would
     /// answer. For finding the rules that take the time. The counting slows the parse.
+    ///
+    /// The parse runs without the passes of the optimizer, so that every rule keeps the calls,
+    /// failures and steps of the grammar as written. A parse with them takes fewer steps.
     pub fn profile(
         &self,
         input: &str,
         start: &str,
         limits: Limits,
     ) -> (Result<Tree, ParseError>, Profile) {
-        let (result, profile) = self.run(input, start, limits, true);
+        let (result, profile) = run(self.plain(), input, start, limits, true);
         (result, profile.unwrap_or_default())
-    }
-
-    fn run(
-        &self,
-        input: &str,
-        start: &str,
-        limits: Limits,
-        profiling: bool,
-    ) -> (Result<Tree, ParseError>, Option<Profile>) {
-        let refused = |kind| {
-            let error = ParseError { position: 0, kind };
-            (Err(error), None)
-        };
-        let Some(&entry) = self.program.entries.get(start) else {
-            return refused(ParseErrorKind::UnknownStart(start.to_owned()));
-        };
-        if u32::try_from(input.len()).is_err() {
-            return refused(ParseErrorKind::Limit(Limit::InputSize));
-        }
-        let mut machine = Machine::new(&self.program, input, limits, None);
-        if profiling {
-            machine = machine.profiling();
-        }
-        let outcome = machine.run(entry);
-        let profile = machine.profile();
-        let farthest = machine.farthest();
-        let position = farthest.unwrap_or(0) as usize;
-        let result = match outcome {
-            Ok(()) => machine.tree().map_err(|limit| ParseError {
-                position,
-                kind: ParseErrorKind::Limit(limit),
-            }),
-            Err(Stop::NoMatch) => {
-                let expected = match farthest {
-                    Some(at) => {
-                        let mut again = Machine::new(&self.program, input, limits, Some(at));
-                        // The second run follows the first exactly, so it ends the same way.
-                        let _ = again.run(entry);
-                        again.expected()
-                    }
-                    None => Vec::new(),
-                };
-                Err(ParseError {
-                    position,
-                    kind: ParseErrorKind::NoMatch { expected },
-                })
-            }
-            Err(Stop::Error { label, position }) => Err(ParseError {
-                position: position as usize,
-                kind: ParseErrorKind::Label(
-                    (self.program.labels.get(label as usize))
-                        .cloned()
-                        .unwrap_or_default(),
-                ),
-            }),
-            Err(Stop::Limit(limit)) => Err(ParseError {
-                position,
-                kind: ParseErrorKind::Limit(limit),
-            }),
-        };
-        (result, profile)
     }
 
     /// The names of the grammar's kinds and fields, which its trees share.
@@ -241,4 +203,80 @@ impl Parser {
     pub fn disassemble(&self) -> String {
         self.program.to_string()
     }
+}
+
+/// Compile a resolved grammar, and in test builds verify the program.
+fn build(grammar: &ir::Grammar, options: &Options) -> Result<Program, Vec<Diagnostic>> {
+    let program = compile::compile(grammar, options)?;
+    #[cfg(feature = "reference")]
+    if let Err(problem) = verify::verify(&program) {
+        return Err(vec![Diagnostic {
+            code: crate::diag::DiagnosticCode::Internal,
+            message: format!("the compiler made a program that fails verification: {problem}"),
+            span: crate::grammar::Span::default(),
+        }]);
+    }
+    Ok(program)
+}
+
+/// Parse the whole input with a program, counting what each rule did when `profiling`.
+fn run(
+    program: &Program,
+    input: &str,
+    start: &str,
+    limits: Limits,
+    profiling: bool,
+) -> (Result<Tree, ParseError>, Option<Profile>) {
+    let refused = |kind| {
+        let error = ParseError { position: 0, kind };
+        (Err(error), None)
+    };
+    let Some(&entry) = program.entries.get(start) else {
+        return refused(ParseErrorKind::UnknownStart(start.to_owned()));
+    };
+    if u32::try_from(input.len()).is_err() {
+        return refused(ParseErrorKind::Limit(Limit::InputSize));
+    }
+    let mut machine = Machine::new(program, input, limits, None);
+    if profiling {
+        machine = machine.profiling();
+    }
+    let outcome = machine.run(entry);
+    let profile = machine.profile();
+    let farthest = machine.farthest();
+    let position = farthest.unwrap_or(0) as usize;
+    let result = match outcome {
+        Ok(()) => machine.tree().map_err(|limit| ParseError {
+            position,
+            kind: ParseErrorKind::Limit(limit),
+        }),
+        Err(Stop::NoMatch) => {
+            let expected = match farthest {
+                Some(at) => {
+                    let mut again = Machine::new(program, input, limits, Some(at));
+                    // The second run follows the first exactly, so it ends the same way.
+                    let _ = again.run(entry);
+                    again.expected()
+                }
+                None => Vec::new(),
+            };
+            Err(ParseError {
+                position,
+                kind: ParseErrorKind::NoMatch { expected },
+            })
+        }
+        Err(Stop::Error { label, position }) => Err(ParseError {
+            position: position as usize,
+            kind: ParseErrorKind::Label(
+                (program.labels.get(label as usize))
+                    .cloned()
+                    .unwrap_or_default(),
+            ),
+        }),
+        Err(Stop::Limit(limit)) => Err(ParseError {
+            position,
+            kind: ParseErrorKind::Limit(limit),
+        }),
+    };
+    (result, profile)
 }

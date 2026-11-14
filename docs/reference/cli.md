@@ -84,7 +84,7 @@ start      121       0   1815  28.9%          6288           0      116     0   
 @memo on start: 116 of its 121 calls repeat an earlier one, about 95% of all steps
 ```
 
-A step is one instruction of the parser, the unit its step limit counts. The numbers of steps change from one version of fpeg to the next, their proportions are what to read.
+A step is one instruction of the parser, the unit its step limit counts. The profile runs the parser without its optimizations, so that every rule keeps the calls, failures and steps of the grammar as written, and a parse outside a profile takes fewer steps. The numbers of steps change from one version of fpeg to the next, their proportions are what to read.
 
 | Column | Meaning |
 |---|---|
