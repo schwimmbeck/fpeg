@@ -516,6 +516,35 @@ fn a_skip_from_where_the_last_one_started_with_its_flags_is_answered_at_once() {
 }
 
 #[test]
+fn a_skip_at_a_byte_its_expression_cannot_start_with_ends_at_once() {
+    // A skip before each "x" finds nothing to skip. Without the skip pass the routine runs for
+    // each and takes five steps more, which do not fit the limit.
+    let text = "start: \"x\"*\n%ignore \" \" | \"#\"\n";
+    let input = "x".repeat(1_000);
+    let limits = Limits {
+        max_steps: 9_000,
+        ..Limits::default()
+    };
+    let answered = parser(text).parse_with(&input, "start", limits);
+    assert!(answered.is_ok(), "{answered:?}");
+    let routine = parser_with(
+        text,
+        Passes {
+            skip: false,
+            ..Passes::ALL
+        },
+    );
+    assert_eq!(
+        (routine.parse_with(&input, "start", limits).err()).map(|error| error.kind),
+        Some(ParseErrorKind::Limit(Limit::Steps))
+    );
+    // Where the routine runs, its loop ends at such a byte at once too.
+    let shown = parser(text).program.to_string();
+    let skip = shown.split("skip:").nth(1).unwrap_or_default();
+    assert!(skip.contains("Test pop"), "{shown}");
+}
+
+#[test]
 fn a_class_matches_exactly_the_code_points_its_set_contains() {
     let property = |property, negated| ClassItem::Property { property, negated };
     let sets = [

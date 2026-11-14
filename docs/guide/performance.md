@@ -154,7 +154,7 @@ A parse that reaches the step limit on real input, or that starts again, is a si
 Some work that a grammar seems to ask for, the parser leaves out, and none of it changes what a parse gives:
 
 - A repetition of a class, as `[0-9]*`, takes its whole run at once, and so does a repetition of a class with something else, as the characters and escapes of a string.
-- Alternatives of a choice that skip at the same position skip once, since the parser keeps where the last skip ended. An `%ignore` that repeats a class, as `" "+`, takes its whole run at once.
+- Alternatives of a choice that skip at the same position skip once, since the parser keeps where the last skip ended. An `%ignore` that repeats a class, as `" "+`, takes its whole run at once, and a skip at a byte that no alternative of `%ignore` can start with ends at once.
 - Before an alternative, the parser looks at the next byte and passes over an alternative that cannot start with it.
 - A small rule that calls itself nowhere becomes part of the rules that call it.
 - A rule whose alternatives start with the rule itself, before the others, as the levels of a precedence block do, runs as a loop over its operators.
@@ -164,7 +164,7 @@ The profile counts what the grammar asks for, with none of this but the loop, so
 ## What else costs
 
 - **Every node and token is made.** A terminal makes one token however much it matches, a rule a node for each match. Text that needs no structure belongs in a terminal.
-- **Ignored text is skipped before every token.** A long `%ignore` choice is tried before most of them, so its commonest alternative goes first.
+- **Ignored text is skipped before every token.** Wherever the next byte can start one of its alternatives, a long `%ignore` choice is tried, so its commonest alternative goes first.
 - **Failing late costs more than failing early.** The column `given back` of the profile counts the bytes that failed calls had got through before they failed. A rule that gives much back is tried where it does not belong, or shares its start with the alternative that then matches.
 
 Measured times for whole grammars are on the page of [benchmarks](../benchmarks.md), and the scripts that take them in the `benchmarks` folder of the repository.

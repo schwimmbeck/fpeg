@@ -72,8 +72,9 @@ pub struct Passes {
     pub hasher: bool,
     /// Match a repetition of a class with one instruction, not one code point a step.
     pub span: bool,
-    /// Answer a skip from where the last skip started, with its flags, at once, and take a
-    /// skip expression that repeats a class as one run, without its routine.
+    /// Answer a skip from where the last skip started, with its flags and context, at once,
+    /// end a skip at a byte the skip expression cannot start with without its routine, and take
+    /// a skip expression that repeats a class as one run.
     pub skip: bool,
     /// Test the next byte before an alternative, an optional expression or a step of a loop,
     /// and jump past it where it cannot start with that byte.

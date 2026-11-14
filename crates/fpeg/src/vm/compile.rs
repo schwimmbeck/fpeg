@@ -73,8 +73,13 @@ pub(crate) fn compile(
     let growing: Vec<bool> = (facts.left_recursive.iter().zip(&loops))
         .map(|(&recursive, looped)| recursive && looped.is_none())
         .collect();
+    // What expressions start with serves dispatch, and the skip, which ends at once at a byte its
+    // expression cannot start with.
+    let starts =
+        (options.passes.dispatch || options.passes.skip).then(|| facts.starts(grammar, &growing));
+    let skip_first = skip_first(grammar, options, starts.as_ref());
     if options.passes.dispatch {
-        c.starts = Some(facts.starts(grammar, &growing));
+        c.starts = starts;
     }
     let twice = facts.tried_twice(grammar);
     let memo: Vec<bool> = (0..grammar.rules.len())
@@ -123,6 +128,8 @@ pub(crate) fn compile(
             let choice = c.emit(Inst::Choice(0));
             let step = c.here();
             c.cuttable = true;
+            // Where the next byte cannot start the skip expression, the skipping ends.
+            let test = (c.test_for(skip, true)).map(|test| c.emit(Inst::Test { test, target: 0 }));
             // What a skip captures holds for that skip alone.
             let defines = c.defines(skip);
             if defines {
@@ -136,6 +143,9 @@ pub(crate) fn compile(
             }
             c.emit(Inst::LoopCommit(step));
             c.patch(choice);
+            if let Some(test) = test {
+                c.patch(test);
+            }
             c.emit(Inst::QuietOff);
             c.emit(Inst::Ret);
             pc
@@ -211,6 +221,7 @@ pub(crate) fn compile(
         single_item: grammar.single_item.clone(),
         passes: options.passes,
         tab_width: grammar.tab_width,
+        skip_first,
         // A skip that checks a column or matches a capture may depend on the context. Where the
         // captures stay inside the terminals it calls, the context at a skip is 0 all the same.
         skip_context: (grammar.skip.as_ref()).is_some_and(|skip| {
@@ -233,6 +244,22 @@ fn remembered(memo: Memo, rule: &ir::Rule, repeated: bool) -> bool {
         (Memo::All, _) | (Memo::Grammar, ir::MemoMark::Memo) => true,
         (Memo::Grammar, ir::MemoMark::None) => repeated,
     }
+}
+
+/// The first bytes of the skip expression, where the skip pass runs its routine and the
+/// expression cannot match nothing and fails plainly at its first byte: a skip at any other byte
+/// ends where it starts, whatever the flags and the context, since the bytes hold for them all.
+fn skip_first(
+    grammar: &ir::Grammar,
+    options: &Options,
+    starts: Option<&Starts<'_>>,
+) -> Option<Bytes> {
+    let skip = grammar.skip.as_ref()?;
+    if !options.passes.skip || span(skip, 0).is_some() {
+        return None;
+    }
+    let start = starts?.of(skip);
+    (!start.nullable && start.plain && start.bytes != Bytes::ALL).then_some(start.bytes)
 }
 
 /// The bit of a flag in the machine's flag register. A resolved grammar has at most 64 flags,

@@ -909,6 +909,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         let (len, _) = self.run_of(class);
                         self.advance(Some(len))?;
                     }
+                    (None, Some(_)) if self.skips_nothing() => self.pc += 1,
                     (None, Some(_))
                         if self.program.passes.skip
                             && let Some(last) = self.skip_cache
@@ -1269,6 +1270,15 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.context
     }
 
+    /// Whether a skip at the position surely ends there: the skip expression cannot start with
+    /// the next byte, or the input ends.
+    fn skips_nothing(&self) -> bool {
+        self.program.skip_first.is_some_and(|first| {
+            let next = self.input.as_bytes().get(self.pos as usize);
+            !next.is_some_and(|&byte| first.contains(byte))
+        })
+    }
+
     /// The context the skip cache keys by: the context where the skip expression reads it.
     fn skip_context(&self) -> u32 {
         match self.program.skip_context {
@@ -1290,6 +1300,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         let at = match (test.after_skip, program.skip_class, self.skip_cache) {
             (false, _, _) => self.pos,
             (true, Some(class), _) => self.pos + self.run_of(class).0 as u32,
+            (true, None, _) if self.skips_nothing() => self.pos,
             (true, None, Some(last))
                 if (last.start, last.flags, last.context) == (self.pos, self.flags, context) =>
             {

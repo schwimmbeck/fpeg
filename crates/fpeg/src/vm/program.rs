@@ -338,4 +338,7 @@ pub(crate) struct Program {
     pub tab_width: u32,
     /// Whether the skip expression reads the context, so that the skip cache keys by it.
     pub skip_context: bool,
+    /// The bytes the skip expression can start with, where a skip at any other byte ends where
+    /// it starts without running the skip routine.
+    pub skip_first: Option<Bytes>,
 }
