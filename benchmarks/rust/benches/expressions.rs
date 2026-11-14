@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Expressions in Rust: fpeg's parsing machine on a grammar of twelve operator levels with
-//! left recursion, by what it remembers. The default remembers the levels of the precedence
-//! block and the rules on left cycles. With nothing remembered every level parses its operand
-//! again for each level above it, thousands of times for one number, so that setting is
-//! measured on one small sum.
+//! left recursion, by what it remembers. The default remembers the two levels that the level
+//! above tries twice, and runs the others, which recur on their left, as loops. With nothing
+//! remembered those two parse their operands again, about twenty times the work, so that
+//! setting is measured on one small sum.
 
 use std::time::Duration;
 

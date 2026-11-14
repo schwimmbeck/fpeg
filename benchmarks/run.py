@@ -49,8 +49,15 @@ CRITERION_MODE_ARGS = {"default": [], "fast": ["--quick"], "rigorous": [], "smok
 
 PYTHON_PACKAGES = ("lark", "pe", "libcst", "tree-sitter", "tree-sitter-python", "pyperf")
 RUST_CRATES = ("pest", "pest_derive", "pest_meta", "pest_vm", "serde_json", "criterion")
-# The criterion suites, each with the input of the benchmarks that report a throughput.
-RUST_BENCHES = {"json": corpus.RECORDS_JSON, "expressions": corpus.EXPRESSIONS}
+# The criterion suites.
+RUST_BENCHES = ("json", "expressions", "passes")
+# The input of each criterion group whose benchmarks report a throughput of a corpus.
+RUST_INPUTS = {
+    "json": corpus.RECORDS_JSON,
+    "expressions": corpus.EXPRESSIONS,
+    "passes on JSON": corpus.RECORDS_JSON,
+    "passes on expressions": corpus.EXPRESSIONS,
+}
 PLATFORM_NAMES = {"win32": "windows", "linux": "linux", "darwin": "macos"}
 NS_PER_S = 1e9
 BYTES_PER_MB = 1e6
@@ -160,7 +167,9 @@ def run_rust_suite(mode: str) -> list[Row]:
             Row(
                 suite="rust",
                 name=meta["full_id"],
-                input=RUST_BENCHES[meta["group_id"]].name if meta["throughput"] else None,
+                input=RUST_INPUTS[group].name
+                if (group := meta["group_id"]) in RUST_INPUTS
+                else None,
                 mean_s=estimates["mean"]["point_estimate"] / NS_PER_S,
                 stdev_s=estimates["std_dev"]["point_estimate"] / NS_PER_S,
                 median_s=estimates["median"]["point_estimate"] / NS_PER_S,

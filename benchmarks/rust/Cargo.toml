@@ -35,6 +35,10 @@ harness = false
 name = "expressions"
 harness = false
 
+[[bench]]
+name = "passes"
+harness = false
+
 [lints.rust]
 missing_docs = "warn"
 unsafe_op_in_unsafe_fn = "warn"
