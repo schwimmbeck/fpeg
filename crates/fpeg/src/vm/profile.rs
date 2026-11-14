@@ -57,7 +57,7 @@ pub struct ProfileRow {
     /// Calls at a position where the rule had been called before, with the same flags and the
     /// same recording of failures: what remembering the rule would answer.
     pub repeats: u64,
-    /// Calls that a remembered result answered.
+    /// Calls that a remembered result answered, a remembered failure included.
     pub memo_hits: u64,
     /// Results that were remembered.
     pub memo_stores: u64,
@@ -142,9 +142,10 @@ impl Profiler {
         self.active.last().map_or(parse, |&(rule, ..)| rule)
     }
 
-    /// A rule is called: count the call, and whether it repeats one.
-    pub fn called(&mut self, key: Seen) {
-        let repeated = !self.seen.insert(key);
+    /// A rule is called: count the call, and whether it repeats one. The left-recursive use of
+    /// the entry of a call in progress repeats nothing that remembering the rule would answer.
+    pub fn called(&mut self, key: Seen, left_recursive: bool) {
+        let repeated = !left_recursive && !self.seen.insert(key);
         if let Some(row) = self.row(key.0) {
             row.calls += 1;
             row.repeats += u64::from(repeated);

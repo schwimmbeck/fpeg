@@ -61,6 +61,10 @@ fn a_profile_counts_calls_and_those_that_repeat_one() {
         (true, 2, 1)
     );
     assert_eq!(marked.memo_entries, 1);
+    // A remembered failure answers too.
+    let failing = profile(&grammar("@memo\n"), "y");
+    let item = row(&failing, "item");
+    assert_eq!((item.calls, item.memo_hits, item.memo_stores), (3, 2, 1));
 }
 
 #[test]
@@ -83,8 +87,12 @@ fn a_profile_counts_failed_calls_and_the_bytes_they_give_back() {
 fn a_profile_counts_the_passes_that_grow_a_left_recursion() {
     let profile = profile("start: chain\nchain: chain \"-\" \"1\" | \"1\"\n", "1-1-1");
     let chain = row(&profile, "chain");
-    // The call from start, and one use of the entry in each of four passes.
-    assert_eq!((chain.calls, chain.growths, chain.failures), (5, 2, 0));
+    // The call from start, and one use of the entry in each of four passes, which repeats
+    // nothing that remembering the rule would answer.
+    assert_eq!(
+        (chain.calls, chain.repeats, chain.growths, chain.failures),
+        (5, 0, 2, 0)
+    );
 }
 
 #[test]

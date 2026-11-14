@@ -523,7 +523,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.depth += 1;
                     if let Some(profiler) = self.profiler.as_deref_mut() {
                         let rule = self.program.rule_at(target);
-                        profiler.called((rule, self.pos, self.flags, self.quiet > 0));
+                        profiler.called((rule, self.pos, self.flags, self.quiet > 0), false);
                         let (stack, nodes) = (self.stack.len(), self.nodes.len());
                         profiler.entered(rule, self.pos, self.steps, stack, nodes);
                     }
@@ -709,22 +709,23 @@ impl<'p, 'i> Machine<'p, 'i> {
             flags: self.flags,
             quiet: self.quiet > 0,
         };
+        let entry = recursive.then(|| self.active(rule)).flatten();
         if let Some(profiler) = self.profiler.as_deref_mut() {
-            profiler.called((rule, key.pos, key.flags, key.quiet));
+            profiler.called((rule, key.pos, key.flags, key.quiet), entry.is_some());
         }
-        if recursive && let Some(index) = self.active(rule) {
+        if let Some(index) = entry {
             return self.use_entry(index);
         }
         if info.memo
             && let Some(stored) = self.memo.get(&key).copied()
             && self.usable(stored)
         {
-            let Some(found) = stored.result else {
-                return self.fail();
-            };
             if let Some(profiler) = self.profiler.as_deref_mut() {
                 profiler.hit(rule);
             }
+            let Some(found) = stored.result else {
+                return self.fail();
+            };
             // Giving a result again is work of its length, and may put it under two parents.
             self.steps += u64::from(found.count);
             self.shared = true;
