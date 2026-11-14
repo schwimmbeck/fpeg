@@ -42,10 +42,10 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
     for body in &bodies {
         // Only the literals of rules that make nodes end at a word boundary.
         checker.boundaries = checker.word.is_some() && !body.terminal;
-        checker.alternatives(&body.alternatives);
+        checker.alternatives(&body.alternatives, body.params);
         // A level ends with the step to the next one, as its last alternative.
         if let Some(next) = body.next
-            && (body.alternatives.last()).is_some_and(|last| never_fails(last))
+            && (body.alternatives.last()).is_some_and(|last| never_fails(last, body.params))
         {
             let message = format!(
                 "the level {} is never reached from {}, whose last alternative cannot fail",
@@ -60,7 +60,7 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
     }
     checker.boundaries = false;
     // The skip expression is the ordered choice of the `%ignore` expressions.
-    checker.alternatives(&grammar.ignore.iter().collect::<Vec<_>>());
+    checker.alternatives(&grammar.ignore.iter().collect::<Vec<_>>(), &[]);
     for expr in &grammar.ignore {
         checker.repetitions(expr);
     }
@@ -228,7 +228,8 @@ const NEVER: u32 = u32::MAX;
 
 /// Which expressions match the empty string at the end of every input, where nothing consumes:
 /// those with a way through them of optional parts alone. What looks ahead or depends on flags,
-/// columns, captures or parameters may fail there, and is not among them.
+/// columns, captures or parameters may fail there, and is not among them. Nor is what lies
+/// behind a part that can fail abruptly, which may end the choice or the repetition first.
 ///
 /// Found as `analysis` finds what can succeed without consuming input, in time linear in the
 /// size of the grammar: an expression is counted down once for each part that matches the empty
@@ -266,7 +267,7 @@ impl<'g> Empties<'g> {
             wholes: vec![Vec::new(); bodies.len()],
         };
         for (body, number) in bodies.iter().zip(0..) {
-            let closed = closing(&body.alternatives);
+            let closed = closing(&body.alternatives, body.params);
             for (index, alternative) in body.alternatives.iter().enumerate() {
                 let part = empties.number(alternative, body.params);
                 if closed.is_none_or(|last| index <= last) {
@@ -315,15 +316,33 @@ impl<'g> Empties<'g> {
                 }
             }
             ExprKind::Sequence(_) => (parts.len() as u32, parts.len()),
-            ExprKind::Choice(_) => (1, closing(&inner).map_or(parts.len(), |last| last + 1)),
-            ExprKind::Repeat { min: 0, .. }
-            | ExprKind::Separated {
-                at_least_one: false,
-                ..
-            } => (0, 0),
-            // One item is a match, whatever comes of the separator after it.
-            ExprKind::Separated { .. }
-            | ExprKind::Repeat { .. }
+            ExprKind::Choice(_) => {
+                let counted = closing(&inner, params).map_or(parts.len(), |last| last + 1);
+                (1, counted)
+            }
+            ExprKind::Repeat { max: Some(0), .. } => (0, 0),
+            // No step is made where the expression fails, unless it fails abruptly.
+            ExprKind::Repeat {
+                expr: step, min: 0, ..
+            } => match abrupt(step, params) {
+                false => (0, 0),
+                true => (1, 1),
+            },
+            // `**` makes no step where its first item fails, and one item that matches nothing
+            // is a match of `++`, unless what comes after it fails abruptly.
+            ExprKind::Separated {
+                item,
+                separator,
+                at_least_one,
+            } => match (
+                abrupt(separator, params),
+                *at_least_one || abrupt(item, params),
+            ) {
+                (true, _) => (NEVER, 0),
+                (false, true) => (1, 1),
+                (false, false) => (0, 0),
+            },
+            ExprKind::Repeat { .. }
             | ExprKind::Field { .. }
             | ExprKind::Label { .. }
             | ExprKind::FlagOn { .. }
@@ -441,28 +460,95 @@ fn alike(a: &Expr, b: &Expr) -> bool {
 }
 
 /// Whether the expression matches wherever it is tried, or ends the parse with an error, so
-/// that no alternative after it is ever tried. Rules are not looked into.
-fn never_fails(expr: &Expr) -> bool {
+/// that no alternative after it is ever tried. Rules and parameters are not looked into.
+fn never_fails(expr: &Expr, params: &[Name]) -> bool {
     match &expr.kind {
-        ExprKind::Empty => true,
-        ExprKind::Sequence(items) => items.iter().all(never_fails),
-        ExprKind::Choice(items) => items.iter().any(never_fails),
-        ExprKind::Repeat { expr, min, .. } => *min == 0 || never_fails(expr),
-        ExprKind::Separated { at_least_one, .. } => !at_least_one,
+        ExprKind::Empty | ExprKind::Cut => true,
+        ExprKind::Sequence(items) => items.iter().all(|item| never_fails(item, params)),
+        // A failure after a cut ends the choice, so only the alternatives up to the first that
+        // can cut are sure to be tried.
+        ExprKind::Choice(items) => {
+            for item in items {
+                if never_fails(item, params) {
+                    return true;
+                }
+                if may_cut(item, params) {
+                    return false;
+                }
+            }
+            false
+        }
+        ExprKind::Repeat { max: Some(0), .. } => true,
+        // A failure of the expression after a cut makes the repetition fail.
+        ExprKind::Repeat {
+            expr: step, min: 0, ..
+        } => !may_cut(step, params) || never_fails(step, params),
+        ExprKind::Repeat { expr: step, .. } => never_fails(step, params),
+        // `**` fails only where its first item passes a cut and then fails.
+        ExprKind::Separated {
+            item,
+            at_least_one: false,
+            ..
+        } => !may_cut(item, params),
         // A labeled expression that does not match is an error, not a failure.
         ExprKind::Label { .. } => true,
         ExprKind::Field { expr, .. }
         | ExprKind::FlagOn { expr, .. }
         | ExprKind::FlagOff { expr, .. }
-        | ExprKind::Def { expr, .. } => never_fails(expr),
+        | ExprKind::Def { expr, .. } => never_fails(expr, params),
         _ => false,
     }
 }
 
-/// The place of the first alternative that cannot fail, which closes the choice: none after
-/// it is ever tried.
-fn closing(alternatives: &[&Expr]) -> Option<usize> {
-    (alternatives.iter()).position(|alternative| never_fails(alternative))
+fn is_param(name: &Name, params: &[Name]) -> bool {
+    params.iter().any(|param| param.text == name.text)
+}
+
+/// Whether a cut can reach the choice point around the expression. A choice, a repetition, a
+/// lookahead and a rule keep the cuts inside them, a label does not. An argument can hold a
+/// cut, so a parameter counts as one that can.
+fn may_cut(expr: &Expr, params: &[Name]) -> bool {
+    match &expr.kind {
+        ExprKind::Cut => true,
+        ExprKind::Reference { name, .. } => is_param(name, params),
+        // The first item of `++` is matched outside the repetition of the others.
+        ExprKind::Separated {
+            item,
+            at_least_one: true,
+            ..
+        } => may_cut(item, params),
+        ExprKind::Choice(_)
+        | ExprKind::Repeat { .. }
+        | ExprKind::Separated { .. }
+        | ExprKind::And(_)
+        | ExprKind::Not(_) => false,
+        _ => (expr.children().iter()).any(|child| may_cut(child, params)),
+    }
+}
+
+/// Whether the expression can end the parse with an error: it holds an error label outside a
+/// lookahead, which catches errors. Rules are not looked into, and an argument can hold a
+/// label.
+fn may_raise(expr: &Expr, params: &[Name]) -> bool {
+    match &expr.kind {
+        ExprKind::Label { .. } => true,
+        ExprKind::Reference { name, .. } => is_param(name, params),
+        ExprKind::And(_) | ExprKind::Not(_) => false,
+        _ => (expr.children().iter()).any(|child| may_raise(child, params)),
+    }
+}
+
+/// Whether the expression can fail abruptly: after a cut, which ends the choice or the
+/// repetition around it, or with an error, which ends the parse.
+fn abrupt(expr: &Expr, params: &[Name]) -> bool {
+    may_cut(expr, params) || may_raise(expr, params)
+}
+
+/// The place of the first alternative after which no other is sure to be tried: one that
+/// cannot fail, or one that can fail abruptly.
+fn closing(alternatives: &[&Expr], params: &[Name]) -> Option<usize> {
+    (alternatives.iter())
+        .position(|alternative| never_fails(alternative, params) || abrupt(alternative, params))
 }
 
 struct Checker<'g> {
@@ -525,11 +611,14 @@ impl Checker<'_> {
         Some((first.clone(), second.clone()))
     }
 
-    /// The checks of an ordered choice between `alternatives`.
-    fn alternatives(&mut self, alternatives: &[&Expr]) {
+    /// The checks of an ordered choice between `alternatives`, in a rule with `params`.
+    fn alternatives(&mut self, alternatives: &[&Expr], params: &[Name]) {
         for (index, later) in alternatives.iter().enumerate().skip(1) {
             let before = alternatives.get(..index).unwrap_or_default();
-            if before.last().is_some_and(|earlier| never_fails(earlier)) {
+            if before
+                .last()
+                .is_some_and(|earlier| never_fails(earlier, params))
+            {
                 let message = "this alternative is never tried, since the one before it cannot \
                                fail";
                 let code = DiagnosticCode::UnreachableAlternative;
@@ -557,7 +646,7 @@ impl Checker<'_> {
             }
         }
         for alternative in alternatives {
-            self.inside(alternative);
+            self.inside(alternative, params);
         }
     }
 
@@ -606,12 +695,14 @@ impl Checker<'_> {
     }
 
     /// The checks of the choices inside an expression.
-    fn inside(&mut self, expr: &Expr) {
+    fn inside(&mut self, expr: &Expr, params: &[Name]) {
         match &expr.kind {
-            ExprKind::Choice(items) => self.alternatives(&items.iter().collect::<Vec<_>>()),
+            ExprKind::Choice(items) => {
+                self.alternatives(&items.iter().collect::<Vec<_>>(), params);
+            }
             _ => {
                 for child in expr.children() {
-                    self.inside(child);
+                    self.inside(child, params);
                 }
             }
         }

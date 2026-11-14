@@ -61,11 +61,23 @@ fn an_alternative_after_one_that_cannot_fail_is_never_tried() {
             "start: \"a\"\n%ignore \" \"*\n%ignore \"#\"\n",
             vec!["W101"],
         ),
+        // A cut inside a choice of its own commits only that choice.
+        ("start: (\"a\" | ~ \"b\")? | \"c\"\n", vec!["W101"]),
         // These can fail.
         ("start: \"a\"+ | \"b\"\n", vec![]),
         ("start: \"a\" ++ \",\" | \"b\"\n", vec![]),
         ("start: !\"a\" | \"b\"\n", vec![]),
         ("start: \"b\" | \"a\"?\n", vec![]),
+        // A failure after a cut fails the repetition or ends the choice around it.
+        ("start: (\"a\" ~ \"b\")? | \"a\" \"c\"\n", vec![]),
+        ("start: (\"a\" ~ \"b\")* | \"a\" \"c\"\n", vec![]),
+        ("start: (\"a\" ~ \"b\") ** \",\" | \"a\" \"c\"\n", vec![]),
+        ("start: (\"a\" ~ \"b\" | ()) | \"a\" \"c\"\n", vec![]),
+        // An argument can hold a cut.
+        (
+            "start: many<\"a\" ~ \"b\">\nmany<item>: item* -> items | \"a\" \"c\" -> ac\n",
+            vec![],
+        ),
     ] {
         assert_eq!(codes(text), expected, "{text}");
     }
@@ -78,6 +90,7 @@ fn a_level_whose_last_alternative_cannot_fail_cuts_off_the_levels_after_it() {
     };
     assert_eq!(codes(&block("\"-\"? atom")), Vec::<&str>::new());
     assert_eq!(codes(&block("\"-\"?")), ["W101"]);
+    assert_eq!(codes(&block("(\"-\" ~ atom)?")), Vec::<&str>::new());
 }
 
 #[test]
@@ -212,6 +225,17 @@ fn a_repetition_of_what_can_match_nothing_ends_at_an_empty_step() {
         (
             "start: item* \"c\"\nitem: \"a\" ^ \"an a\" | \"b\"?\n",
             vec!["W101"],
+        ),
+        // Behind a cut or an error label, an alternative is reached only where the one
+        // before it fails without passing the cut or failing the label.
+        ("start: (\"a\"? ~ \"b\" | ()){2} \"c\"\n", vec![]),
+        ("start: (\"a\"? ~ \"b\" | ())* \"c\"\n", vec![]),
+        ("start: ((\"b\" ^ \"a b\")?)* \"c\"\n", vec![]),
+        // A cut inside a choice of its own, or a label inside a lookahead, stops nothing.
+        ("start: ((\"a\" | ~ \"b\") | \"c\"?)* \"d\"\n", vec!["W201"]),
+        (
+            "start: (!(\"a\" ^ \"an a\") \"b\" | \"c\"?)* \"d\"\n",
+            vec!["W201"],
         ),
         // A parameter stands for any expression, also under the name of a rule.
         ("start: many<\"a\"?> \"b\"\nmany<x>: x*\n", vec![]),
