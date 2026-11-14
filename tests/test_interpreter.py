@@ -152,6 +152,22 @@ def test_a_rule_named_like_a_method_of_the_base_class_is_no_handler() -> None:
     assert fpeg.Interpreter().visit(visits.parse("a")) == [["a"]]
 
 
+def test_a_tree_built_in_python_is_walked_by_the_names_of_its_data() -> None:
+    class Sum(fpeg.Interpreter):
+        def add(self, *children: Any) -> int:
+            return sum(self.visit(child) for child in children)
+
+        def NUMBER(self, token: fpeg.Token) -> int:
+            return int(token)
+
+    tree = fpeg.Tree(
+        "add", [fpeg.Token("NUMBER", "1"), fpeg.Tree("add", [fpeg.Token("NUMBER", "2")])]
+    )
+    assert Sum().visit(tree) == 3
+    # Anything else in a tree built in Python comes back as it is.
+    assert fpeg.Interpreter().visit(fpeg.Tree("other", [3, None])) == [3, None]
+
+
 def test_a_tree_nested_deeper_than_the_recursion_limit_ends_the_walk() -> None:
     deep = fpeg.Grammar('start: item\n?item: NAME | "(" item ")" -> group\nNAME: [a-z]+')
     tree = deep.parse("(" * 5_000 + "a" + ")" * 5_000, max_depth=20_000)

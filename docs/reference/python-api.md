@@ -247,7 +247,7 @@ run.visit(program.parse("x = 1; if x { y = 2; } if 0 { y = missing; }"))
 assert run.variables == {"x": 1, "y": 2}
 ```
 
-A node without a method gives `visit_children(node)`, the list of its visited children, which `start` does above. Override `__default__(self, node)` to give something else. Visiting a token gives what the method named like its terminal returns, else the value of the terminal's builder, as `int` for `NUMBER` above, else the token. The builders of rules are not applied, since a method decides when the children are visited.
+A node without a method gives `visit_children(node)`, the list of its visited children, which `start` does above. Override `__default__(self, node)` to give something else. Visiting a token gives what the method named like its terminal returns, else the value of the terminal's builder, as `int` for `NUMBER` above, else the token. The builders of rules are not applied, since a method decides when the children are visited. A tree built in Python is walked alike, by the names of its `data`. It has no fields, so its methods take the node or `*children`.
 
 `v_args` is not for an `Interpreter`.
 

@@ -35,12 +35,13 @@ _NO_METHOD: Final = object()
 
 _NO_VALUE = _fpeg.NO_VALUE
 
-# How the methods of terminals are called. By class, weakly, so that a class made for one task
-# goes when it is no longer used.
+# By class, weakly, so that a class made for one task goes when it is no longer used: how the
+# methods of trees built in Python are called, which have no grammar, and those of terminals.
+_owned: weakref.WeakKeyDictionary[type, dict[str, _Convention | None]] = weakref.WeakKeyDictionary()
 _tokens: weakref.WeakKeyDictionary[type, dict[str, int | None]] = weakref.WeakKeyDictionary()
 
 
-def _convention(cls: type, name: str, fields: dict[str, bool]) -> _Convention:
+def _convention(cls: type, name: str, fields: dict[str, bool] | None) -> _Convention:
     _, options = function_of(cls, name)
     if options:
         raise TypeError(
@@ -63,6 +64,16 @@ def _make_plan(
     return plan
 
 
+def _owned_convention(cls: type, name: Any) -> _Convention | None:
+    """Say how the method for a tree built in Python is called, if the class has one."""
+    if not isinstance(name, str):
+        return None
+    by_name = _owned.setdefault(cls, {})
+    if name not in by_name:
+        by_name[name] = _convention(cls, name, None) if is_handler(cls, name) else None
+    return by_name[name]
+
+
 def _token_mode(cls: type, name: Any) -> int | None:
     """Say how the method of a terminal is called, if the class has one."""
     if not isinstance(name, str):
@@ -79,7 +90,7 @@ def _call(walker: object, node: Tree) -> Any:
     name = node.data
     plan = _fpeg.walk_plan(cls, node, _make_plan)
     # A tree built in Python has no grammar to plan for.
-    convention = None if plan is None else plan.get(name)
+    convention = _owned_convention(cls, name) if plan is None else plan.get(name)
     if convention is None:
         return _NO_METHOD
     mode, fields, extras = convention
