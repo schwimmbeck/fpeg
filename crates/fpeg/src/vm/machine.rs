@@ -254,6 +254,18 @@ struct SkipCache {
 /// The room a vector of the machine takes when it first grows, in elements.
 const FIRST_ROOM: usize = 16;
 
+/// The buckets a table takes when it first grows, as the standard library's does.
+const FIRST_BUCKETS: u64 = 4;
+
+/// The buckets of a table with room for `capacity` entries: a power of two, of which the table
+/// keeps an eighth empty, as the standard library's does.
+fn buckets(capacity: usize) -> u64 {
+    match capacity {
+        0 => 0,
+        _ => (capacity as u64 * 8 / 7).next_power_of_two(),
+    }
+}
+
 /// The memory a parse holds and may hold, in bytes: the room of the machine's vectors and
 /// tables and of a profiler's, which never shrink during a parse.
 #[derive(Clone, Copy, Debug)]
@@ -263,28 +275,42 @@ pub(super) struct Memory {
 }
 
 impl Memory {
+    /// Nothing held yet, and at most `limit` bytes.
+    pub(super) fn new(limit: u64) -> Memory {
+        Memory { held: 0, limit }
+    }
+
+    /// The bytes held.
+    #[cfg(test)]
+    pub fn held(&self) -> u64 {
+        self.held
+    }
+
     /// Make room for `more` elements in `vec` as it would grow by itself, doubling, unless the
     /// room it gains takes the parse past its limit.
-    fn room<T>(&mut self, vec: &mut Vec<T>, more: usize) -> Result<(), Stop> {
+    pub(super) fn room<T>(&mut self, vec: &mut Vec<T>, more: usize) -> Result<(), Stop> {
         if vec.capacity() - vec.len() >= more {
             return Ok(());
         }
         self.grow(vec, more)
     }
 
+    /// Grow `vec` as [`Memory::room`] says. While a block moves, the old one and the new one
+    /// are both held, so the new one counts in full before the old one is given back.
     #[cold]
     fn grow<T>(&mut self, vec: &mut Vec<T>, more: usize) -> Result<(), Stop> {
         let before = vec.capacity();
         let wanted = (vec.len() + more).max(before * 2).max(FIRST_ROOM);
-        self.take(((wanted - before) * size_of::<T>()) as u64)?;
+        self.take((wanted * size_of::<T>()) as u64)?;
         vec.reserve_exact(wanted - vec.len());
         // The allocator may give more room than asked for, which counts too.
         self.held += ((vec.capacity() - wanted) * size_of::<T>()) as u64;
+        self.held = self.held.saturating_sub((before * size_of::<T>()) as u64);
         Ok(())
     }
 
-    /// Make room for one more entry in a table, which doubles its buckets of an entry and a
-    /// byte of control each when it is full.
+    /// Make room for one more entry in a table, which moves its entries to twice the buckets,
+    /// each of an entry and a byte of control, when it is full, and gives the old ones back.
     pub(super) fn room_in<K: Hash + Eq, V, S: BuildHasher>(
         &mut self,
         table: &mut HashMap<K, V, S>,
@@ -293,9 +319,10 @@ impl Memory {
             return Ok(());
         }
         let bucket = (size_of::<(K, V)>() + 1) as u64;
-        let before = table.capacity() as u64;
-        self.take((before.max(FIRST_ROOM as u64) * 2) * bucket)?;
+        let before = buckets(table.capacity());
+        self.take((before * 2).max(FIRST_BUCKETS) * bucket)?;
         table.reserve(1);
+        self.held = self.held.saturating_sub(before * bucket);
         Ok(())
     }
 
@@ -496,10 +523,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             steps: 0,
             limits,
             budget: limits.max_steps,
-            memory: Memory {
-                held: 0,
-                limit: limits.memory_bytes(input.len()),
-            },
+            memory: Memory::new(limits.memory_bytes(input.len())),
             farthest: None,
             diagnose: diagnose.map(|at| (at, BTreeSet::new())),
             profiler: None,

@@ -4,9 +4,9 @@
 //! Tests of the compiler, the verifier and the machine that need their insides. What a parse
 //! returns is compared with the reference interpreter in the crate's differential tests.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use super::machine::{Machine, memo_hashes};
+use super::machine::{Machine, Memory, Stop, memo_hashes};
 use super::program::{ByteTest, Class, Inst, Program};
 use super::verify::verify;
 use super::{Memo, Options, Parser, Passes};
@@ -810,6 +810,35 @@ fn the_memo_of_each_parse_hashes_keys_with_keys_of_its_own() {
     // Keys known before a parse would let its grammar and input choose calls that collide.
     let calls = || (0..64u32).map(|i| (3, i, u64::from(i) << 40));
     assert_ne!(memo_hashes(calls()), memo_hashes(calls()));
+}
+
+#[test]
+fn room_that_grows_counts_the_old_room_until_it_is_given_back() {
+    // Sixteen words, then thirty-two, which move, so that both blocks are held for a moment.
+    let grown = |limit| {
+        let mut memory = Memory::new(limit);
+        let mut words: Vec<u64> = Vec::new();
+        for word in 0..17 {
+            memory.room(&mut words, 1)?;
+            words.push(word);
+        }
+        Ok::<u64, Stop>(memory.held())
+    };
+    assert!(grown(16 * 8 + 32 * 8 - 1).is_err());
+    assert_eq!(grown(16 * 8 + 32 * 8).ok(), Some(32 * 8));
+    // A table moves from four buckets to eight, each of an entry and a byte of control.
+    let bucket = 2 * 8 + 1;
+    let filled = |limit| {
+        let mut memory = Memory::new(limit);
+        let mut table: HashMap<u64, u64> = HashMap::new();
+        for key in 0..4 {
+            memory.room_in(&mut table)?;
+            table.insert(key, key);
+        }
+        Ok::<u64, Stop>(memory.held())
+    };
+    assert!(filled((4 + 8) * bucket - 1).is_err());
+    assert_eq!(filled((4 + 8) * bucket).ok(), Some(8 * bucket));
 }
 
 #[test]

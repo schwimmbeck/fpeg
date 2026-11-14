@@ -14,8 +14,8 @@ pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
 /// reserved word counts its length, and testing a class beyond ASCII counts its items. A tree
 /// that repeats the nodes of a remembered match or of a left recursion counts what laying out
 /// the repeats takes. Ten to twenty seconds on a desktop. A parse of JSON meets the memory
-/// limit first, at about 250 megabytes. A parse that fails runs a second time to find what was
-/// expected, which takes as long again.
+/// limit first, at two to four hundred megabytes. A parse that fails runs a second time to
+/// find what was expected, which takes as long again.
 pub const DEFAULT_MAX_STEPS: u64 = 4_000_000_000;
 
 /// Bytes of memory a parse may hold by default for each byte of its input.
