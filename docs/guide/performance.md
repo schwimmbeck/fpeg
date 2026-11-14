@@ -149,10 +149,22 @@ A parse that takes more than a million steps, or a thousand for each byte of inp
 
 A parse that reaches the step limit on real input, or that starts again, is a sign to profile the grammar on a smaller input of the same shape.
 
+## What the parser does by itself
+
+Some work that a grammar seems to ask for, the parser leaves out, and none of it changes what a parse gives:
+
+- A repetition of a class, as `[0-9]*`, takes its whole run at once, and so does a repetition of a class with something else, as the characters and escapes of a string.
+- Ignored text is skipped once at a position. The alternatives of a choice that skip there first reuse where the skip ended.
+- Before an alternative, the parser looks at the next byte and passes over an alternative that cannot start with it.
+- A small rule that calls itself nowhere becomes part of the rules that call it.
+- A rule whose alternatives start with the rule itself, before the others, as the levels of a precedence block do, runs as a loop over its operators.
+
+The profile counts what the grammar asks for, with none of this, so that every rule keeps its calls and failures. A parse outside the profile takes fewer steps.
+
 ## What else costs
 
 - **Every node and token is made.** A terminal makes one token however much it matches, a rule a node for each match. Text that needs no structure belongs in a terminal.
-- **Ignored text is skipped before every token.** A long `%ignore` choice is tried at each of them, so its commonest alternative goes first.
+- **Ignored text is skipped before every token.** A long `%ignore` choice is tried at each new position, so its commonest alternative goes first.
 - **Failing late costs more than failing early.** The column `given back` of the profile counts the bytes that failed calls had got through before they failed. A rule that gives much back is tried where it does not belong, or shares its start with the alternative that then matches.
 
-Measured times for whole grammars, and the scripts that take them, are in the `benchmarks` folder of the repository.
+Measured times for whole grammars are on the page of [benchmarks](../benchmarks.md), and the scripts that take them in the `benchmarks` folder of the repository.
