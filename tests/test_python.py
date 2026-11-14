@@ -48,6 +48,108 @@ True, False, None, ...
 )
 """
 
+STATEMENTS = """\
+import a.b as c, d
+from . import e
+from ..f import (g as h, i,)
+from j import *
+lazy import k
+lazy from l import m
+x = y = 1
+x: int = 1
+(x): int
+x.y: int
+x[0] += 1; x -= 1
+a, *b = c
+[a, (b, c)] = d
+del a, b[0], c.d
+del (a, b)
+assert a, b
+global g
+nonlocal n
+pass; break; continue
+return
+return a, b
+raise
+raise a from b
+yield
+yield a, b
+x = yield
+
+
+@d
+@e.f(g)
+def f(a, /, b: int = 1, *c: int, d, e=2, **f: float) -> None:
+    pass  # a comment
+
+    # a comment after a blank line
+
+
+async def g(*, a):
+    async for x in y:
+        pass
+    else:
+        pass
+    async with a as b, c:
+        pass
+
+
+class C(B, metaclass=M):
+    x = 1
+
+
+class D: pass
+
+
+if a:
+    pass
+elif b:
+    pass
+elif c:
+    if d: pass
+else:
+    pass
+
+while a:
+    break
+else:
+    pass
+
+for x, y in z:
+    continue
+
+with a as b, c as (d, e):
+    pass
+
+with (a as b, c):
+    pass
+
+try:
+    pass
+except E as e:
+    pass
+except (F, G):
+    pass
+except H, I:
+    pass
+except:
+    pass
+else:
+    pass
+finally:
+    pass
+
+try:
+    pass
+except* E:
+    pass
+
+try:
+    pass
+finally:
+    pass
+"""
+
 
 def compare(source: str) -> None:
     """Assert that the transformer gives the tree `ast.parse` gives, positions included."""
@@ -68,3 +170,7 @@ def positions(tree: ast.AST) -> list[tuple[str, tuple[object, ...]]]:
 
 def test_expressions_give_the_tree_of_cpython() -> None:
     compare(EXPRESSIONS)
+
+
+def test_statements_give_the_tree_of_cpython() -> None:
+    compare(STATEMENTS)
