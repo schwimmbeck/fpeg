@@ -20,6 +20,7 @@ from fpeg._transformer import (
     FIELDS,
     INLINE,
     NOTHING,
+    check_strict,
     function_of,
     is_handler,
     node_convention,
@@ -57,6 +58,8 @@ def _make_plan(
 
     `fpeg._fpeg.walk_plan` asks for it once per class and grammar.
     """
+    if getattr(cls, "__fpeg_strict__", False):
+        check_strict(cls, {name for name, _, _ in kinds})
     plan: dict[str, _Convention] = {}
     for name, token, fields in kinds:
         if not token and name not in plan and is_handler(cls, name):
@@ -140,11 +143,17 @@ class Interpreter:
     A token gives what the method named like its terminal returns, else the value of the
     terminal's builder (`=>` in the grammar), else itself. The builders of rules are not applied.
 
-    The walk recurses in Python, so a tree nested deeper than Python's recursion limit allows
-    ends it with `RecursionError`. A `Transformer` does not recurse.
+    `class I(Interpreter, strict=True)` makes every public method of `I` name a rule or terminal
+    of the grammar it meets. The walk recurses in Python, so a tree nested deeper than Python's
+    recursion limit allows ends it with `RecursionError`. A `Transformer` does not recurse.
     """
 
+    __fpeg_strict__: ClassVar[bool] = False
     __fpeg_reserved__: ClassVar[frozenset[str]]
+
+    def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.__fpeg_strict__ = strict
 
     def visit(self, item: Any) -> Any:
         """Return what the method of a node or token returns, or anything else as it is.

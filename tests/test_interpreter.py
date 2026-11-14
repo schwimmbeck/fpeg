@@ -178,6 +178,20 @@ def test_a_signature_that_fits_no_convention_fails_with_the_fields_of_the_node()
         Decorated().visit(parse("x = 1;"))
 
 
+def test_strict_makes_every_public_method_name_a_rule_or_terminal() -> None:
+    class Typo(fpeg.Interpreter, strict=True):
+        def asign(self, node: fpeg.Tree) -> None:
+            pass
+
+        def helper_(self) -> None:
+            pass
+
+    with pytest.raises(
+        TypeError, match=r"Typo\.asign names no rule or terminal.*did you mean assign"
+    ):
+        Typo().visit(parse("x = 1;"))
+
+
 def test_a_rule_named_like_a_method_of_the_base_class_is_no_handler() -> None:
     visits = fpeg.Grammar("start: visit\nvisit: NAME\nNAME: [a-z]+")
     assert fpeg.Interpreter().visit(visits.parse("a")) == [["a"]]
