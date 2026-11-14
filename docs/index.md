@@ -57,6 +57,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 
 ## Guides
 
+- [Operator precedence](guide/operator-precedence.md): expressions with a precedence block, and a calculator that agrees with Python.
 - [Performance](guide/performance.md): seeing where a parse spends its work, and what to change in a grammar.
 
 ## Reference
@@ -74,6 +75,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 roadmap
 tutorial/first-grammar
 tutorial/transformer
+guide/operator-precedence
 guide/performance
 reference/grammar
 reference/semantics
