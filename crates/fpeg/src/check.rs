@@ -169,9 +169,7 @@ fn unused(grammar: &Grammar, bodies: &[Body<'_>], found: &mut Vec<Diagnostic>) {
         let name = flag.text.as_str();
         let message = match (uses.set.contains(name), uses.tested.contains(name)) {
             (true, true) => continue,
-            (true, false) => {
-                format!("the flag {name} is never tested with %if, so setting it changes nothing")
-            }
+            (true, false) => format!("the flag {name} is set with %on and never tested with %if"),
             (false, true) => format!(
                 "the flag {name} is never set with %on, so every test of it gives the same answer"
             ),
