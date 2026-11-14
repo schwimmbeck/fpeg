@@ -373,6 +373,8 @@ fn attempt(
             kind: ParseErrorKind::Limit(limit),
         }),
         Err(Stop::NoMatch) => {
+            // The second run holds its own memory, so the first gives its back.
+            drop(machine);
             let expected = match farthest {
                 Some(at) => {
                     let mut again = Machine::new(program, input, limits, Some(at)).budgeted(budget);

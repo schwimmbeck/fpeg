@@ -40,7 +40,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 ## M5 Optimizer
 
 - Optimization passes, each with a switch and a benchmark that shows its effect.
-- Guards that bound the time a parse can take on any input.
+- Guards that bound the time and the memory a parse can take on any input.
 
 ## M6 Context-sensitive syntax
 

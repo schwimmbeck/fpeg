@@ -7,8 +7,9 @@ use fpeg::builder::{
     GrammarBuilder, any, choice, def, empty, field, lit, many, on, opt, r, r_args,
 };
 use fpeg::{
-    Class, ClassItem, DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH,
-    Memo, Options, ParseErrorKind, Parser, Passes, Reference,
+    Class, ClassItem, DEFAULT_MAX_MEMORY_BYTES, DEFAULT_MEMORY_BYTES_PER_INPUT_BYTE,
+    DEFAULT_MIN_MEMORY_BYTES, DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits,
+    MAX_EXPRESSION_DEPTH, Memo, Options, ParseErrorKind, Parser, Passes, Reference,
 };
 
 /// A stack too small for printing that recursed once per level of a deep tree, with room for
@@ -409,26 +410,69 @@ fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
     }
 }
 
+/// A grammar whose tree doubles with each level, on an empty input: each rule matches the one
+/// below it twice, at one position.
+fn doubling(levels: usize) -> Grammar {
+    let mut text = format!("start: x{levels}\nx0: ()\n");
+    for level in 1..=levels {
+        text += &format!("x{level}: x{} x{}\n", level - 1, level - 1);
+    }
+    Grammar::from_text(&text).expect("the grammar reads")
+}
+
+#[test]
+fn a_parse_holds_no_more_memory_than_its_limit() {
+    // Remembering nothing, the machine builds every node of the tree. Remembering what each
+    // rule tries twice, it shares them, and the tree that repeats them is refused before it
+    // is laid out.
+    let small = Limits {
+        max_memory_bytes: Some(1 << 20),
+        ..Limits::default()
+    };
+    for memo in [Memo::Off, Memo::Grammar] {
+        let options = Options {
+            memo,
+            ..Options::default()
+        };
+        let parser =
+            |levels| Parser::with_options(&doubling(levels), &options).expect("it compiles");
+        assert!(parser(16).parse("", "start").is_ok(), "{memo:?}");
+        let error = parser(16)
+            .parse_with("", "start", small)
+            .expect_err("too large");
+        assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Memory), "{memo:?}");
+        // The default for a short input stops at 64 MiB what would take gigabytes.
+        let error = parser(24).parse("", "start").expect_err("too large");
+        assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Memory), "{memo:?}");
+    }
+}
+
+#[test]
+fn the_default_memory_grows_with_the_input_between_its_bounds() {
+    let limits = Limits::default();
+    assert_eq!(limits.memory_bytes(0), DEFAULT_MIN_MEMORY_BYTES);
+    let megabyte = 1 << 20;
+    assert_eq!(
+        limits.memory_bytes(megabyte),
+        DEFAULT_MEMORY_BYTES_PER_INPUT_BYTE * megabyte as u64
+    );
+    assert_eq!(limits.memory_bytes(usize::MAX), DEFAULT_MAX_MEMORY_BYTES);
+    let given = Limits {
+        max_memory_bytes: Some(5),
+        ..limits
+    };
+    assert_eq!(given.memory_bytes(megabyte), 5);
+}
+
 #[test]
 fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
-    // Every rule matches the one before it twice, at one position, since nothing is consumed.
-    // The second match is the remembered first, so each level takes a few steps and doubles
-    // the tree.
-    let doubling = |levels: usize| {
-        let mut text = format!("start: x{levels}\nx0: ()\n");
-        for level in 1..=levels {
-            text += &format!("x{level}: x{} x{}\n", level - 1, level - 1);
-        }
-        let grammar = Grammar::from_text(&text).expect("the grammar reads");
-        Parser::with_options(
-            &grammar,
-            &Options {
-                memo: Memo::All,
-                ..Options::default()
-            },
-        )
-        .expect("it compiles")
+    // The second match of each rule is the remembered first, so each level takes a few steps
+    // and doubles the tree.
+    let options = Options {
+        memo: Memo::All,
+        ..Options::default()
     };
+    let doubling = |levels| Parser::with_options(&doubling(levels), &options).expect("it compiles");
     let tree = doubling(10).parse("", "start").expect("the input parses");
     assert_eq!(tree.len(), 1 << 11);
     // An entry that repeats a shared node counts as the steps it would have taken to make it

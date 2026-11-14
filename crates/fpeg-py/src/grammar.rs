@@ -258,7 +258,8 @@ impl Grammar {
 
     /// Parse the whole text from the rule `start` and return its one visible item at the top:
     /// a `Tree` for a node, a `Token` for a token. Raises `ParseError` when the text does not
-    /// match, and `LimitError` when the parse takes more steps or nests deeper than allowed.
+    /// match, and `LimitError` when the parse takes more steps, nests deeper or needs more memory
+    /// than allowed.
     #[pyo3(signature = (text, start = "start", *, max_steps = None, max_depth = None))]
     fn parse(
         &self,
@@ -287,6 +288,7 @@ impl Grammar {
         let limits = Limits {
             max_steps: max_steps.unwrap_or(DEFAULT_MAX_STEPS),
             max_depth: max_depth.unwrap_or(DEFAULT_MAX_DEPTH),
+            ..Limits::default()
         };
         let result = if source.len() >= DETACH_MIN_BYTES {
             py.detach(|| core.parser.parse_with(&source, start, limits))

@@ -20,7 +20,7 @@ create_exception!(
     fpeg,
     LimitError,
     ParseError,
-    "A parse stopped at a limit on its depth, its steps or the size of its input."
+    "A parse stopped at a limit on its depth, its steps, its memory or the size of its input."
 );
 create_exception!(
     fpeg,
@@ -188,6 +188,8 @@ pub fn parse_error(py: Python<'_>, source: &str, error: &fpeg::ParseError) -> Py
                 Limit::Depth => "depth",
                 Limit::Steps => "steps",
                 Limit::InputSize => "input size",
+                Limit::Memory => "memory",
+                _ => "limit",
             };
             (LimitError::new_err(text), Some(name))
         }

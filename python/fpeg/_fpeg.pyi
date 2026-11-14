@@ -86,7 +86,7 @@ class ParseError(ValueError):
     label: str | None
 
 class LimitError(ParseError):
-    """A parse stopped at a limit on its depth, its steps or the size of its input."""
+    """A parse stopped at a limit on its depth, its steps, its memory or the size of its input."""
 
     limit: str
 

@@ -17,7 +17,7 @@
 //! further.
 
 use std::collections::{BTreeSet, HashMap};
-use std::hash::{BuildHasher, DefaultHasher, Hasher, RandomState};
+use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher, RandomState};
 use std::sync::Arc;
 
 use super::profile::{Profile, Profiler};
@@ -232,6 +232,66 @@ struct SkipCache {
     end: u32,
 }
 
+/// The room a vector of the machine takes when it first grows, in elements.
+const FIRST_ROOM: usize = 16;
+
+/// The memory a parse holds and may hold, in bytes: the room of the machine's vectors and
+/// tables, which never shrink during a parse.
+#[derive(Clone, Copy, Debug)]
+struct Memory {
+    held: u64,
+    limit: u64,
+}
+
+impl Memory {
+    /// Make room for `more` elements in `vec` as it would grow by itself, doubling, unless the
+    /// room it gains takes the parse past its limit.
+    fn room<T>(&mut self, vec: &mut Vec<T>, more: usize) -> Result<(), Stop> {
+        if vec.capacity() - vec.len() >= more {
+            return Ok(());
+        }
+        self.grow(vec, more)
+    }
+
+    #[cold]
+    fn grow<T>(&mut self, vec: &mut Vec<T>, more: usize) -> Result<(), Stop> {
+        let before = vec.capacity();
+        let wanted = (vec.len() + more).max(before * 2).max(FIRST_ROOM);
+        self.take(((wanted - before) * size_of::<T>()) as u64)?;
+        vec.reserve_exact(wanted - vec.len());
+        // The allocator may give more room than asked for, which counts too.
+        self.held += ((vec.capacity() - wanted) * size_of::<T>()) as u64;
+        Ok(())
+    }
+
+    /// Make room for one more entry in a table, which doubles its buckets of an entry and a
+    /// byte of control each when it is full.
+    fn room_in<K: Hash + Eq, V, S: BuildHasher>(
+        &mut self,
+        table: &mut HashMap<K, V, S>,
+    ) -> Result<(), Stop> {
+        if table.len() < table.capacity() {
+            return Ok(());
+        }
+        let bucket = (size_of::<(K, V)>() + 1) as u64;
+        let before = table.capacity() as u64;
+        self.take((before.max(FIRST_ROOM as u64) * 2) * bucket)?;
+        table.reserve(1);
+        Ok(())
+    }
+
+    /// Count `bytes` more, unless they take the parse past its limit.
+    fn take(&mut self, bytes: u64) -> Result<(), Stop> {
+        match self.held.saturating_add(bytes) {
+            held if held <= self.limit => {
+                self.held = held;
+                Ok(())
+            }
+            _ => Err(Stop::Limit(Limit::Memory)),
+        }
+    }
+}
+
 /// A match kept for later: where it ended and the items it left, a range of the items kept.
 #[derive(Clone, Copy, Debug)]
 struct Match {
@@ -370,6 +430,7 @@ pub(crate) struct Machine<'p, 'i> {
     limits: Limits,
     /// The steps the run may take, at most those of the limit.
     budget: u64,
+    memory: Memory,
     /// The farthest position a failure was recorded at.
     farthest: Option<u32>,
     /// In diagnose mode, the farthest failure position of the run before, and what failed there.
@@ -420,6 +481,10 @@ impl<'p, 'i> Machine<'p, 'i> {
             steps: 0,
             limits,
             budget: limits.max_steps,
+            memory: Memory {
+                held: 0,
+                limit: limits.memory_bytes(input.len()),
+            },
             farthest: None,
             diagnose: diagnose.map(|at| (at, BTreeSet::new())),
             profiler: None,
@@ -571,7 +636,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.test(fits)?;
                 }
                 Inst::SeedOpen => {
-                    self.stack.push(Entry::Loop);
+                    self.entry(Entry::Loop)?;
+                    self.memory.room(&mut self.loops, 1)?;
                     self.loops.push(Seeded {
                         items: self.items.len() as u32,
                         seed: None,
@@ -587,6 +653,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     if let Some(seed) = seed {
                         let items = self.seeds.get(seed.range()).unwrap_or_default();
                         self.steps += items.len() as u64;
+                        self.memory.room(&mut self.items, items.len())?;
                         self.items.extend_from_slice(items);
                     }
                     self.pc += 1;
@@ -605,6 +672,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.stack.pop();
                     if let Some(seed) = self.loops.pop().and_then(|state| state.seed) {
                         let items = self.seeds.get(seed.range()).unwrap_or_default();
+                        self.memory.room(&mut self.items, items.len())?;
                         self.items.extend_from_slice(items);
                         self.seeds.truncate(seed.first as usize);
                     }
@@ -614,17 +682,17 @@ impl<'p, 'i> Machine<'p, 'i> {
                     alt,
                     saved: self.saved(),
                     cut: false,
-                }),
+                })?,
                 Inst::LabelChoice(alt) => self.push(Entry::Label {
                     alt,
                     saved: self.saved(),
-                }),
+                })?,
                 Inst::PredChoice(alt) => {
                     self.push(Entry::Predicate {
                         alt,
                         saved: self.saved(),
                         quiet: self.quiet,
-                    });
+                    })?;
                     self.quiet += 1;
                 }
                 Inst::Commit(target) => {
@@ -657,7 +725,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         need,
                         left,
                         cut: false,
-                    });
+                    })?;
                 }
                 Inst::RepNext(target) => match self.stack.last_mut() {
                     Some(Entry::Repetition {
@@ -720,13 +788,13 @@ impl<'p, 'i> Machine<'p, 'i> {
                         let (stack, nodes) = (self.stack.len(), self.nodes.len());
                         profiler.entered(rule, self.pos, self.steps, stack, nodes);
                     }
-                    self.stack.push(Entry::Call { ret: self.pc + 1 });
+                    self.entry(Entry::Call { ret: self.pc + 1 })?;
                     self.pc = target;
                 }
                 Inst::MemoCall(rule) => self.call_frame(rule, false)?,
                 Inst::LrCall(rule) => self.call_frame(rule, true)?,
                 Inst::Sub(target) => {
-                    self.stack.push(Entry::Sub { ret: self.pc + 1 });
+                    self.entry(Entry::Sub { ret: self.pc + 1 })?;
                     self.pc = target;
                 }
                 Inst::Skip => match (self.program.skip_class, self.program.skip) {
@@ -747,7 +815,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                             profiler.skip(self.steps);
                         }
                         self.skip_start = self.pos;
-                        self.stack.push(Entry::Sub { ret: self.pc + 1 });
+                        self.entry(Entry::Sub { ret: self.pc + 1 })?;
                         self.pc = skip;
                     }
                     (None, None) => self.pc += 1,
@@ -799,6 +867,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::TokenClose { hidden } => {
                     if let Some(token) = self.token.take() {
+                        self.memory.room(&mut self.items, 1)?;
                         self.items.push(Item {
                             value: token.kind.0,
                             start: token.start,
@@ -812,7 +881,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Inst::Open => self.push(Entry::Open {
                     pos: self.pos,
                     items: self.items.len() as u32,
-                }),
+                })?,
                 Inst::CloseNode(kind) => {
                     if let Some(Entry::Open { pos, items }) = self.stack.pop() {
                         self.close_node(kind, pos, items as usize)?;
@@ -848,7 +917,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.test(!word)?;
                 }
                 Inst::Mark => {
-                    self.stack.push(Entry::Mark { pos: self.pos });
+                    self.entry(Entry::Mark { pos: self.pos })?;
                     self.pc += 1;
                 }
                 Inst::Unreserved => {
@@ -864,12 +933,12 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.test(!reserved)?;
                 }
                 Inst::FlagOn(flag) => {
-                    self.stack.push(Entry::Flags { saved: self.flags });
+                    self.entry(Entry::Flags { saved: self.flags })?;
                     self.flags |= 1 << flag;
                     self.pc += 1;
                 }
                 Inst::FlagOff(flag) => {
-                    self.stack.push(Entry::Flags { saved: self.flags });
+                    self.entry(Entry::Flags { saved: self.flags })?;
                     self.flags &= !(1 << flag);
                     self.pc += 1;
                 }
@@ -942,9 +1011,17 @@ impl<'p, 'i> Machine<'p, 'i> {
     }
 
     /// Push an entry and go on.
-    fn push(&mut self, entry: Entry) {
-        self.stack.push(entry);
+    fn push(&mut self, entry: Entry) -> Result<(), Stop> {
+        self.entry(entry)?;
         self.pc += 1;
+        Ok(())
+    }
+
+    /// Push an entry onto the stack.
+    fn entry(&mut self, entry: Entry) -> Result<(), Stop> {
+        self.memory.room(&mut self.stack, 1)?;
+        self.stack.push(entry);
+        Ok(())
     }
 
     /// What an entry pushed now gives back when it catches a failure.
@@ -973,6 +1050,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Ok(first) = u32::try_from(first) else {
             return Err(Stop::Limit(Limit::Steps));
         };
+        self.memory.room(&mut self.seeds, made.len())?;
         self.seeds.extend_from_slice(made);
         state.seed = Some(Match {
             end: self.pos,
@@ -1024,6 +1102,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             self.steps += u64::from(found.count);
             self.shared = true;
             let items = self.memo_items.get(found.range()).unwrap_or_default();
+            self.memory.room(&mut self.items, items.len())?;
             self.items.extend_from_slice(items);
             self.pos = found.end;
             self.pc += 1;
@@ -1046,6 +1125,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             self.newest_recursion = index;
             self.serial += 1;
         }
+        self.memory.room(&mut self.frames, 1)?;
         self.frames.push(Frame {
             ret: self.pc + 1,
             key,
@@ -1058,7 +1138,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             let (stack, nodes) = (self.stack.len(), self.nodes.len());
             profiler.entered(rule, self.pos, self.steps, stack, nodes);
         }
-        self.stack.push(Entry::Frame);
+        self.entry(Entry::Frame)?;
         self.pc = info.pc;
         Ok(())
     }
@@ -1100,6 +1180,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.steps += u64::from(seed.count);
         self.shared |= seed.end == self.pos && seed.count > 0;
         let items = self.seeds.get(seed.range()).unwrap_or_default();
+        self.memory.room(&mut self.items, items.len())?;
         self.items.extend_from_slice(items);
         self.pos = seed.end;
         self.pc += 1;
@@ -1129,7 +1210,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         {
             match recursion.seed {
                 Some(seed) if self.pos <= seed.end => {
-                    self.back_to_seed(frame, seed, recursion.seed_nodes);
+                    self.back_to_seed(frame, seed, recursion.seed_nodes)?;
                 }
                 _ => return self.grow(frame, recursion),
             }
@@ -1156,6 +1237,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         else {
             return Err(Stop::Limit(Limit::Steps));
         };
+        self.memory.room(&mut self.seeds, made.len())?;
         self.seeds.extend_from_slice(made);
         let seed = Match {
             end: self.pos,
@@ -1178,21 +1260,23 @@ impl<'p, 'i> Machine<'p, 'i> {
                 ..recursion
             });
         }
-        self.stack.push(Entry::Frame);
+        self.entry(Entry::Frame)?;
         self.pc = info.pc;
         Ok(())
     }
 
     /// Make the seed of a frame the result of its call: the items and the arena as they stood
     /// after the seed, whose nodes lie below everything a later pass made.
-    fn back_to_seed(&mut self, frame: Frame, seed: Match, seed_nodes: u32) {
+    fn back_to_seed(&mut self, frame: Frame, seed: Match, seed_nodes: u32) -> Result<(), Stop> {
         self.restore(Saved {
             pos: seed.end,
             items: frame.items,
             nodes: seed_nodes,
         });
         let items = self.seeds.get(seed.range()).unwrap_or_default();
+        self.memory.room(&mut self.items, items.len())?;
         self.items.extend_from_slice(items);
+        Ok(())
     }
 
     /// Take the newest frame off: out of the table of left recursion, with its seed. Returns
@@ -1242,6 +1326,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             if made.iter().any(|item| item.flags & TOKEN == 0) {
                 self.protected = nodes;
             }
+            self.memory.room(&mut self.memo_items, made.len())?;
             self.memo_items.extend_from_slice(made);
             result = Some(Match {
                 end: self.pos,
@@ -1250,6 +1335,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             });
         }
         let made = self.serial;
+        self.memory.room_in(&mut self.memo)?;
         self.memo.insert(frame.key, Stored { result, made });
         Ok(())
     }
@@ -1301,7 +1387,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     {
                         // A pass that fails leaves the seed as the result of the call.
                         self.end_failed_token(Some(self.stack.len()));
-                        self.back_to_seed(frame, seed, recursion.seed_nodes);
+                        self.back_to_seed(frame, seed, recursion.seed_nodes)?;
                         self.end_frame(true)?;
                         self.pc = frame.ret;
                         return Ok(());
@@ -1451,6 +1537,8 @@ impl<'p, 'i> Machine<'p, 'i> {
         ) else {
             return Err(Stop::Limit(Limit::Steps));
         };
+        self.memory.room(&mut self.children, collected.len())?;
+        self.memory.room(&mut self.nodes, 1)?;
         self.children.extend_from_slice(collected);
         self.nodes.push(Node {
             kind,
@@ -1458,6 +1546,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             count: collected.len() as u32,
         });
         self.items.truncate(height);
+        self.memory.room(&mut self.items, 1)?;
         self.items.push(Item {
             value: index,
             start,
@@ -1500,7 +1589,11 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// What the arena holds, the steps of the parse made. Any other tree has at most the
     /// arena's entries.
     pub fn tree(&self) -> Result<Tree, Limit> {
+        // What the layout holds besides the machine's own vectors counts as they do.
+        let mut memory = self.memory;
         let entries = if self.shared {
+            let sizes = self.nodes.len() * size_of::<u64>();
+            memory.take(sizes as u64).map_err(|_| Limit::Memory)?;
             let left = self.limits.max_steps.saturating_sub(self.steps);
             let entries = self.tree_entries();
             let repeats = entries.saturating_sub(self.arena_entries());
@@ -1511,12 +1604,15 @@ impl<'p, 'i> Machine<'p, 'i> {
         } else {
             self.arena_entries()
         };
+        let columns = entries.saturating_mul(crate::tree::ENTRY_BYTES);
+        memory.take(columns).map_err(|_| Limit::Memory)?;
         let mut tree = Tree::empty(Arc::clone(&self.program.names));
         tree.reserve(entries as usize);
         // The nodes being laid out, with the index of the next child of each and the length of
         // the tree when it started. An explicit stack, since trees can be as deep as long.
         let mut open: Vec<(Item, u32, usize)> = Vec::new();
         for &top in &self.items {
+            memory.room(&mut open, 1).map_err(|_| Limit::Memory)?;
             open.push((top, 0, tree.len()));
             while let Some(&(item, next, started)) = open.last() {
                 if item.flags & TOKEN != 0 {
@@ -1534,6 +1630,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         last.1 += 1;
                     }
                     if let Some(&child) = self.children.get((node.first + next) as usize) {
+                        memory.room(&mut open, 1).map_err(|_| Limit::Memory)?;
                         open.push((child, 0, tree.len()));
                     }
                 } else {

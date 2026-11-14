@@ -83,6 +83,10 @@ pub struct Names {
 const TOKEN: u8 = 1;
 const HIDDEN: u8 = 2;
 
+/// The bytes an entry takes in the columns of a tree.
+pub(crate) const ENTRY_BYTES: u64 =
+    (size_of::<KindId>() + size_of::<u8>() + 3 * size_of::<u32>() + size_of::<FieldId>()) as u64;
+
 /// A parse tree. See the module documentation for the layout.
 #[derive(Clone, Debug)]
 pub struct Tree {

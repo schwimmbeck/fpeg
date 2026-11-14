@@ -38,7 +38,11 @@ pub use grammar::{
     Recover, Rule, RuleBody, RuleKind, Span, Text, ValueBuilder,
 };
 pub use lines::{LineCursor, LineIndex, Position};
-pub use parse::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limit, Limits, ParseError, ParseErrorKind};
+pub use parse::{
+    DEFAULT_MAX_DEPTH, DEFAULT_MAX_MEMORY_BYTES, DEFAULT_MAX_STEPS,
+    DEFAULT_MEMORY_BYTES_PER_INPUT_BYTE, DEFAULT_MIN_MEMORY_BYTES, Limit, Limits, ParseError,
+    ParseErrorKind,
+};
 #[cfg(feature = "reference")]
 pub use reference::Reference;
 pub use tree::{FieldCount, FieldId, Kind, KindId, Names, NodeRef, Tree};

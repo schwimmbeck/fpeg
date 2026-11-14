@@ -140,4 +140,4 @@ A parse that does not succeed fails at the *farthest failure position*, with an 
 
 ## Limits
 
-An implementation stops a parse that exceeds a limit on time, recursion depth or input size, and reports which limit it hit. A limit never changes the result of a parse that stays within it.
+An implementation stops a parse that exceeds a limit on time, recursion depth, memory or input size, and reports which limit it hit. A limit never changes the result of a parse that stays within it.
