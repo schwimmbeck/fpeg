@@ -9,6 +9,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | `harness.py` | the shared part of the pyperf scripts |
 | `bench_json.py` | JSON: fpeg, `json.loads`, Lark and pe on a generated 2.5 MB file |
 | `bench_binding.py` | fpeg's Python binding apart from parsing: transforms with and without methods, tokens from views, the walks of an Interpreter and a Visitor, many small parses against `csv` |
+| `bench_calculator.py` | a calculator: fpeg, `eval`, Lark and pe on generated lines of arithmetic, each computing the numbers |
 | `bench_python.py` | Python source: CPython, tree-sitter, LibCST and Lark on one real source file |
 | `bench_ord.py` | the first real application: its Lark pipeline from source text to a Python `ast` |
 | `rust/` | Rust with criterion. JSON: fpeg's parsing machine, pest generated, pest_vm and serde_json. Expressions: the machine on a generated expression of a C-like language, by what it remembers |

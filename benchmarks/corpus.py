@@ -8,6 +8,7 @@ Run it as a script to prepare every input.
 
 import hashlib
 import json
+import math
 import random
 import shutil
 import tarfile
@@ -41,6 +42,10 @@ EXPRESSION_BYTES = 100_000
 EXPRESSION_SEED = 4
 # How deep the terms of the expression nest at most.
 EXPRESSION_DEPTH = 6
+# The lines of arithmetic for the calculators, the seed of their content and how deep one nests.
+CALCULATOR_LINES = 2000
+CALCULATOR_SEED = 5
+CALCULATOR_DEPTH = 5
 
 
 @dataclass(frozen=True)
@@ -74,7 +79,12 @@ EXPRESSIONS = Input(
     CORPORA / "expressions.c",
     "9186ae97b00659573f1e161e833ee0a08520218567fb839a2012714f7f326b67",
 )
-INPUTS = (RECORDS_JSON, PYTHON_FILE, EXPRESSIONS)
+CALCULATOR = Input(
+    "calculator.txt",
+    CORPORA / "calculator.txt",
+    "5d776b59a1c5b3b7fc77fe20f6ff65232d51c5dc98e06417896af6cba5862162",
+)
+INPUTS = (RECORDS_JSON, PYTHON_FILE, EXPRESSIONS, CALCULATOR)
 
 
 def sha256(path: Path) -> str:
@@ -148,6 +158,36 @@ def write_expressions(path: Path) -> None:
     write_whole(path, " +\n".join(terms) + "\n")
 
 
+def write_calculator(path: Path) -> None:
+    """Write lines of arithmetic in Python's notation, each of which `eval` gives a finite float."""
+    rng = random.Random(CALCULATOR_SEED)
+
+    def expression(depth: int) -> str:
+        # A line is at least one operation, and no operand nests without end.
+        kind = 5 if depth == 0 else rng.randrange(10) if depth < CALCULATOR_DEPTH else 0
+        if kind < 3:
+            # A decimal point, so that every library computes with floats.
+            return f"{rng.randrange(20)}.{rng.randrange(10)}"
+        if kind == 3:
+            return f"({expression(depth + 1)})"
+        if kind == 4:
+            return f"-{expression(depth + 1)}"
+        operator = rng.choice(["+", "-", "*", "/", "**"])
+        return f"{expression(depth + 1)} {operator} {expression(depth + 1)}"
+
+    lines: list[str] = []
+    while len(lines) < CALCULATOR_LINES:
+        line = expression(0)
+        try:
+            value = eval(line)
+        except (ZeroDivisionError, OverflowError):
+            continue
+        # A negative number to a broken power is complex, which the other libraries need not know.
+        if isinstance(value, float) and math.isfinite(value):
+            lines.append(line)
+    write_whole(path, "\n".join(lines) + "\n")
+
+
 def write_whole(path: Path, text: str) -> None:
     """Write a file beside its target and rename it, so an interrupted run leaves no part of it."""
     partial = path.with_suffix(".partial")
@@ -194,6 +234,9 @@ def prepare() -> None:
     if not matches(EXPRESSIONS.path, EXPRESSIONS.sha256):
         write_expressions(EXPRESSIONS.path)
         check(EXPRESSIONS.path, EXPRESSIONS.sha256)
+    if not matches(CALCULATOR.path, CALCULATOR.sha256):
+        write_calculator(CALCULATOR.path)
+        check(CALCULATOR.path, CALCULATOR.sha256)
     if not all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items()):
         shutil.rmtree(ORD_PACKAGE, ignore_errors=True)
         fetch_ord_package(ORD_PACKAGE)
