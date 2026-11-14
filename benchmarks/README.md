@@ -8,7 +8,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | `corpus.py` | generates or downloads the inputs into `corpora/` and checks them against pinned hashes |
 | `harness.py` | the shared part of the pyperf scripts |
 | `bench_json.py` | JSON: fpeg, `json.loads`, Lark and pe on a generated 2.5 MB file |
-| `bench_binding.py` | fpeg's Python binding apart from parsing: transforms with and without methods, tokens from views, many small parses against `csv` |
+| `bench_binding.py` | fpeg's Python binding apart from parsing: transforms with and without methods, tokens from views, the walks of an Interpreter and a Visitor, many small parses against `csv` |
 | `bench_python.py` | Python source: CPython, tree-sitter, LibCST and Lark on one real source file |
 | `bench_ord.py` | the first real application: its Lark pipeline from source text to a Python `ast` |
 | `rust/` | JSON in Rust with criterion: fpeg's parsing machine, pest generated, pest_vm and serde_json |

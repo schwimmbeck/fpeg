@@ -9,8 +9,11 @@ method, which is the scan alone, and with a trivial method on every node, taking
 as a list or as arguments, then with members by field. A trivial method on every token taking
 the token, against one taking nothing, gives what making a token costs. Both return `Discard`,
 which removes every token and so rebuilds every node, alike in both. A parse with a walk over all
-its views, against the parse alone, gives what views cost. Beside them: many small CSV parses one
-call each against `csv.reader`. Run through ``run.py``, or directly with pyperf options.
+its views, against the parse alone, gives what views cost. The walks in Python follow: an
+Interpreter and a Visitor over the same tree, each without a method and with a trivial method on
+every node, which give what a visited node and a called method cost there. Beside them: many
+small CSV parses one call each against `csv.reader`. Run through ``run.py``, or directly with
+pyperf options.
 """
 
 import csv
@@ -114,6 +117,42 @@ class TokenCalls(fpeg.Transformer):
         return fpeg.Discard
 
 
+class InterpretNodes(fpeg.Interpreter):
+    """A method on every node that visits its children, as a node without a method does."""
+
+    def object(self, node: fpeg.Tree) -> None:
+        """Visit the members."""
+        self.visit_children(node)
+
+    def member(self, node: fpeg.Tree) -> None:
+        """Visit the key and the value."""
+        self.visit_children(node)
+
+    def array(self, node: fpeg.Tree) -> None:
+        """Visit the items."""
+        self.visit_children(node)
+
+    def value(self, node: fpeg.Tree) -> None:
+        """Visit what the value holds."""
+        self.visit_children(node)
+
+
+class VisitNodes(fpeg.Visitor):
+    """A trivial method on every node, taking the node."""
+
+    def object(self, node: fpeg.Tree) -> None:
+        """Do nothing."""
+
+    def member(self, node: fpeg.Tree) -> None:
+        """Do nothing."""
+
+    def array(self, node: fpeg.Tree) -> None:
+        """Do nothing."""
+
+    def value(self, node: fpeg.Tree) -> None:
+        """Do nothing."""
+
+
 class CsvRows(fpeg.Transformer):
     """Records as lists of strings, as `csv.reader` gives them."""
 
@@ -140,7 +179,7 @@ def walk_views(grammar: fpeg.Grammar, text: str) -> int:
 
 
 def add_transforms(runner: pyperf.Runner, text: str) -> None:
-    """Register the transforms of a tree of JSON records, and its parse with and without views."""
+    """Register the transforms and walks of a tree of JSON records, and its parse."""
     grammar = json_without_builders()
     records = json.dumps(json.loads(text)[:JSON_RECORDS])
 
@@ -159,6 +198,20 @@ def add_transforms(runner: pyperf.Runner, text: str) -> None:
         runner, "transform, a method on every token, taking nothing", transform(TokenCalls())
     )
     harness.add(runner, "transform, a method on every token, taking it", transform(Tokens()))
+
+    def walk(walker: fpeg.Interpreter | fpeg.Visitor):
+        def setup():
+            tree = grammar.parse(records)
+            # The views of the tree are made once, so the rows time the walk alone.
+            walker.visit(tree)
+            return lambda: walker.visit(tree)
+
+        return setup
+
+    harness.add(runner, "interpreter, no method", walk(fpeg.Interpreter()))
+    harness.add(runner, "interpreter, a method on every node", walk(InterpretNodes()))
+    harness.add(runner, "visitor, no method", walk(fpeg.Visitor()))
+    harness.add(runner, "visitor, a method on every node", walk(VisitNodes()))
     harness.add(runner, "parse", lambda: partial(grammar.parse, records))
     harness.add(
         runner, "parse, then every view and token", lambda: partial(walk_views, grammar, records)
