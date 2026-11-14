@@ -281,7 +281,7 @@ assert names.visit(tree) is tree
 assert names.read - names.written == {"z"}
 ```
 
-Tokens have no methods in a `Visitor`, and a method named like a terminal is an error. Notes on exceptions and `strict=True` are as for an `Interpreter`. The walk does not recurse, so a tree may nest as deeply as it likes.
+Tokens have no methods in a `Visitor`, and a method named like a terminal is an error. Notes on exceptions, `strict=True` and the refusal of `None` and of a list are as for an `Interpreter`. The walk does not recurse, so a tree may nest as deeply as it likes.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Visitor

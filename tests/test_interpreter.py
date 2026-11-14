@@ -179,6 +179,21 @@ def test_an_error_gets_one_note_from_the_innermost_method() -> None:
     (note,) = failed.value.__notes__
     assert note.endswith("Tokens.NUMBER, for the token NUMBER at line 1, column 5")
 
+    class Defaults(fpeg.Interpreter):
+        def start(self, node: fpeg.Tree) -> list[Any]:
+            return [self.visit(child) for child in node.children]
+
+        def __default__(self, node: fpeg.Tree) -> Any:
+            raise ValueError(node.data)
+
+    # Below a method that visits the node, and at the top.
+    tree = parse("x = 7;")
+    for top in [tree, tree.children[0]]:
+        with pytest.raises(ValueError) as defaulted:
+            Defaults().visit(top)
+        (note,) = defaulted.value.__notes__
+        assert note.endswith("Defaults.__default__, for the node assign at line 1, column 1")
+
 
 def test_a_signature_that_fits_no_convention_fails_with_the_fields_of_the_node() -> None:
     class Wrong(fpeg.Interpreter):
@@ -195,6 +210,14 @@ def test_a_signature_that_fits_no_convention_fails_with_the_fields_of_the_node()
 
     with pytest.raises(TypeError, match=r"Decorated\.assign has v_args"):
         Decorated().visit(parse("x = 1;"))
+
+    class Terminal(fpeg.Interpreter):
+        @fpeg.v_args(inline=True)
+        def NUMBER(self, token: fpeg.Token) -> int:
+            return int(token)
+
+    with pytest.raises(TypeError, match=r"Terminal\.NUMBER has v_args"):
+        Terminal().visit(parse("x = 1;"))
 
 
 def test_strict_makes_every_public_method_name_a_rule_or_terminal() -> None:

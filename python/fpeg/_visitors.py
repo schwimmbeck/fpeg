@@ -25,6 +25,7 @@ from fpeg._transformer import (
     is_handler,
     node_convention,
     reserved_names,
+    static_attribute,
     token_convention,
 )
 
@@ -55,12 +56,23 @@ def _kept(cls: type, attribute: str) -> dict[str, Any]:
     return kept
 
 
-def _convention(cls: type, name: str, fields: dict[str, bool] | None) -> _Convention:
+def _refuse_v_args(cls: type, name: str) -> None:
     _, options = function_of(cls, name)
     if options:
         raise TypeError(
             f"{cls.__qualname__}.{name} has v_args, which says how a Transformer calls a method"
         )
+
+
+def _refuse(item: Any) -> None:
+    """Refuse an absent optional field and a field of several items, visited by mistake."""
+    if item is None or isinstance(item, list):
+        what = "None, as an absent optional field is" if item is None else "a list"
+        raise TypeError(f"visit takes a node or a token, and got {what}")
+
+
+def _convention(cls: type, name: str, fields: dict[str, bool] | None) -> _Convention:
+    _refuse_v_args(cls, name)
     return node_convention(cls, name, fields)
 
 
@@ -103,7 +115,10 @@ def _token_mode(cls: type, name: Any) -> int | None:
         return None
     by_name = _kept(cls, _TOKENS)
     if name not in by_name:
-        by_name[name] = token_convention(cls, name) if is_handler(cls, name) else None
+        handled = is_handler(cls, name)
+        if handled:
+            _refuse_v_args(cls, name)
+        by_name[name] = token_convention(cls, name) if handled else None
     return by_name[name]
 
 
@@ -187,12 +202,21 @@ class Interpreter(_Walker):
         """
         if isinstance(item, Tree):
             result = _call(self, item)
-            return self.__default__(item) if result is _NO_METHOD else result
+            if result is not _NO_METHOD:
+                return result
+            try:
+                return self.__default__(item)
+            except BaseException as error:
+                cls = type(self)
+                # The base visits the children, whose methods note their own errors.
+                if static_attribute(cls, "__default__") is not vars(Interpreter)["__default__"]:
+                    meta = item.meta
+                    where = f"in {cls.__qualname__}.__default__, for the node {item.data}"
+                    _note(error, where, meta.line, meta.column)
+                raise
         if isinstance(item, Token):
             return self._visit_token(item)
-        if item is None or isinstance(item, list):
-            what = "None, as an absent optional field is" if item is None else "a list"
-            raise TypeError(f"visit takes a node or a token, and got {what}")
+        _refuse(item)
         return item
 
     def visit_children(self, node: Tree) -> list[Any]:
@@ -236,7 +260,11 @@ class Visitor(_Walker):
     """
 
     def visit(self, tree: Any) -> Any:
-        """Call the method of every node, children before their parents, and return the tree."""
+        """Call the method of every node, children before their parents, and return the tree.
+
+        `None` and a list are refused, as an `Interpreter` refuses them.
+        """
+        _refuse(tree)
         if isinstance(tree, Tree):
             for node in tree.iter_subtrees():
                 _call(self, node)
@@ -244,6 +272,7 @@ class Visitor(_Walker):
 
     def visit_topdown(self, tree: Any) -> Any:
         """Call the method of every node, parents before their children, and return the tree."""
+        _refuse(tree)
         if isinstance(tree, Tree):
             for node in tree.iter_subtrees_topdown():
                 _call(self, node)

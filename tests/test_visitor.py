@@ -81,6 +81,12 @@ def test_the_tree_comes_back_as_it_is_whatever_the_methods_return() -> None:
     # A token has no nodes to call methods for.
     token = tree.children[0].children[0]
     assert Returning().visit(token) is token
+    # An absent optional field and a field of several items are no trees.
+    for wrong in [None, [tree]]:
+        with pytest.raises(TypeError, match="visit takes a node or a token"):
+            Returning().visit(wrong)
+        with pytest.raises(TypeError, match="visit takes a node or a token"):
+            Returning().visit_topdown(wrong)
 
 
 def test_a_method_named_like_a_terminal_is_an_error() -> None:
