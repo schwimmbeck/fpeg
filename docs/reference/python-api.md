@@ -251,7 +251,7 @@ A node without a method gives `visit_children(node)`, the list of its visited ch
 
 `visit(None)` is an error, and so is visiting a list: an optional field that is absent is `None`, and a field of several items is a list, so test the one and loop over the other. An exception keeps its type and gets one note, from the innermost method, with where its node stands. `class I(fpeg.Interpreter, strict=True)` makes every public method name a rule or terminal, as for a `Transformer`, and `v_args` is not for an `Interpreter`.
 
-The walk recurses in Python, a few calls deep for every level of the tree. A tree nested deeper than Python's recursion limit allows ends it with `RecursionError`, where a `Transformer` does not recurse and takes a tree of any depth.
+The walk recurses in Python, a few calls deep for every level of the tree, so at Python's default recursion limit it goes about 330 levels down. A tree nested deeper ends it with `RecursionError`, where a `Transformer` does not recurse and takes a tree of any depth. On Python 3.11 a recursion limit raised far above its default can let a deep tree overflow the stack and end the process instead, as Python's documentation warns for any deep recursion.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Interpreter

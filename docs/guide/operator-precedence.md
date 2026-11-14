@@ -1,6 +1,6 @@
 # Operator precedence
 
-`1 + 2 * 3` is 7 and `8 - 4 - 2` is 2: multiplication binds tighter than addition, and subtraction groups to the left. A grammar for expressions has to say both for every operator. This guide shows how a precedence block says it, with a calculator that agrees with Python on every expression.
+`1 + 2 * 3` is 7 and `8 - 4 - 2` is 2: multiplication binds tighter than addition, and subtraction groups to the left. A grammar for expressions has to say both for every operator. This guide shows how a precedence block says it, with a calculator that orders its operators as Python does and computes what Python computes for numbers with a fraction.
 
 ## One rule per level
 

@@ -107,7 +107,7 @@ except fpeg.ParseError as error:
 line 1, column 5: expected NAME
 ```
 
-A cut saves the tries that would follow a failure, so it shortens the parse of an input that is wrong. An input that parses takes the same steps with it and without. And it changes what the grammar accepts wherever a later alternative could have matched, as above. Write a cut where the text before it leaves no other reading, mostly right after a keyword.
+A cut saves the tries that would follow a failure, so it shortens the parse of an input that is wrong. An input that parses takes about the same steps, a couple more for each cut it passes. And it changes what the grammar accepts wherever a later alternative could have matched, as above. Write a cut where the text before it leaves no other reading, mostly right after a keyword.
 
 ## Limits
 
