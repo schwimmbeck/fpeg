@@ -10,9 +10,9 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::program::{Class, Inst, Program, RuleInfo};
+use super::program::{ByteTest, Class, Inst, Program, RuleInfo};
 use super::{Memo, Options, Passes};
-use crate::analysis;
+use crate::analysis::{self, Bytes, Starts};
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{ClassItem, Span};
 use crate::ir::{self, RuleId};
@@ -27,6 +27,7 @@ pub(crate) fn compile(
     if !errors.is_empty() {
         return Err(errors);
     }
+    let facts = analysis::analyze(grammar);
     let mut c = Compiler {
         has_skip: grammar.skip.is_some(),
         code: Vec::new(),
@@ -42,8 +43,10 @@ pub(crate) fn compile(
         cuttable: false,
         free_cuts: HashMap::new(),
         passes: options.passes,
+        starts: options.passes.dispatch.then(|| facts.starts(grammar)),
+        tests: Vec::new(),
+        test_ids: HashMap::new(),
     };
-    let facts = analysis::analyze(grammar);
     let mut rules = Vec::new();
     for (rule, &recursive) in grammar.rules.iter().zip(&facts.left_recursive) {
         rules.push(RuleInfo {
@@ -141,6 +144,7 @@ pub(crate) fn compile(
         code: c.code,
         strings: c.strings,
         classes: c.classes,
+        tests: c.tests,
         bounds: c.bounds,
         rules,
         shared: c.shared_pcs,
@@ -276,7 +280,7 @@ fn unsupported(grammar: &ir::Grammar) -> Vec<Diagnostic> {
     errors
 }
 
-struct Compiler {
+struct Compiler<'f> {
     has_skip: bool,
     code: Vec<Inst>,
     strings: Vec<Box<[u8]>>,
@@ -298,6 +302,10 @@ struct Compiler {
     /// Whether each shared part met so far holds a free cut.
     free_cuts: HashMap<*const ir::Expr, bool>,
     passes: Passes,
+    /// What each expression can start with, where dispatch is on.
+    starts: Option<Starts<'f>>,
+    tests: Vec<ByteTest>,
+    test_ids: HashMap<ByteTest, u32>,
 }
 
 /// The code points of a class, or of a literal of one code point that ignores no case.
@@ -341,7 +349,18 @@ fn span(expr: &ir::Expr, min: u32) -> Option<(ir::CharSet, u32)> {
     }
 }
 
-impl Compiler {
+/// Whether the code of `expr` starts with an instruction that tests a byte, so that a test
+/// before it saves nothing.
+fn immediate(expr: &ir::Expr) -> bool {
+    match expr {
+        ir::Expr::Literal { text, .. } => !text.is_empty(),
+        ir::Expr::Class(_) | ir::Expr::Any => true,
+        ir::Expr::Seq(parts) => parts.first().is_some_and(immediate),
+        _ => false,
+    }
+}
+
+impl Compiler<'_> {
     fn here(&self) -> u32 {
         // The length is checked against u32 once the program is complete.
         self.code.len() as u32
@@ -362,6 +381,7 @@ impl Compiler {
             | Inst::PredChoice(t)
             | Inst::BackCommit(t)
             | Inst::LabelChoice(t)
+            | Inst::Test { target: t, .. }
             | Inst::RepOpen { end: t, .. } => *t = target,
             _ => {}
         }
@@ -590,17 +610,60 @@ impl Compiler {
         }
     }
 
+    /// The test of the next byte before `expr`, if one is worth it: where `expr` cannot
+    /// succeed without consuming input, does not start with every byte or with an instruction
+    /// that tests the byte anyway, and a failure before its first byte is a plain one that
+    /// records nothing. With `pop`, a mismatch pops the entry of the loop the test is in.
+    fn test_for(&mut self, expr: &ir::Expr, pop: bool) -> Option<u32> {
+        let start = self.starts.as_ref()?.of(expr);
+        let worth = !start.nullable && start.bytes != Bytes::ALL && !immediate(expr);
+        if !worth || start.after_skip || !start.plain || start.tokens {
+            return None;
+        }
+        let test = ByteTest {
+            bytes: start.bytes,
+            pop,
+        };
+        let next = self.tests.len() as u32;
+        let id = *self.test_ids.entry(test).or_insert(next);
+        if id == next {
+            self.tests.push(test);
+        }
+        Some(id)
+    }
+
     fn choice(&mut self, alternatives: &[ir::Expr]) {
         let Some((last, rest)) = alternatives.split_last() else {
             self.emit(Inst::Fail);
             return;
         };
+        // A test where an alternative starts with every byte the choice does fails only where
+        // every alternative does, and in a left-recursive level, whose alternatives all start
+        // with the level, only costs.
+        let starts = self.starts.as_ref();
+        let all = starts
+            .map(|s| (alternatives.iter()).fold(Bytes::default(), |u, a| u.union(s.of(a).bytes)));
+        let narrower = |c: &Self, alternative| {
+            (c.starts.as_ref()).is_some_and(|s| Some(s.of(alternative).bytes) != all)
+        };
         let mut commits = Vec::new();
         for alternative in rest {
+            let test = (narrower(self, alternative))
+                .then(|| self.test_for(alternative, false))
+                .flatten()
+                .map(|test| self.emit(Inst::Test { test, target: 0 }));
             let choice = self.emit(Inst::Choice(0));
             self.inside(true, alternative);
             commits.push(self.emit(Inst::Commit(0)));
             self.patch(choice);
+            if let Some(test) = test {
+                self.patch(test);
+            }
+        }
+        if narrower(self, last)
+            && let Some(test) = self.test_for(last, false)
+        {
+            self.emit(Inst::TestFail(test));
         }
         self.cut_scope(last);
         for commit in commits {
@@ -626,18 +689,28 @@ impl Compiler {
             }
             (1, Some(1)) => self.cut_scope(expr),
             (0, Some(1)) => {
+                let test = (self.test_for(expr, false))
+                    .map(|test| self.emit(Inst::Test { test, target: 0 }));
                 let choice = self.emit(Inst::Choice(0));
                 self.inside(true, expr);
                 let commit = self.emit(Inst::Commit(0));
                 self.patch(choice);
                 self.patch(commit);
+                if let Some(test) = test {
+                    self.patch(test);
+                }
             }
             (0, None) => {
                 let choice = self.emit(Inst::Choice(0));
                 let step = self.here();
+                let test = (self.test_for(expr, true))
+                    .map(|test| self.emit(Inst::Test { test, target: 0 }));
                 self.inside(true, expr);
                 self.emit(Inst::LoopCommit(step));
                 self.patch(choice);
+                if let Some(test) = test {
+                    self.patch(test);
+                }
             }
             (min, max) => {
                 self.bounds.push((min, max.unwrap_or(u32::MAX)));

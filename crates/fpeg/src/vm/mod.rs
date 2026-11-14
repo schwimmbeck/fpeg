@@ -48,6 +48,9 @@ pub struct Passes {
     /// Answer a skip from where the last skip started, with its flags, at once, and take a
     /// skip expression that repeats a class as one run, without its routine.
     pub skip: bool,
+    /// Test the next byte before an alternative, an optional expression or a step of a loop,
+    /// and jump past it where it cannot start with that byte.
+    pub dispatch: bool,
 }
 
 impl Passes {
@@ -56,12 +59,14 @@ impl Passes {
         hasher: true,
         span: true,
         skip: true,
+        dispatch: true,
     };
     /// No pass: the plain machine.
     pub const NONE: Passes = Passes {
         hasher: false,
         span: false,
         skip: false,
+        dispatch: false,
     };
 }
 

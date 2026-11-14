@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Facts about a resolved grammar: which rules are left recursive, found with which expressions
-//! can succeed without consuming input. Both take time linear in the size of the grammar, over
-//! a graph with one node per expression, a shared expression once, and an edge from every call
-//! to the body of the rule it calls.
+//! can succeed without consuming input, and what each expression can start with. All take
+//! time linear in the size of the grammar, over a graph with one node per expression, a shared
+//! expression once, and an edge from every call to the body of the rule it calls.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::grammar::ClassItem;
 use crate::ir::{self, RuleId};
 
 /// The `need` of a node that never succeeds without consuming input.
@@ -22,7 +23,35 @@ enum Order {
     Start,
 }
 
+/// What a node does before it consumes its first byte, for [`Starts`].
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Form {
+    /// Consumes a first byte from the set: a literal, a class, any character.
+    Bytes(Bytes),
+    /// Consumes nothing and tests nothing: the empty expression, a repetition of no steps.
+    Empty,
+    /// The skip, after which the parts that follow it look at the next byte.
+    Skip,
+    /// Consumes nothing but may fail: a lookahead, a flag test, the end of a word.
+    Test,
+    /// A cut, which commits a choice.
+    Cut,
+    /// Columns, captures and the alternative for errors, which the machine does not run yet.
+    Unknown,
+    /// The children in turn.
+    Sequence,
+    /// Any of the children: a choice, a repetition, a call, and the forms that wrap one child.
+    Alternatives,
+    /// A token around its child.
+    Token,
+    /// A label around its child, which throws when its child fails.
+    Label,
+    /// A flag turned on or off for the child.
+    Flags,
+}
+
 struct Node {
+    form: Form,
     order: Order,
     /// How many of its children must succeed without consuming input for the node to, or
     /// [`NEVER`].
@@ -42,6 +71,8 @@ struct Graph {
     calls: Vec<(u32, RuleId)>,
     /// The node of each shared expression, which every use links to.
     shared: HashMap<*const ir::Expr, u32>,
+    /// The node of every expression.
+    node_of: HashMap<*const ir::Expr, u32>,
 }
 
 /// What the compiler needs to know about the rules of a grammar, indexed by rule.
@@ -49,6 +80,129 @@ pub(crate) struct Facts {
     /// Whether the rule can call itself where it started, through calls that consume nothing
     /// before them.
     pub left_recursive: Vec<bool>,
+    graph: Graph,
+    nullable: Vec<bool>,
+}
+
+/// A set of bytes, one bit each.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct Bytes(pub [u64; 4]);
+
+impl Bytes {
+    pub const ALL: Bytes = Bytes([u64::MAX; 4]);
+
+    pub fn add(&mut self, byte: u8) {
+        self.0[usize::from(byte >> 6)] |= 1 << (byte & 63);
+    }
+
+    pub fn contains(&self, byte: u8) -> bool {
+        self.0[usize::from(byte >> 6)] >> (byte & 63) & 1 == 1
+    }
+
+    pub fn union(self, other: Bytes) -> Bytes {
+        Bytes([0, 1, 2, 3].map(|i| self.0[i] | other.0[i]))
+    }
+
+    /// The first bytes of the code points of a class. Beyond ASCII every byte is taken, unless
+    /// the class holds no code point there.
+    fn of_class(set: &ir::CharSet) -> Bytes {
+        let mut bytes = Bytes::default();
+        for byte in 0..0x80u8 {
+            if set.contains(char::from(byte)) {
+                bytes.add(byte);
+            }
+        }
+        let only_ascii = set.items.iter().all(|item| match *item {
+            ClassItem::Range(_, last) => last.is_ascii(),
+            ClassItem::Property { .. } => false,
+        });
+        if set.negated || !only_ascii {
+            bytes.0[2] = u64::MAX;
+            bytes.0[3] = u64::MAX;
+        }
+        bytes
+    }
+
+    /// The first bytes of a literal that is not empty.
+    fn of_literal(text: &str, case_insensitive: bool) -> Bytes {
+        let mut bytes = Bytes::default();
+        if let Some(&byte) = text.as_bytes().first() {
+            bytes.add(byte);
+            if case_insensitive {
+                bytes.add(byte.to_ascii_lowercase());
+                bytes.add(byte.to_ascii_uppercase());
+            }
+        }
+        bytes
+    }
+}
+
+/// What an expression can start with, for testing the next byte before trying it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Start {
+    /// The bytes its first consumed byte can be.
+    pub bytes: Bytes,
+    /// Whether it can succeed without consuming input.
+    pub nullable: bool,
+    /// Whether some first byte is consumed after a skip that comes before it.
+    pub after_skip: bool,
+    /// Whether some first byte is consumed with no skip before it.
+    pub at_once: bool,
+    /// Whether every failure before its first byte is a plain one: no label throws and no cut
+    /// commits on the way.
+    pub plain: bool,
+    /// Whether it can open a token before its first byte, whose failure would be recorded.
+    pub tokens: bool,
+}
+
+impl Start {
+    /// What nothing starts with, where the search for a fixpoint begins.
+    const NOTHING: Start = Start {
+        bytes: Bytes([0; 4]),
+        nullable: false,
+        after_skip: false,
+        at_once: false,
+        plain: true,
+        tokens: false,
+    };
+
+    /// What an expression whose start is unknown can start with.
+    const UNKNOWN: Start = Start {
+        bytes: Bytes::ALL,
+        nullable: true,
+        after_skip: true,
+        at_once: true,
+        plain: false,
+        tokens: true,
+    };
+
+    fn merge(self, other: Start) -> Start {
+        Start {
+            bytes: self.bytes.union(other.bytes),
+            nullable: self.nullable || other.nullable,
+            after_skip: self.after_skip || other.after_skip,
+            at_once: self.at_once || other.at_once,
+            plain: self.plain && other.plain,
+            tokens: self.tokens || other.tokens,
+        }
+    }
+}
+
+/// What every expression of a grammar can start with. See [`Facts::starts`].
+pub(crate) struct Starts<'f> {
+    node_of: &'f HashMap<*const ir::Expr, u32>,
+    values: Vec<Start>,
+}
+
+impl Starts<'_> {
+    /// What `expr`, an expression of the grammar, can start with. Anything else may start
+    /// with anything.
+    pub fn of(&self, expr: &ir::Expr) -> Start {
+        (self.node_of.get(&std::ptr::from_ref(expr)))
+            .and_then(|&node| self.values.get(node as usize))
+            .copied()
+            .unwrap_or(Start::UNKNOWN)
+    }
 }
 
 /// Find the facts of a grammar.
@@ -59,10 +213,15 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
         bodies: Vec::new(),
         calls: Vec::new(),
         shared: HashMap::new(),
+        node_of: HashMap::new(),
     };
     for rule in &grammar.rules {
         let body = graph.node(&rule.body);
         graph.bodies.push(body);
+    }
+    // The skip expression and the entries are compiled too.
+    for expr in grammar.skip.iter().chain(grammar.entry.values()) {
+        graph.node(expr);
     }
     for (node, rule) in std::mem::take(&mut graph.calls) {
         let call = &mut graph.nodes[node as usize];
@@ -79,14 +238,139 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
     let cyclic = graph.cyclic(&nullable);
     Facts {
         left_recursive: graph.bodies.iter().map(|&b| cyclic[b as usize]).collect(),
+        graph,
+        nullable,
     }
 }
 
+impl Facts {
+    /// What every expression can start with. A node's start is what it adds itself, joined
+    /// with what each child it starts with adds through its role. Starts only grow, each a
+    /// bounded number of times, by a byte or a fact, and each growth is passed once along
+    /// every edge to a parent, so the time stays linear.
+    ///
+    /// Where the skip expression tests a flag, a skip under a flag turned on or off may end
+    /// elsewhere than the skip before the flag changed, so what follows it may start with any
+    /// byte.
+    pub fn starts(&self, grammar: &ir::Grammar) -> Starts<'_> {
+        let graph = &self.graph;
+        let skip_reads_flags = (grammar.skip.as_ref()).is_some_and(|s| reads_flags(grammar, s));
+        let mut parents: Vec<Vec<(u32, Role)>> = vec![Vec::new(); graph.nodes.len()];
+        for node in 0..graph.nodes.len() as u32 {
+            for (child, role) in graph.roles(node, &self.nullable) {
+                parents[child as usize].push((node, role));
+            }
+        }
+        let mut values: Vec<Start> = (graph.nodes.iter()).map(Node::own_start).collect();
+        let mut queued = vec![true; graph.nodes.len()];
+        let mut todo: Vec<u32> = (0..graph.nodes.len() as u32).collect();
+        while let Some(child) = todo.pop() {
+            queued[child as usize] = false;
+            let start = values[child as usize];
+            for &(parent, role) in &parents[child as usize] {
+                let added = match role {
+                    Role::Join => start,
+                    Role::AfterSkip => Start {
+                        after_skip: start.after_skip || start.at_once,
+                        at_once: false,
+                        ..start
+                    },
+                    Role::Flags if skip_reads_flags && start.after_skip => Start {
+                        bytes: Bytes::ALL,
+                        ..start
+                    },
+                    Role::Flags => start,
+                };
+                let joined = values[parent as usize].merge(added);
+                if joined != values[parent as usize] {
+                    values[parent as usize] = joined;
+                    if !std::mem::replace(&mut queued[parent as usize], true) {
+                        todo.push(parent);
+                    }
+                }
+            }
+        }
+        for (start, &nullable) in values.iter_mut().zip(&self.nullable) {
+            start.nullable = nullable;
+        }
+        Starts {
+            node_of: &graph.node_of,
+            values,
+        }
+    }
+}
+
+/// How the start of a child enters the start of its parent.
+#[derive(Clone, Copy)]
+enum Role {
+    /// As it is.
+    Join,
+    /// After a skip, so that its first bytes are all consumed after one.
+    AfterSkip,
+    /// Under a flag turned on or off.
+    Flags,
+}
+
+impl Node {
+    /// What a node adds to its start itself, before its children.
+    fn own_start(&self) -> Start {
+        match self.form {
+            Form::Bytes(bytes) => Start {
+                bytes,
+                at_once: true,
+                ..Start::NOTHING
+            },
+            Form::Cut | Form::Label => Start {
+                plain: false,
+                ..Start::NOTHING
+            },
+            Form::Token => Start {
+                tokens: true,
+                ..Start::NOTHING
+            },
+            Form::Unknown => Start::UNKNOWN,
+            Form::Empty
+            | Form::Skip
+            | Form::Test
+            | Form::Sequence
+            | Form::Alternatives
+            | Form::Flags => Start::NOTHING,
+        }
+    }
+}
+
+/// Whether `expr` or a rule it calls tests a flag. Each rule and shared part is looked at once.
+fn reads_flags(grammar: &ir::Grammar, expr: &ir::Expr) -> bool {
+    let mut seen = vec![false; grammar.rules.len()];
+    let mut seen_shared = HashSet::new();
+    let mut todo = vec![expr];
+    while let Some(expr) = todo.pop() {
+        match expr {
+            ir::Expr::FlagTest { .. } => return true,
+            ir::Expr::Call(rule) => {
+                if let Some(body) = grammar.rules.get(rule.0 as usize).map(|r| &r.body)
+                    && !std::mem::replace(&mut seen[rule.0 as usize], true)
+                {
+                    todo.push(body);
+                }
+            }
+            ir::Expr::Shared(inner) => {
+                if seen_shared.insert(std::sync::Arc::as_ptr(inner)) {
+                    todo.push(inner);
+                }
+            }
+            _ => todo.extend(expr.children()),
+        }
+    }
+    false
+}
+
 impl Graph {
-    fn push(&mut self, order: Order, need: u32, children: &[u32]) -> u32 {
+    fn push(&mut self, form: Form, order: Order, need: u32, children: &[u32]) -> u32 {
         let first = self.edges.len() as u32;
         self.edges.extend_from_slice(children);
         self.nodes.push(Node {
+            form,
             order,
             need,
             first,
@@ -99,62 +383,131 @@ impl Graph {
     /// resolver bounds.
     fn node(&mut self, expr: &ir::Expr) -> u32 {
         use ir::Expr as E;
-        match expr {
-            E::Empty | E::Cut | E::Skip | E::WordEnd | E::FlagTest { .. } => {
-                self.push(Order::Start, 0, &[])
+        let node = match expr {
+            E::Empty => self.push(Form::Empty, Order::Start, 0, &[]),
+            E::Skip => self.push(Form::Skip, Order::Start, 0, &[]),
+            E::Cut => self.push(Form::Cut, Order::Start, 0, &[]),
+            E::WordEnd | E::FlagTest { .. } => self.push(Form::Test, Order::Start, 0, &[]),
+            E::Same { .. } | E::Ref { .. } => self.push(Form::Unknown, Order::Start, 0, &[]),
+            E::Literal { text, .. } if text.is_empty() => {
+                self.push(Form::Empty, Order::Start, 0, &[])
             }
-            E::Same { .. } | E::Ref { .. } => self.push(Order::Start, 0, &[]),
-            E::Literal { text, .. } if text.is_empty() => self.push(Order::Start, 0, &[]),
-            E::Literal { .. } | E::Class(_) | E::Any | E::ErrorAlternative => {
-                self.push(Order::Start, NEVER, &[])
+            E::Literal {
+                text,
+                case_insensitive,
+            } => {
+                let bytes = Bytes::of_literal(text, *case_insensitive);
+                self.push(Form::Bytes(bytes), Order::Start, NEVER, &[])
             }
+            E::Class(set) => self.push(Form::Bytes(Bytes::of_class(set)), Order::Start, NEVER, &[]),
+            E::Any => self.push(Form::Bytes(Bytes::ALL), Order::Start, NEVER, &[]),
+            E::ErrorAlternative => self.push(Form::Unknown, Order::Start, NEVER, &[]),
             E::Call(rule) => {
                 // The edge is linked to the body once every rule has its node.
-                let node = self.push(Order::Start, 1, &[0]);
+                let node = self.push(Form::Alternatives, Order::Start, 1, &[0]);
                 self.calls.push((node, *rule));
                 node
             }
             E::Seq(parts) => {
                 let children: Vec<u32> = parts.iter().map(|p| self.node(p)).collect();
-                self.push(Order::Sequence, children.len() as u32, &children)
+                let need = children.len() as u32;
+                self.push(Form::Sequence, Order::Sequence, need, &children)
             }
             E::Choice(alternatives) => {
                 let children: Vec<u32> = alternatives.iter().map(|a| self.node(a)).collect();
                 let need = if children.is_empty() { NEVER } else { 1 };
-                self.push(Order::Start, need, &children)
+                self.push(Form::Alternatives, Order::Start, need, &children)
             }
             // A repetition of no matches never tries its expression.
-            E::Repeat { max: Some(0), .. } => self.push(Order::Start, 0, &[]),
+            E::Repeat { max: Some(0), .. } => self.push(Form::Empty, Order::Start, 0, &[]),
             E::Repeat { expr, min, .. } => {
                 let child = self.node(expr);
-                self.push(Order::Start, u32::from(*min > 0), &[child])
+                self.push(
+                    Form::Alternatives,
+                    Order::Start,
+                    u32::from(*min > 0),
+                    &[child],
+                )
             }
             // Lookahead always ends where it started, but what it tests starts there too.
             E::And(expr) | E::Not(expr) => {
                 let child = self.node(expr);
-                self.push(Order::Start, 0, &[child])
+                self.push(Form::Test, Order::Start, 0, &[child])
             }
-            E::Token { expr, .. }
-            | E::Node { expr, .. }
+            E::Token { expr, .. } => {
+                let child = self.node(expr);
+                self.push(Form::Token, Order::Start, 1, &[child])
+            }
+            E::Label { expr, .. } => {
+                let child = self.node(expr);
+                self.push(Form::Label, Order::Start, 1, &[child])
+            }
+            E::FlagOn { expr, .. } | E::FlagOff { expr, .. } => {
+                let child = self.node(expr);
+                self.push(Form::Flags, Order::Start, 1, &[child])
+            }
+            E::Indent { expr, .. } | E::Def { expr, .. } => {
+                let child = self.node(expr);
+                self.push(Form::Unknown, Order::Start, 1, &[child])
+            }
+            E::Node { expr, .. }
             | E::Transparent { expr, .. }
             | E::Field { expr, .. }
-            | E::Unreserved(expr)
-            | E::FlagOn { expr, .. }
-            | E::FlagOff { expr, .. }
-            | E::Indent { expr, .. }
-            | E::Def { expr, .. }
-            | E::Label { expr, .. } => {
+            | E::Unreserved(expr) => {
                 let child = self.node(expr);
-                self.push(Order::Start, 1, &[child])
+                self.push(Form::Alternatives, Order::Start, 1, &[child])
             }
             E::Shared(expr) => {
                 let key = std::sync::Arc::as_ptr(expr);
-                if let Some(&node) = self.shared.get(&key) {
-                    return node;
+                match self.shared.get(&key) {
+                    Some(&node) => node,
+                    None => {
+                        let node = self.node(expr);
+                        self.shared.insert(key, node);
+                        node
+                    }
                 }
-                let node = self.node(expr);
-                self.shared.insert(key, node);
-                node
+            }
+        };
+        self.node_of.insert(std::ptr::from_ref(expr), node);
+        node
+    }
+
+    /// The children a node starts with, with the role in which each adds to its start: the
+    /// parts of a sequence up to the first that cannot succeed without consuming input, those
+    /// after a skip as such, and the child of a form that tries it at its own start. What a
+    /// lookahead tests is looked at quietly, so it adds nothing.
+    fn roles(&self, node: u32, nullable: &[bool]) -> Vec<(u32, Role)> {
+        let children = self.children(node);
+        match self.nodes[node as usize].form {
+            Form::Sequence => {
+                let mut roles = Vec::new();
+                let mut after_skip = false;
+                for &part in children {
+                    if self.nodes[part as usize].form == Form::Skip {
+                        after_skip = true;
+                        continue;
+                    }
+                    roles.push((
+                        part,
+                        if after_skip {
+                            Role::AfterSkip
+                        } else {
+                            Role::Join
+                        },
+                    ));
+                    if !nullable[part as usize] {
+                        break;
+                    }
+                }
+                roles
+            }
+            Form::Alternatives | Form::Token | Form::Label => {
+                children.iter().map(|&child| (child, Role::Join)).collect()
+            }
+            Form::Flags => children.iter().map(|&child| (child, Role::Flags)).collect(),
+            Form::Bytes(_) | Form::Empty | Form::Skip | Form::Test | Form::Cut | Form::Unknown => {
+                Vec::new()
             }
         }
     }

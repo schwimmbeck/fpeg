@@ -53,6 +53,40 @@ struct Routines<'p> {
 }
 
 impl Program {
+    /// A test as its bytes in ranges, as a class shows them, and whether it pops.
+    fn test_text(&self, index: u32) -> String {
+        let Some(test) = self.tests.get(index as usize) else {
+            return format!("?{index}");
+        };
+        let shown = |byte: u8| match byte {
+            b' '..=b'~' if !b"[]\\-^".contains(&byte) => char::from(byte).to_string(),
+            b'\t' => "\\t".to_owned(),
+            b'\n' => "\\n".to_owned(),
+            b'\r' => "\\r".to_owned(),
+            _ if byte.is_ascii_graphic() => format!("\\{}", char::from(byte)),
+            _ => format!("\\x{byte:02x}"),
+        };
+        let mut ranges = String::new();
+        let mut byte = 0u16;
+        while byte < 256 {
+            if !test.bytes.contains(byte as u8) {
+                byte += 1;
+                continue;
+            }
+            let first = byte as u8;
+            while byte < 256 && test.bytes.contains(byte as u8) {
+                byte += 1;
+            }
+            let last = (byte - 1) as u8;
+            ranges += &shown(first);
+            if last > first {
+                ranges += &format!("-{}", shown(last));
+            }
+        }
+        let pop = if test.pop { "pop " } else { "" };
+        format!("{pop}[{ranges}]")
+    }
+
     fn kind_name(&self, kind: u32) -> &str {
         self.names
             .kinds
@@ -79,6 +113,8 @@ impl Program {
             Inst::Class(index) => format!("Class {}", class(index)),
             Inst::Span { class: index, min } => format!("Span {} {{{min},}}", class(index)),
             Inst::Any => "Any".to_owned(),
+            Inst::Test { test, target } => format!("Test {} {target}", self.test_text(test)),
+            Inst::TestFail(test) => format!("TestFail {}", self.test_text(test)),
             Inst::Choice(target) => format!("Choice {target}"),
             Inst::Commit(target) => format!("Commit {target}"),
             Inst::LoopCommit(target) => format!("LoopCommit {target}"),

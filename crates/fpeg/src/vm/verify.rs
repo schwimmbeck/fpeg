@@ -121,6 +121,24 @@ impl Tables<'_> {
                 index(i, p.classes.len(), "class")?;
                 vec![(next, shape)]
             }
+            Inst::Test { test, target } => {
+                index(test, p.tests.len(), "test")?;
+                let jumped = match p.tests[test as usize].pop {
+                    true => {
+                        top(&shape, &[Entry::Choice])?;
+                        popped(&shape)
+                    }
+                    false => shape.clone(),
+                };
+                vec![(next, shape), (target, jumped)]
+            }
+            Inst::TestFail(test) => {
+                index(test, p.tests.len(), "test")?;
+                if p.tests[test as usize].pop {
+                    return Err("pops before it fails".into());
+                }
+                vec![(next, shape)]
+            }
             Inst::Choice(target) => vec![(next, shape.with(Entry::Choice)), (target, shape)],
             Inst::LabelChoice(target) => vec![(next, shape.with(Entry::Label)), (target, shape)],
             Inst::PredChoice(target) => {

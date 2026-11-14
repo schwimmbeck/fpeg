@@ -526,6 +526,17 @@ impl<'p, 'i> Machine<'p, 'i> {
                     let (len, count) = self.run_of(class);
                     self.advance((count >= min).then_some(len))?;
                 }
+                Inst::Test { test, target } => {
+                    self.pc = if self.next_byte_fits(test) {
+                        self.pc + 1
+                    } else {
+                        target
+                    };
+                }
+                Inst::TestFail(test) => {
+                    let fits = self.next_byte_fits(test);
+                    self.test(fits)?;
+                }
                 Inst::Choice(alt) => self.push(Entry::Choice {
                     alt,
                     saved: self.saved(),
@@ -801,6 +812,21 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
             }
         }
+    }
+
+    /// Whether the next byte may start the code a test stands before. A mismatch pops the entry
+    /// of the loop the test is in, where the test says so.
+    fn next_byte_fits(&mut self, index: u32) -> bool {
+        let program = self.program;
+        let Some(test) = program.tests.get(index as usize) else {
+            return true;
+        };
+        let next = self.input.as_bytes().get(self.pos as usize);
+        let fits = next.is_some_and(|&byte| test.bytes.contains(byte));
+        if !fits && test.pop {
+            self.stack.pop();
+        }
+        fits
     }
 
     /// The length in bytes of the longest run of code points of the class at the position, and

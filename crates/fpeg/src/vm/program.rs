@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::Passes;
+use crate::analysis::Bytes;
 use crate::ir::{CharSet, Reserved};
 use crate::tree::{FieldId, Kind, KindId, Names};
 
@@ -40,6 +41,17 @@ pub(crate) enum Inst {
         /// The fewest code points the run may hold.
         min: u32,
     },
+    /// Go on when the next byte fits the test with this index, and otherwise jump to the
+    /// target, past the code that cannot start with that byte.
+    Test {
+        /// The index of the test.
+        test: u32,
+        /// Where to go when the byte does not fit.
+        target: u32,
+    },
+    /// Go on when the next byte fits the test with this index, and otherwise fail, as the
+    /// code after it would.
+    TestFail(u32),
     /// Push a choice entry that catches a failure and resumes at the target.
     Choice(u32),
     /// Pop the choice or label entry on top and jump.
@@ -134,6 +146,14 @@ pub(crate) enum Inst {
         /// Whether the flag must be off.
         negated: bool,
     },
+}
+
+/// What a `Test` looks at: the bytes that the code after it can start with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct ByteTest {
+    pub bytes: Bytes,
+    /// Whether a mismatch pops the entry on top, that of the loop whose step the test is at.
+    pub pop: bool,
 }
 
 /// A character class as the machine tests it: one bit for each ASCII character, and what
@@ -236,6 +256,8 @@ pub(crate) struct Program {
     pub strings: Vec<Box<[u8]>>,
     /// The classes of `Class`.
     pub classes: Vec<Class>,
+    /// The tests of `Test` and `TestFail`.
+    pub tests: Vec<ByteTest>,
     /// The minimum and maximum counts of `RepOpen`. `u32::MAX` stands for no maximum, which no
     /// repetition can reach, since every counted step consumes input.
     pub bounds: Vec<(u32, u32)>,

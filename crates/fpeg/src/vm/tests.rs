@@ -7,9 +7,10 @@
 use std::collections::HashSet;
 
 use super::machine::{Machine, memo_hash};
-use super::program::{Class, Inst, Program};
+use super::program::{ByteTest, Class, Inst, Program};
 use super::verify::verify;
 use super::{Memo, Options, Parser, Passes};
+use crate::analysis::Bytes;
 use crate::builder::{GrammarBuilder, lit, opt, r, r_args, sep_many, seq};
 use crate::grammar::{ClassItem, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Property};
 use crate::ir::CharSet;
@@ -324,6 +325,51 @@ fn repetitions_of_a_class_compile_to_one_span() {
 }
 
 #[test]
+fn code_that_cannot_start_with_the_next_byte_is_jumped_past() {
+    let program = parser(concat!(
+        "start: WORD\n",
+        "WORD: (A | B | \"c\")* A? (B | (\"x\" ^ \"need x\") | A)\n",
+        "A: \"a\" \"1\"\n",
+        "B: \"b\" \"2\"\n",
+    ))
+    .program;
+    // The step of the loop pops its entry where it cannot start. No test stands before `"c"`,
+    // which tests the byte at once, or before the label, which would throw where its
+    // expression fails.
+    let expected = "\
+6  Choice 18
+7  Test pop [a-c] 18
+8  Test [a] 12
+9  Choice 12
+10  Call A
+11  Commit 17
+12  Test [b] 16
+13  Choice 16
+14  Call B
+15  Commit 17
+16  Char 'c'
+17  LoopCommit 7
+18  Test [a] 22
+19  Choice 22
+20  Call A
+21  Commit 22
+22  Test [b] 26
+23  Choice 26
+24  Call B
+25  Commit 34
+26  Choice 32
+27  LabelChoice 30
+28  Char 'x'
+29  Commit 31
+30  Throw \"need x\"
+31  Commit 34
+32  TestFail [a]
+33  Call A
+34  Ret";
+    assert_eq!(routine(&program, "WORD"), expected);
+}
+
+#[test]
 fn a_skip_expression_that_repeats_a_class_is_taken_as_one_run() {
     let text = "start: \"x\"\n%ignore [ \\t]+\n";
     let program = parser(text).program;
@@ -427,7 +473,7 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 11] = [
+    let breaks: [Break; 14] = [
         ("no rule 1000", |p| {
             let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
             p.code[call] = Inst::MemoCall(1_000);
@@ -476,6 +522,30 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
             let after_choice = choice(p) as u32 + 1;
             let commit = find(p, |i| matches!(i, Inst::Commit(_)));
             p.code[commit] = Inst::Commit(after_choice);
+        }),
+        ("no test 1000", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::TestFail(1_000);
+        }),
+        ("expects [Choice] on top", |p| {
+            let at = choice(p);
+            p.tests.push(ByteTest {
+                bytes: Bytes::ALL,
+                pop: true,
+            });
+            let test = (p.tests.len() - 1) as u32;
+            p.code[at] = Inst::Test {
+                test,
+                target: at as u32 + 1,
+            };
+        }),
+        ("pops before it fails", |p| {
+            let at = choice(p);
+            p.tests.push(ByteTest {
+                bytes: Bytes::ALL,
+                pop: true,
+            });
+            p.code[at] = Inst::TestFail((p.tests.len() - 1) as u32);
         }),
     ];
     for (problem, broken) in breaks {
