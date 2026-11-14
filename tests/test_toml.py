@@ -11,6 +11,7 @@ which keeps a single edit from defining one twice.
 import math
 import random
 import re
+import string
 import tomllib
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -162,9 +163,11 @@ class Writer:
 
     def __init__(self, rng: random.Random) -> None:
         self.rng = rng
-        letters = "abcdfghijklmopqsvwyz"
+        # No letter that an edit may write, so that no edit makes one key of another, and none
+        # of the quoted keys, which an edit that drops their space makes bare ones.
+        letters = "abcdfghijklmopqsvwyz" + string.ascii_uppercase[4:]
         self.keys = [letter * 2 for letter in letters] + [
-            f'"{letter} {letter}"' for letter in "ABCD"
+            f'"{letter} {letter}"' for letter in string.ascii_uppercase[:4]
         ]
         rng.shuffle(self.keys)
         self.newline = rng.choice(["\n", "\n", "\r\n"])

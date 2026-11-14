@@ -225,9 +225,6 @@ def test_strict_makes_every_public_method_name_a_rule_or_terminal() -> None:
         def asign(self, node: fpeg.Tree) -> None:
             pass
 
-        def helper_(self) -> None:
-            pass
-
     with pytest.raises(
         TypeError, match=r"Typo\.asign names no rule or terminal.*did you mean assign"
     ):

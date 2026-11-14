@@ -4,14 +4,15 @@
 """The tiny language, run twice: evaluated from its tree, and compiled to LLVM IR.
 
 Two Interpreters walk the tree of a program. `Run` computes its result. `Compile` writes LLVM
-IR with llvmlite, which is then run as machine code. Each program in the samples states the
-result it must give, and both ways have to give it.
+IR with llvmlite, which is then run as machine code. The programs in the samples that state
+on their first line the result they must give are run, and both ways have to give it.
 
 A program computes with 64-bit integers that wrap around. Division rounds towards zero and a
 remainder has the sign of its dividend. A comparison and a logical operator give 1 or 0, and
 anything but 0 counts as true. The statements outside functions are the program, and its
 `return` gives the result. A function sees its parameters and what it declares, a block has
-variables of its own. Strings are left out.
+variables of its own. Strings are left out, and so are a division by zero and the one quotient
+too large for 64 bits, the least integer divided by -1, which machine code does not define.
 """
 
 import ctypes
