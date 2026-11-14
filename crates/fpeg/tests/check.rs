@@ -158,6 +158,12 @@ fn an_alternative_is_shadowed_by_an_earlier_one_it_starts_with() {
             "start: \"a\" ^ \"an a\" B | \"a\" ^ \"an a\" B C\nB: \"b\"\nC: \"c\"\n",
             vec!["W103"],
         ),
+        // Flags and their tests, classes, separators and any character, written alike.
+        (
+            "%flag f\nstart: %on(f, %if(f) [a-z] ** \",\") %off(f, %if(!f) .)\n\
+             | %on(f, %if(f) [a-z] ** \",\") %off(f, %if(!f) .) \"!\"\n",
+            vec!["W103"],
+        ),
     ] {
         assert_eq!(codes(text), expected, "{text}");
     }

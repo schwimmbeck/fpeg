@@ -77,6 +77,8 @@ fn unaccepted_argument_is_a_usage_error_that_names_it() {
     for args in [
         &["--version", "--no-such-flag"][..],
         &["parse", "--no-such-flag"],
+        &["check", "--no-such-flag"],
+        &["profile", "--no-such-flag"],
     ] {
         let out = run(args);
         assert_eq!(out.status.code(), Some(2));
@@ -191,7 +193,7 @@ fn an_unknown_start_rule_and_a_byte_order_mark_are_problems_of_the_grammar_file(
 }
 
 #[test]
-fn check_reports_each_problem_with_its_place_and_code() {
+fn check_and_parse_report_each_problem_with_its_place_and_code() {
     let paths = files(
         "check",
         &[
@@ -205,13 +207,16 @@ fn check_reports_each_problem_with_its_place_and_code() {
     let out = run(["check".as_ref(), paths[0].as_os_str(), paths[1].as_os_str()]);
     assert_eq!(out.status.code(), Some(1));
     let bad = paths[0].display();
-    assert_eq!(
-        text(&out.stdout),
-        format!(
-            "{bad}:1:8: error[E201]: unknown rule x\n\
-             {bad}:2:1: error[E204]: the rule start is defined twice\n"
-        )
+    let found = format!(
+        "{bad}:1:8: error[E201]: unknown rule x\n\
+         {bad}:2:1: error[E204]: the rule start is defined twice\n"
     );
+    assert_eq!(text(&out.stdout), found);
+    // `parse` prints them as `check` does, in the order of the text and not in the one the
+    // resolver meets them in.
+    let out = run(["parse".as_ref(), paths[0].as_os_str(), paths[1].as_os_str()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(text(&out.stdout), found);
 }
 
 #[test]
@@ -362,6 +367,14 @@ fn profile_goes_on_past_an_unreadable_input_and_stops_at_an_unknown_start() {
         "{}",
         text(&out.stdout)
     );
+    // With no input read there is no table.
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        missing.as_os_str(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty(), "{}", text(&out.stdout));
     let out = run([
         "profile".as_ref(),
         "--start".as_ref(),
