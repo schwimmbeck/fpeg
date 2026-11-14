@@ -1098,6 +1098,17 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.profile_left(false);
                 }
                 Entry::Flags { saved } => self.flags = saved,
+                // The skip routine, which a `Skip` before its return called, ends here too.
+                Entry::Sub { ret } => {
+                    let called = ret
+                        .checked_sub(1)
+                        .and_then(|at| self.program.code.get(at as usize));
+                    if let Some(profiler) = self.profiler.as_deref_mut()
+                        && matches!(called, Some(Inst::Skip))
+                    {
+                        profiler.skip_ended(self.steps);
+                    }
+                }
                 _ => {}
             }
         }

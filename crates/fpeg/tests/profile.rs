@@ -136,4 +136,9 @@ fn a_profile_gives_the_ignored_text_a_row_of_its_own() {
         let longer = profile(text, "aaaaaa");
         assert!(row(&longer, "start").steps > row(&tight, "start").steps);
     }
+    // Also after an error of the skip routine that a lookahead caught.
+    let text = "start: !(\"a\" \"b\") rest \"y\"*\n@lexical\nrest: \"a/!\"\n\
+                %ignore \"/\" (\"/\" ^ \"slash\")\n";
+    let (short, long) = (profile(text, "a/!yy"), profile(text, "a/!yyyyyyyy"));
+    assert!(row(&long, "start").steps > row(&short, "start").steps);
 }

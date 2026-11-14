@@ -236,8 +236,13 @@ impl Profiler {
     /// A shared part or the skip routine returns from `pc`.
     pub fn returned_from(&mut self, pc: u32, steps: u64) {
         if pc == self.skip_ret {
-            self.switch(steps, self.skipping_for);
+            self.skip_ended(steps);
         }
+    }
+
+    /// The skip routine is over, by its return or by an error that a lookahead caught.
+    pub fn skip_ended(&mut self, steps: u64) {
+        self.switch(steps, self.skipping_for);
     }
 
     /// A remembered result answered a call of `rule`.
