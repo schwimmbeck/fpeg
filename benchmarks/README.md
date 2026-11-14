@@ -5,7 +5,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | Path | What it holds |
 |---|---|
 | `run.py` | runs the suites and writes `results.json`, `summary.md` and the raw pyperf files |
-| `corpus.py` | generates or downloads the inputs into `corpora/` and checks them against pinned hashes |
+| `corpus.py` | generates or downloads the inputs and the corpora of the tests into `corpora/` and checks them against pinned hashes |
 | `harness.py` | the shared part of the pyperf scripts |
 | `bench_json.py` | JSON: fpeg, `json.loads`, Lark and pe on a generated 2.5 MB file |
 | `bench_binding.py` | fpeg's Python binding apart from parsing: transforms with and without methods, tokens from views, the walks of an Interpreter and a Visitor, many small parses against `csv` |

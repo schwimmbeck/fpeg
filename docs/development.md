@@ -41,7 +41,7 @@ Every file states its copyright and licence, in a header or, for files that cann
 
 The dependency group `oracles` holds what a test compares fpeg with beyond the standard library, today `llvmlite`, which runs the LLVM IR that a test compiles a small language to. A test skips without its oracle, so `uv run pytest` alone works as well.
 
-Tests over a whole corpus carry the marker `corpus` and stay out of the default run, today the Python grammar against CPython's `ast` over every file of the running Python's library. `uv run pytest -m corpus` runs them, and continuous integration runs them once a week.
+Tests over a whole corpus carry the marker `corpus` and stay out of the default run: the Python grammar against CPython's `ast` over every file of the running Python's library, and the Lua grammar over the test suite of Lua 5.4. `uv run python benchmarks/corpus.py` fetches the corpora that are not part of Python, a test whose corpus is missing skips, and `uv run pytest -m corpus` runs them. Continuous integration runs them once a week.
 
 `uv run python scripts/check.py` runs all of these in order, together with the checks of the benchmark and fuzz crates below, and stops at the first failure.
 

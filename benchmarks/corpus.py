@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Benchmark inputs, generated or downloaded into ``benchmarks/corpora`` and checked by hash.
+"""Benchmark inputs and test corpora, generated or downloaded into ``benchmarks/corpora``.
 
-Run it as a script to prepare every input.
+Each is checked by hash. Run it as a script to prepare every input.
 """
 
 import hashlib
@@ -31,7 +31,10 @@ ORDEC_PACKAGE_SHA256 = {
     "python_transformer.py": "9b35b499e1dfe631ebd1ab6b9fcc591541bebbaaa3e9bea63ca01888b557cf1a",
 }
 
-# Seconds to wait for the download of the first real application's sources.
+# The test suite of Lua 5.4, which the Lua grammar must parse, pinned to the hash lua.org lists.
+LUA_TESTS_URL = "https://www.lua.org/tests/lua-5.4.9-tests.tar.gz"
+
+# Seconds to wait for a download.
 DOWNLOAD_TIMEOUT_S = 60
 # Records in the generated JSON file, and the seed of their content. Changing either changes the
 # bytes of records.json, and its pinned hash with them.
@@ -85,6 +88,11 @@ CALCULATOR = Input(
     "5d776b59a1c5b3b7fc77fe20f6ff65232d51c5dc98e06417896af6cba5862162",
 )
 INPUTS = (RECORDS_JSON, PYTHON_FILE, EXPRESSIONS, CALCULATOR)
+LUA_TESTS = Input(
+    "lua-5.4.9-tests.tar.gz",
+    CORPORA / "lua-5.4.9-tests.tar.gz",
+    "7d971845f545ffc09fbb3128a86b2c6524161c70d0fdf0154a16e8c00c343fca",
+)
 
 
 def sha256(path: Path) -> str:
@@ -195,6 +203,14 @@ def write_whole(path: Path, text: str) -> None:
     partial.replace(path)
 
 
+def fetch(url: str, path: Path) -> None:
+    """Download a file beside its target and rename it, as ``write_whole`` writes one."""
+    partial = path.with_suffix(".partial")
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response:
+        partial.write_bytes(response.read())
+    partial.replace(path)
+
+
 def fetch_ord_package(target: Path) -> None:
     """Download the first real application's parser package into ``target``."""
     prefix = f"ordec-{ORDEC_COMMIT}/{ORDEC_PACKAGE_PATH}/"
@@ -242,6 +258,9 @@ def prepare() -> None:
         fetch_ord_package(ORD_PACKAGE)
         for name, expected in ORDEC_PACKAGE_SHA256.items():
             check(ORD_PACKAGE / name, expected)
+    if not matches(LUA_TESTS.path, LUA_TESTS.sha256):
+        fetch(LUA_TESTS_URL, LUA_TESTS.path)
+        check(LUA_TESTS.path, LUA_TESTS.sha256)
 
 
 if __name__ == "__main__":

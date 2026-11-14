@@ -88,13 +88,13 @@ convention = "pep257"
 include = ["python", "tests", "scripts"]
 strict = ["python"]
 pythonVersion = "3.11"
-# The tests import helper modules of their own folder, as pytest lets them.
-extraPaths = ["tests"]
+# The tests import helper modules of their own folder, as pytest lets them, and the corpora.
+extraPaths = ["tests", "benchmarks"]
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "-m", "not corpus"]
-markers = ["corpus: compares over a whole corpus, slow, run with -m corpus"]
+markers = ["corpus: runs over a whole corpus, slow, selected with -m corpus"]
 filterwarnings = ["error"]
