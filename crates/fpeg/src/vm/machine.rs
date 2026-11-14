@@ -141,41 +141,57 @@ struct MemoKey {
     quiet: bool,
 }
 
-/// An odd constant whose bits are spread over the word, for [`KeyHasher`].
-const KEY_MULTIPLIER: u64 = 0x517c_c1b7_2722_0a95;
-
-/// Makes the hashers of the memo, by one multiplication a word or, with the pass off, by
-/// SipHash.
+/// Makes the hashers of the memo, by one multiplication a word with keys drawn for each parse
+/// or, with the pass off, by SipHash.
 #[derive(Clone)]
 enum KeyState {
-    Multiply,
+    Multiply { seed: u64, key: u64 },
     Sip(RandomState),
+}
+
+impl KeyState {
+    /// A state with keys of its own, taken from those of SipHash, multiplying where `multiply`.
+    fn new(multiply: bool) -> KeyState {
+        let sip = RandomState::new();
+        match multiply {
+            true => KeyState::Multiply {
+                seed: sip.hash_one(0u8),
+                key: sip.hash_one(1u8),
+            },
+            false => KeyState::Sip(sip),
+        }
+    }
 }
 
 impl BuildHasher for KeyState {
     type Hasher = KeyHasher;
 
     fn build_hasher(&self) -> KeyHasher {
-        match self {
-            KeyState::Multiply => KeyHasher::Multiply(0),
-            KeyState::Sip(state) => KeyHasher::Sip(state.build_hasher()),
+        match *self {
+            KeyState::Multiply { seed, key } => KeyHasher::Multiply { hash: seed, key },
+            KeyState::Sip(ref state) => KeyHasher::Sip(state.build_hasher()),
         }
     }
 }
 
-/// Hashes a key of the memo. One multiplication a word needs no key against collisions forced
-/// from outside, since an input decides only which of its own positions get entries. A product
-/// carries the bits of a word only upward, so `finish` folds the high half into the low bits
-/// that pick a bucket, or positions at a stride of 4,096 would share 1,024 buckets.
+/// Hashes a key of the memo. Each word is multiplied by the key to a product of two words,
+/// whose high half is folded onto its low half, so that every bit of the word reaches the bits
+/// that pick a bucket. The keys are drawn for each parse: whoever writes a grammar and its input
+/// could otherwise choose calls whose keys share buckets, and each lookup would then scan a part
+/// of the table that grows with the input.
 enum KeyHasher {
-    Multiply(u64),
+    Multiply { hash: u64, key: u64 },
     Sip(DefaultHasher),
 }
 
 impl KeyHasher {
     fn add(&mut self, word: u64) {
         match self {
-            KeyHasher::Multiply(h) => *h = (h.rotate_left(5) ^ word).wrapping_mul(KEY_MULTIPLIER),
+            KeyHasher::Multiply { hash, key } => {
+                let product = u128::from(*hash ^ word) * u128::from(*key);
+                // Truncation keeps the low half, which the high half is folded onto.
+                *hash = product as u64 ^ (product >> 64) as u64;
+            }
             KeyHasher::Sip(state) => state.write_u64(word),
         }
     }
@@ -204,22 +220,25 @@ impl Hasher for KeyHasher {
 
     fn finish(&self) -> u64 {
         match self {
-            KeyHasher::Multiply(h) => h ^ (h >> 32),
+            KeyHasher::Multiply { hash, .. } => *hash,
             KeyHasher::Sip(state) => state.finish(),
         }
     }
 }
 
-/// The hash the memo gives a key.
+/// The hashes that the memo of one parse gives keys of a rule, a position and flags.
 #[cfg(test)]
-pub fn memo_hash(rule: u32, pos: u32, flags: u64, quiet: bool) -> u64 {
-    let key = MemoKey {
-        rule,
-        pos,
-        flags,
-        quiet,
-    };
-    KeyState::Multiply.hash_one(key)
+pub fn memo_hashes(keys: impl Iterator<Item = (u32, u32, u64)>) -> Vec<u64> {
+    let state = KeyState::new(true);
+    keys.map(|(rule, pos, flags)| {
+        state.hash_one(MemoKey {
+            rule,
+            pos,
+            flags,
+            quiet: false,
+        })
+    })
+    .collect()
 }
 
 /// A skip that ran the skip routine: where it started, with which flags, and where it ended.
@@ -463,11 +482,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             newest_recursion: NO_FRAME,
             serial: 0,
             dependency: NO_FRAME,
-            memo: HashMap::with_hasher(if program.passes.hasher {
-                KeyState::Multiply
-            } else {
-                KeyState::Sip(RandomState::new())
-            }),
+            memo: HashMap::with_hasher(KeyState::new(program.passes.hasher)),
             memo_items: Vec::new(),
             protected: 0,
             shared: false,

@@ -64,7 +64,8 @@ impl Default for Options {
 /// or error with any of them off, only its time changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Passes {
-    /// Hash the keys of remembered results with one multiplication a word, not with SipHash.
+    /// Hash the keys of remembered results with one multiplication a word, under keys drawn
+    /// for each parse, not with SipHash.
     pub hasher: bool,
     /// Match a repetition of a class with one instruction, not one code point a step.
     pub span: bool,

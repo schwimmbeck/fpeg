@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use super::machine::{Machine, memo_hash};
+use super::machine::{Machine, memo_hashes};
 use super::program::{ByteTest, Class, Inst, Program};
 use super::verify::verify;
 use super::{Memo, Options, Parser, Passes};
@@ -799,11 +799,17 @@ fn a_rule_that_a_choice_tries_twice_is_matched_once_at_a_position() {
 fn the_memo_spreads_positions_at_any_power_of_two_apart_over_its_buckets() {
     // 100,000 random keys take about 95,400 of the values of 20 low bits.
     for shift in 0..13 {
-        let low: HashSet<u64> = (0..100_000u32)
-            .map(|i| memo_hash(7, i << shift, 0, false) & 0xf_ffff)
-            .collect();
+        let hashes = memo_hashes((0..100_000u32).map(|i| (7, i << shift, 0)));
+        let low: HashSet<u64> = hashes.iter().map(|hash| hash & 0xf_ffff).collect();
         assert!(low.len() > 90_000, "{} apart: {}", 1 << shift, low.len());
     }
+}
+
+#[test]
+fn the_memo_of_each_parse_hashes_keys_with_keys_of_its_own() {
+    // Keys known before a parse would let its grammar and input choose calls that collide.
+    let calls = || (0..64u32).map(|i| (3, i, u64::from(i) << 40));
+    assert_ne!(memo_hashes(calls()), memo_hashes(calls()));
 }
 
 #[test]
