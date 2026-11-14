@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+import time
 from typing import Any
 
 import fpeg
@@ -127,6 +128,27 @@ def test_a_tree_built_in_python_is_visited_by_the_names_of_its_data() -> None:
 
     Count().visit(fpeg.Tree("add", [1, fpeg.Tree("add", [2, 3, 4])]))
     assert seen == [3, 2]
+
+
+def test_a_walk_takes_as_long_after_many_other_classes_met_the_grammar() -> None:
+    tree = parse(", ".join(["f(a, [b, c])"] * 2_000))
+
+    def best(walker: fpeg.Visitor) -> float:
+        walker.visit(tree)
+        times = []
+        for _ in range(5):
+            started = time.perf_counter()
+            walker.visit(tree)
+            times.append(time.perf_counter() - started)
+        return min(times)
+
+    alone = best(type("Alone", (fpeg.Visitor,), {})())
+    # Each meets the grammar on a small tree of its own, and stays alive.
+    others = [type(f"Other{i}", (fpeg.Visitor,), {}) for i in range(2_000)]
+    for other in others:
+        other().visit(parse("f()"))
+    crowded = best(type("Crowded", (fpeg.Visitor,), {})())
+    assert crowded < 4 * alone + 0.002, (alone, crowded, len(others))
 
 
 def test_a_tree_of_any_depth_is_visited_without_recursion() -> None:

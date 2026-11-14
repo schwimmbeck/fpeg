@@ -9,6 +9,7 @@
 //! nothing. An entry that no method reaches pushes no Python object, and a node whose children
 //! are all such entries stays one, so a subtree without methods costs no object at all.
 
+use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -84,14 +85,28 @@ pub struct Plan {
     default_token: bool,
 }
 
-/// The plans of a grammar, one per class. The classes are held weakly, so that a class made
-/// for one task goes when it is no longer used, and its plan with the next insert.
-pub struct Plans<P>(Mutex<Vec<(Py<PyWeakrefReference>, Arc<P>)>>);
+/// The plans of a grammar, one per class, by the address of the class. The classes are held
+/// weakly, so that a class made for one task goes when it is no longer used, and its plan with
+/// the next insert. A walk asks at every node, so the plan is found without a search.
+pub struct Plans<P>(Mutex<HashMap<usize, Kept<P>>>);
+
+/// The plan of a class, with a weak reference to the class that tells whether it is still
+/// the one at its address.
+struct Kept<P> {
+    class: Py<PyWeakrefReference>,
+    plan: Arc<P>,
+}
 
 impl<P> Default for Plans<P> {
     fn default() -> Plans<P> {
-        Plans(Mutex::new(Vec::new()))
+        Plans(Mutex::new(HashMap::new()))
     }
+}
+
+/// The key of a class among the plans. A class that has gone may leave its address to another,
+/// which the weak reference of the plan tells apart.
+fn address(class: &Bound<'_, PyType>) -> usize {
+    class.as_ptr().addr()
 }
 
 /// Whether a weak reference still points at `class`.
@@ -102,20 +117,25 @@ fn points_at(known: &Py<PyWeakrefReference>, class: &Bound<'_, PyType>) -> bool 
 impl<P> Plans<P> {
     fn find(&self, class: &Bound<'_, PyType>) -> Option<Arc<P>> {
         let plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        (plans.iter())
-            .find(|(known, _)| points_at(known, class))
-            .map(|(_, plan)| Arc::clone(plan))
+        let kept = plans.get(&address(class))?;
+        points_at(&kept.class, class).then(|| Arc::clone(&kept.plan))
     }
 
     fn insert(&self, class: &Bound<'_, PyType>, plan: Arc<P>) -> PyResult<Arc<P>> {
         let weak = PyWeakrefReference::new(class)?.unbind();
         let mut plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         // Another thread may have made the same plan meanwhile, and then its plan is kept.
-        if let Some((_, known)) = plans.iter().find(|(known, _)| points_at(known, class)) {
-            return Ok(Arc::clone(known));
+        if let Some(kept) = plans.get(&address(class))
+            && points_at(&kept.class, class)
+        {
+            return Ok(Arc::clone(&kept.plan));
         }
-        plans.retain(|(known, _)| known.bind(class.py()).upgrade().is_some());
-        plans.push((weak, Arc::clone(&plan)));
+        plans.retain(|_, kept| kept.class.bind(class.py()).upgrade().is_some());
+        let kept = Kept {
+            class: weak,
+            plan: Arc::clone(&plan),
+        };
+        plans.insert(address(class), kept);
         Ok(plan)
     }
 }
