@@ -29,10 +29,6 @@ SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "sampl
 TINY = fpeg.Grammar.open(SAMPLES.parent.parent / "tiny.fpeg")
 RESULT = re.compile(r"// result: (-?\d+)\n")
 
-# Python reserves the names of these rules, so the methods for them carry an underscore and
-# get their rule's name after the class.
-RESERVED = ("if", "while", "return")
-
 COMPARE: dict[str, Callable[[int, int], bool]] = {
     "==": operator.eq,
     "!=": operator.ne,
@@ -348,11 +344,6 @@ class Compile(fpeg.Interpreter):
 
     def NAME(self, token: fpeg.Token) -> Any:
         return self.builder.load(self.slot(token))
-
-
-for interpreter in (Run, Compile):
-    for reserved in RESERVED:
-        setattr(interpreter, reserved, getattr(interpreter, f"{reserved}_"))
 
 
 def run_compiled(binding: Any, module: Any) -> int:

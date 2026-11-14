@@ -110,7 +110,7 @@ assert fpeg.Token("NAME", "x") == "x"
 
 ## Transformer
 
-A `Transformer` turns a tree into values. A method named like a rule gives the value of its nodes, a method named like a terminal the value of its tokens, and each is called after the children of its node, with their values. What a method gets, its signature says:
+A `Transformer` turns a tree into values. A method named like a rule gives the value of its nodes, a method named like a terminal the value of its tokens, and each is called after the children of its node, with their values. A rule named like a Python keyword, such as `if`, or like a method the class needs itself, such as `transform`, has its method under the name with an underscore added, `if_`, as PEP 8 writes such names. What a method gets, its signature says:
 
 | Method | Gets |
 |---|---|
@@ -201,7 +201,7 @@ assert "        key holds one item." in template
 
 An `Interpreter` walks a tree from the top. `visit(node)` calls the method named like the node, and the method decides what to visit of it and when, so a branch that is not taken is never looked at. That is what running a program needs, where a `Transformer` has computed every child before a method sees it.
 
-A method gets the parts of its node as parsed, not yet visited, and visits one with `self.visit(part)`. Its signature says what it gets, as for a `Transformer`:
+A method gets the parts of its node as parsed, not yet visited, and visits one with `self.visit(part)`. Methods are named as for a `Transformer`, `if_` for a rule `if`, and the signature says what a method gets:
 
 | Method | Gets |
 |---|---|
@@ -215,9 +215,9 @@ A method gets the parts of its node as parsed, not yet visited, and visits one w
 ```python
 program = fpeg.Grammar(r"""
 start: statement*
-?statement: assign | if_
+?statement: assign | if
 assign: target=NAME "=" value=expr ";"
-if_: "if" test=expr "{" then=statement* "}"
+if: "if" test=expr "{" then=statement* "}"
 ?expr: name=NAME -> load | NUMBER
 NAME: [a-z]+
 NUMBER: [0-9]+ => int

@@ -22,7 +22,7 @@ from fpeg._transformer import (
     NOTHING,
     check_strict,
     function_of,
-    is_handler,
+    handler,
     node_convention,
     reserved_names,
     static_attribute,
@@ -31,6 +31,9 @@ from fpeg._transformer import (
 
 # How a method of a node is called: its mode, the fields it takes and its extras.
 _Convention = tuple[int, tuple[str, ...], int]
+
+# The method of a node, by its name, and how it is called.
+_Handler = tuple[str, _Convention]
 
 # What a call gives for a node without a method.
 _NO_METHOD: Final = object()
@@ -79,47 +82,49 @@ def _convention(cls: type, name: str, fields: dict[str, bool] | None) -> _Conven
 
 def _make_plan(
     cls: type, kinds: list[tuple[str, bool, tuple[tuple[str, bool], ...]]]
-) -> dict[str, _Convention]:
-    """Say for each kind of node with a method how the method is called.
+) -> dict[str, _Handler]:
+    """Say for each kind of node with a method which method it is and how it is called.
 
     `fpeg._fpeg.walk_plan` asks for it once per class and grammar.
     """
     if getattr(cls, "__fpeg_strict__", False):
         check_strict(cls, {name for name, _, _ in kinds})
-    plan: dict[str, _Convention] = {}
+    plan: dict[str, _Handler] = {}
     for name, token, fields in kinds:
-        if not is_handler(cls, name):
+        method = handler(cls, name)
+        if method is None:
             continue
         if not token and name not in plan:
-            plan[name] = _convention(cls, name, dict(fields))
+            plan[name] = (method, _convention(cls, method, dict(fields)))
         elif token and issubclass(cls, Visitor):
             raise TypeError(
-                f"{cls.__qualname__}.{name} is named like a terminal, and a Visitor calls "
+                f"{cls.__qualname__}.{method} is named like a terminal, and a Visitor calls "
                 "methods for nodes only"
             )
     return plan
 
 
-def _owned_convention(cls: type, name: Any) -> _Convention | None:
-    """Say how the method for a tree built in Python is called, if the class has one."""
+def _owned_handler(cls: type, name: Any) -> _Handler | None:
+    """Say which method a tree built in Python has and how it is called, if there is one."""
     if not isinstance(name, str):
         return None
     by_name = _kept(cls, _OWNED)
     if name not in by_name:
-        by_name[name] = _convention(cls, name, None) if is_handler(cls, name) else None
+        method = handler(cls, name)
+        by_name[name] = None if method is None else (method, _convention(cls, method, None))
     return by_name[name]
 
 
-def _token_mode(cls: type, name: Any) -> int | None:
-    """Say how the method of a terminal is called, if the class has one."""
+def _token_handler(cls: type, name: Any) -> tuple[str, int] | None:
+    """Say which method a terminal has and how it is called, if there is one."""
     if not isinstance(name, str):
         return None
     by_name = _kept(cls, _TOKENS)
     if name not in by_name:
-        handled = is_handler(cls, name)
-        if handled:
-            _refuse_v_args(cls, name)
-        by_name[name] = token_convention(cls, name) if handled else None
+        method = handler(cls, name)
+        if method is not None:
+            _refuse_v_args(cls, method)
+        by_name[name] = None if method is None else (method, token_convention(cls, method))
     return by_name[name]
 
 
@@ -143,10 +148,10 @@ def _call(walker: object, node: Tree) -> Any:
     name = node.data
     plan = _fpeg.walk_plan(cls, node, _make_plan)
     # A tree built in Python has no grammar to plan for.
-    convention = _owned_convention(cls, name) if plan is None else plan.get(name)
-    if convention is None:
+    found = _owned_handler(cls, name) if plan is None else plan.get(name)
+    if found is None:
         return _NO_METHOD
-    mode, fields, extras = convention
+    method, (mode, fields, extras) = found
     try:
         if mode == FIELDS:
             args: tuple[Any, ...] = tuple(node.field(field) for field in fields)
@@ -157,7 +162,7 @@ def _call(walker: object, node: Tree) -> Any:
         else:
             args = (node,)
         if not extras:
-            return getattr(walker, name)(*args)
+            return getattr(walker, method)(*args)
         kwargs: dict[str, Any] = {}
         if extras & EXTRAS["meta"]:
             kwargs["meta"] = node.meta
@@ -165,10 +170,11 @@ def _call(walker: object, node: Tree) -> Any:
             kwargs["node"] = node
         if extras & EXTRAS["children"]:
             kwargs["children"] = node.children
-        return getattr(walker, name)(*args, **kwargs)
+        return getattr(walker, method)(*args, **kwargs)
     except BaseException as error:
         meta = node.meta
-        _note(error, f"in {cls.__qualname__}.{name}, for the node {name}", meta.line, meta.column)
+        where = f"in {cls.__qualname__}.{method}, for the node {name}"
+        _note(error, where, meta.line, meta.column)
         raise
 
 
@@ -239,15 +245,16 @@ class Interpreter(_Walker):
     def _visit_token(self, token: Token) -> Any:
         cls = type(self)
         name: Any = token.type
-        mode = _token_mode(cls, name)
+        found = _token_handler(cls, name)
         try:
-            if mode is None:
+            if found is None:
                 built = _fpeg.token_value(token)
                 return token if built is _NO_VALUE else built
-            method = getattr(self, name)
-            return method() if mode == NOTHING else method(token)
+            method, mode = found
+            bound = getattr(self, method)
+            return bound() if mode == NOTHING else bound(token)
         except BaseException as error:
-            where = f"the builder of {name}" if mode is None else f"{cls.__qualname__}.{name}"
+            where = f"the builder of {name}" if found is None else f"{cls.__qualname__}.{found[0]}"
             _note(error, f"in {where}, for the token {name}", token.line, token.column)
             raise
 

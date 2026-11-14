@@ -11,9 +11,9 @@ import fpeg
 
 RULES = r"""
 start: statement*
-?statement: let | if_ | show
+?statement: let | if | show
 let: "let" name=NAME "=" value=expr ";"
-if_: "if" test=expr "{" then=statement* "}" ("else" "{" otherwise=statement* "}")?
+if: "if" test=expr "{" then=statement* "}" ("else" "{" otherwise=statement* "}")?
 show: "print" value=expr ";"
 
 expr: %precedence {
@@ -53,9 +53,9 @@ Three choices in the grammar prepare the tree for what follows:
 
 - **Fields name the parts.** `name=`, `value=`, `test=` say what each child is, so that code asks for a part by name and not by position.
 - **Aliases name the constructs.** The three operator levels all make `binary` nodes, since a program treats them alike. `-> load` makes a node for a name that is read, which tells it from the name that `let` writes.
-- **`?statement` and the levels make no nodes.** A statement is a `let`, an `if_` or a `show`, with nothing around it.
+- **`?statement` and the levels make no nodes.** A statement is a `let`, an `if` or a `show`, with nothing around it.
 
-The rule for `if` is called `if_`. Python reserves `if`, so a class could not have a method of that name.
+The method for the rule `if` is called `if_`. Python reserves `if`, so fpeg looks for a rule named like a keyword under the name with an underscore added.
 
 ## Classes for the constructs
 
@@ -143,9 +143,9 @@ Every method above does the same: it hands the fields to a class. A builder afte
 ```python
 BUILT = r"""
 start: statement* => list
-?statement: let | if_ | show
+?statement: let | if | show
 let: "let" name=NAME "=" value=expr ";" => Let(name, value)
-if_: "if" test=expr "{" then=statement* "}" ("else" "{" otherwise=statement* "}")? => If(test, then, otherwise)
+if: "if" test=expr "{" then=statement* "}" ("else" "{" otherwise=statement* "}")? => If(test, then, otherwise)
 show: "print" value=expr ";" => Show(value)
 
 expr: %precedence {

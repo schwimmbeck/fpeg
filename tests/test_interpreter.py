@@ -9,9 +9,9 @@ import pytest
 # A small language: assignments, and an `if` that must not run the branch it does not take.
 PROGRAMS = fpeg.Grammar(r"""
 start: statement*
-?statement: assign | if_ | block
+?statement: assign | if | block
 assign: target=NAME "=" value=expr ";"
-if_: "if" test=expr then=block ("else" otherwise=block)?
+if: "if" test=expr then=block ("else" otherwise=block)?
 block: "{" statement* "}"
 ?expr: name=NAME -> load | NUMBER | "[" items=(expr ** ",") "]" -> list_
 NAME: [a-z]+
@@ -160,7 +160,7 @@ def test_visiting_none_or_a_list_is_an_error() -> None:
     with pytest.raises(TypeError, match="got None, as an absent optional field is") as raised:
         Careless().visit(parse("if 1 { }"))
     (note,) = raised.value.__notes__
-    assert note.endswith("Careless.if_, for the node if_ at line 1, column 1")
+    assert note.endswith("Careless.if_, for the node if at line 1, column 1")
     with pytest.raises(TypeError, match="got a list"):
         Careless().visit(parse("x = [1];"))
 

@@ -309,7 +309,8 @@ impl Grammar {
     /// The Python source of a starting transformer for the grammar: a method for every rule that
     /// makes nodes and every terminal, the parameters of a node's method named after its fields,
     /// with type hints from how many items each field holds, and `strict=True`, so that a
-    /// misspelled method fails.
+    /// misspelled method fails. A rule named like a Python keyword or `transform` gets its
+    /// method under the name with an underscore added.
     #[pyo3(signature = (name = "Transformer"))]
     fn transformer_template(&self, py: Python<'_>, name: &str) -> PyResult<String> {
         let keywords: Vec<String> = py.import("keyword")?.getattr("kwlist")?.extract()?;
@@ -336,13 +337,12 @@ impl Grammar {
             {
                 continue;
             }
+            let method = if keywords.iter().any(|k| k == kind_name) || kind_name == "transform" {
+                format!("{kind_name}_")
+            } else {
+                kind_name.to_owned()
+            };
             out.push('\n');
-            if keywords.iter().any(|k| k == kind_name) || kind_name == "transform" {
-                out.push_str(&format!(
-                    "    # {kind_name} cannot be a method of the class: Python reserves the name.\n"
-                ));
-                continue;
-            }
             let mut builders: Vec<String> = (kinds.iter())
                 .filter(|k| k.name == kind_name && k.made)
                 .filter_map(|k| k.builder.as_ref().map(|builder| format!("=> {builder}")))
@@ -423,7 +423,7 @@ impl Grammar {
                 )
             };
             out.push_str(&format!(
-                "    def {kind_name}({signature}) -> Any:\n{doc}        ...\n"
+                "    def {method}({signature}) -> Any:\n{doc}        ...\n"
             ));
         }
         Ok(out)

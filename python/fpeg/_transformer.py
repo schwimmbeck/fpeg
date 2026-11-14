@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import difflib
 import inspect
+import keyword
 import sys
 import types
 import weakref
@@ -133,13 +134,14 @@ class Transformer:
         # A token made in Python may have any object as its type.
         name: Any = token.type
         visit = getattr(self, "__visit_tokens__", True)
-        if visit and isinstance(name, str) and is_handler(cls, name):
-            mode = token_convention(cls, name)
-            method = getattr(self, name)
+        handled = handler(cls, name) if visit and isinstance(name, str) else None
+        if handled is not None:
+            mode = token_convention(cls, handled)
+            method = getattr(self, handled)
             call: Callable[[], Any] = (
                 (lambda: method()) if mode == NOTHING else (lambda: method(token))
             )
-            where = f"in {cls.__qualname__}.{name}, for the token {name}"
+            where = f"in {cls.__qualname__}.{handled}, for the token {name}"
             # A method that yields runs while its values are taken.
             return _noted(lambda: _results(call()), where)
         where = f"in the builder of {name}, for a token"
@@ -183,12 +185,13 @@ class Transformer:
         cls = type(self)
         # A tree built in Python may have any object as data.
         name: Any = tree.data
-        if isinstance(name, str) and is_handler(cls, name):
-            mode, _, extras = _owned_convention(cls, name)
-            method = getattr(self, name)
+        handled = handler(cls, name) if isinstance(name, str) else None
+        if handled is not None:
+            mode, _, extras = _owned_convention(cls, handled)
+            method = getattr(self, handled)
             args = _arguments(mode, children, tree)
             kwargs = _extras(extras, tree, children)
-            where = f"in {cls.__qualname__}.{name}, for the tree {name}"
+            where = f"in {cls.__qualname__}.{handled}, for the tree {name}"
             return _noted(lambda: _results(method(*args, **kwargs)), where)
         if _overrides(cls, "__default__"):
             where = f"in {cls.__qualname__}.__default__, for the tree {name}"
@@ -277,6 +280,25 @@ def is_handler(cls: type, name: str) -> bool:
     return attribute is not None and (
         callable(attribute) or isinstance(attribute, (staticmethod, classmethod))
     )
+
+
+def handler(cls: type, name: str) -> str | None:
+    """Return the name of the method of the class for the rule or terminal `name`, if it has one.
+
+    No method in a class body can be named like a Python keyword, and none can take the name
+    of a method the class needs itself, such as `transform`. A rule of such a name has its
+    method under the name with an underscore added, as `if_` for `if`, which is how PEP 8
+    writes such names.
+    """
+    if is_handler(cls, name):
+        return name
+    if _taken(cls, name) and is_handler(cls, name + "_"):
+        return name + "_"
+    return None
+
+
+def _taken(cls: type, name: str) -> bool:
+    return keyword.iskeyword(name) or name in getattr(cls, "__fpeg_reserved__", ())
 
 
 def _overrides(cls: type, name: str) -> bool:
@@ -431,20 +453,22 @@ def _make_plan(
     entries: list[tuple[int, str, int, tuple[str, ...], int]] = []
     conventions: dict[tuple[str, bool], tuple[int, tuple[str, ...], int]] = {}
     for kind, (name, token, fields) in enumerate(kinds):
-        if not is_handler(cls, name):
+        method = handler(cls, name)
+        if method is None:
             continue
-        if (name, token) not in conventions:
+        if (method, token) not in conventions:
             if token:
-                conventions[(name, token)] = (token_convention(cls, name), (), 0)
+                conventions[(method, token)] = (token_convention(cls, method), (), 0)
             else:
-                conventions[(name, token)] = node_convention(cls, name, dict(fields))
-        mode, field_names, extras = conventions[(name, token)]
-        entries.append((kind, name, mode, field_names, extras))
+                conventions[(method, token)] = node_convention(cls, method, dict(fields))
+        mode, field_names, extras = conventions[(method, token)]
+        entries.append((kind, method, mode, field_names, extras))
     return entries, _overrides(cls, "__default__"), _overrides(cls, "__default_token__")
 
 
 def check_strict(cls: type, names: Iterable[str]) -> None:
     known = set(names)
+    known |= {name + "_" for name in known if _taken(cls, name)}
     # An override of a method of the base class names no rule, and needs none.
     reserved: frozenset[str] = getattr(cls, "__fpeg_reserved__", frozenset[str]())
     for name in sorted(_public_methods(cls) - reserved):

@@ -462,6 +462,27 @@ def test_strict_transformers_name_only_rules_and_terminals() -> None:
     assert Helper().transform(parse("f()")).children == ["F"]
 
 
+def test_a_rule_named_like_a_keyword_or_a_method_of_the_class_takes_an_underscore() -> None:
+    grammar = fpeg.Grammar('start: if transform\nif: None\ntransform: "t"\nNone: "n"\n')
+
+    class Names(fpeg.Transformer, strict=True):
+        def if_(self, *children: str) -> str:
+            return f"if({', '.join(children)})"
+
+        def transform_(self) -> str:
+            return "transform"
+
+        def None_(self, token: fpeg.Token) -> str:
+            return "none"
+
+        def start(self, *children: str) -> list[str]:
+            return list(children)
+
+    assert Names().transform(grammar.parse("nt")) == ["if(none)", "transform"]
+    # Also in a tree built in Python, which has no grammar.
+    assert Names().transform(fpeg.Tree("if", [fpeg.Token("None", "n")])) == "if(none)"
+
+
 def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
     class Built(fpeg.Transformer):
         def pair(self, children: list[Any]) -> tuple[Any, ...]:
@@ -610,7 +631,7 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     exec(compile(source, "<template>", "exec"), namespace)
     assert namespace["Calls"]().transform(parse("f(a, [1]) ! k")) is None
     keyword = fpeg.Grammar('start: if\nif: "x"').transformer_template()
-    assert "    # if cannot be a method of the class: Python reserves the name." in keyword
+    assert "    def if_(self, *children: Any) -> Any:" in keyword
     # Builders give the nodes of one name kinds apart, and a method meets them all.
     shared = fpeg.Grammar(
         "start: x | y\nx: a=NAME -> item => list\ny: b=NUM -> item => tuple\n"
