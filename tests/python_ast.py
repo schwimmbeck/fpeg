@@ -9,6 +9,7 @@ of the nodes, which the Transformer stamps natively.
 """
 
 import ast as python_ast
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,20 @@ COMPARE = {
     "in": ast.In,
     "is": ast.Is,
 }
+SIMPLE_ESCAPES = {
+    "\\": "\\",
+    "'": "'",
+    '"': '"',
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+}
+# The hex digits that follow each letter of an escape by code.
+HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
 
 
 def name_of(value: Any) -> str:
@@ -139,6 +154,116 @@ def arguments_of(items: list[Any]) -> Any:
             if item.fpeg_default is not None:
                 defaults.append(item.fpeg_default)
     return ast.arguments(posonly, args, vararg, kwonly, kw_defaults, kwarg, defaults)
+
+
+def decode(text: str, raw: bool, braces: bool) -> str:
+    """The value of the text of a string part: escapes taken where it is not raw, and doubled
+    braces made single in an f-string or t-string."""
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if braces and c in "{}" and text.startswith(c * 2, i):
+            out.append(c)
+            i += 2
+            continue
+        if c != "\\" or raw:
+            out.append(c)
+            i += 1
+            continue
+        nxt = text[i + 1 : i + 2]
+        if nxt in SIMPLE_ESCAPES:
+            out.append(SIMPLE_ESCAPES[nxt])
+            i += 2
+        elif nxt == "\r":
+            i += 3 if text.startswith("\r\n", i + 1) else 2
+        elif nxt == "\n":
+            i += 2
+        elif "0" <= nxt <= "7":
+            j = i + 1
+            while j < len(text) and j < i + 4 and "0" <= text[j] <= "7":
+                j += 1
+            out.append(chr(int(text[i + 1 : j], 8)))
+            i = j
+        elif nxt in HEX_ESCAPES:
+            size = HEX_ESCAPES[nxt]
+            out.append(chr(int(text[i + 2 : i + 2 + size], 16)))
+            i += 2 + size
+        elif nxt == "N" and text.startswith("{", i + 2):
+            end = text.index("}", i + 3)
+            out.append(unicodedata.lookup(text[i + 3 : end]))
+            i = end + 1
+        else:
+            out.append("\\")
+            i += 1
+    return "".join(out)
+
+
+def finished(pieces: list[Any], raw: bool, braces: bool) -> list[Any]:
+    """The values of an f-string, a t-string or a format spec: texts decoded, the format specs
+    of fields finished, the text of a field with "=" before the field, adjacent texts joined."""
+    out: list[Any] = []
+    for piece in pieces:
+        if isinstance(piece, ast.Constant):
+            piece.value = decode(piece.value, raw, braces)
+            out.append(piece)
+            continue
+        if piece.format_spec is not None:
+            piece.format_spec.values = finished(piece.format_spec.values, raw, False)
+        debug = getattr(piece, "fpeg_debug", None)
+        if debug is not None:
+            out.append(text_at(debug, piece.lineno, piece.col_offset + 1))
+        out.append(piece)
+    return joined(out)
+
+
+def joined(pieces: list[Any]) -> list[Any]:
+    """Values with each run of adjacent texts joined into one constant that spans the run, and
+    empty texts left out."""
+    out: list[Any] = []
+    run: list[Any] = []
+    for piece in [*pieces, None]:
+        if isinstance(piece, ast.Constant):
+            run.append(piece)
+            continue
+        text = "".join(p.value for p in run)
+        if text:
+            out.append(spanning(ast.Constant(text), run[0], run[-1]))
+        run = []
+        if piece is not None:
+            out.append(piece)
+    return out
+
+
+def text_at(text: str, lineno: int, col_offset: int) -> Any:
+    """A constant of source text that starts at a position, ending where the text ends."""
+    lines = text.split("\n")
+    end = len(lines[-1].encode()) + (col_offset if len(lines) == 1 else 0)
+    constant = ast.Constant(text)
+    constant.lineno, constant.col_offset = lineno, col_offset
+    constant.end_lineno, constant.end_col_offset = lineno + len(lines) - 1, end
+    return constant
+
+
+def field_source(node: Any, ends: tuple[str, ...]) -> str:
+    """The text of a replacement field from after its brace to where the first of the fields
+    `ends` or the closing brace starts."""
+    text = node.text[1:]
+    end = len(text) - 1
+    for name in ends:
+        item = node.field(name)
+        if item is not None:
+            start = item.start_pos if isinstance(item, fpeg.Token) else item.meta.start_pos
+            end = min(end, start - node.meta.start_pos - 1)
+    return text[:end]
+
+
+def interpolation(value: Any) -> Any:
+    """A replacement field of a t-string as an `Interpolation`, with its source text."""
+    if not isinstance(value, ast.FormattedValue):
+        return value
+    out = ast.Interpolation(value.value, value.fpeg_source, value.conversion, value.format_spec)
+    return ast.copy_location(out, value)
 
 
 class ToAst(fpeg.Transformer, positions="ast"):
@@ -454,6 +579,56 @@ class ToAst(fpeg.Transformer, positions="ast"):
     def for_if(self, targets: Any, iter: Any, conditions: Any, *, node: Any) -> Any:
         target = with_context(targets, ast.Store)
         return ast.comprehension(target, iter, conditions, int(node.field("async") is not None))
+
+    # Strings
+
+    def STRING(self, token: fpeg.Token) -> Any:
+        return ast.Constant(ast.literal_eval(str(token)))
+
+    def BYTES(self, token: fpeg.Token) -> Any:
+        return ast.literal_eval(str(token))
+
+    def strings(self, parts: Any, *, node: Any) -> Any:
+        if isinstance(parts[0], bytes):
+            return ast.Constant(b"".join(parts))
+        if all(isinstance(p, ast.Constant) for p in parts):
+            kind = "u" if node.text[:1] in "uU" else None
+            return ast.Constant("".join(p.value for p in parts), kind)
+        kind = ast.TemplateStr if isinstance(parts[0], ast.TemplateStr) else ast.JoinedStr
+        return kind(joined([v for p in parts for v in (p.values if isinstance(p, kind) else [p])]))
+
+    # The f-string or t-string decodes the texts in it, since it knows whether it is raw.
+
+    def F_TEXT(self, token: fpeg.Token) -> Any:
+        return ast.Constant(str(token))
+
+    def F_SPEC_TEXT(self, token: fpeg.Token) -> Any:
+        return ast.Constant(str(token))
+
+    def fstring(self, prefix: Any, parts: Any) -> Any:
+        values = finished(parts, "r" in str(prefix).lower(), True)
+        if "t" in str(prefix).lower():
+            return ast.TemplateStr([interpolation(v) for v in values])
+        return ast.JoinedStr(values)
+
+    def replacement_field(
+        self, value: Any, debug: Any, conversion: Any, format: Any, *, node: Any
+    ) -> Any:
+        code = ord(conversion) if conversion is not None else -1
+        if debug is not None and conversion is None and format is None:
+            code = ord("r")
+        formatted = ast.FormattedValue(value, code, format)
+        # An interpolation keeps the text of its expression, and "=" puts it before the field.
+        formatted.fpeg_source = field_source(node, ("debug", "conversion", "format"))
+        if debug is not None:
+            formatted.fpeg_debug = field_source(node, ("conversion", "format"))
+        return formatted
+
+    def conversion(self, name: Any) -> str:
+        return str(name)
+
+    def format_spec(self, parts: Any) -> Any:
+        return ast.JoinedStr(parts)
 
 
 def parse(source: str) -> Any:

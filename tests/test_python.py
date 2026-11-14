@@ -9,6 +9,8 @@ with those of `ast.parse` by `ast.dump`, then node by node by their positions.
 
 import ast
 import sys
+import warnings
+from pathlib import Path
 
 import pytest
 import python_ast
@@ -150,10 +152,19 @@ finally:
     pass
 """
 
+SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "python"
+FILES = [
+    pytest.param(SAMPLES / name, id=name)
+    for name in ("fstrings.py", "layout.py", "small.py", "strings.py")
+]
+
 
 def compare(source: str) -> None:
     """Assert that the transformer gives the tree `ast.parse` gives, positions included."""
-    theirs = ast.parse(source)
+    with warnings.catch_warnings():
+        # Some samples use unknown escapes on purpose, which Python only warns about.
+        warnings.simplefilter("ignore", SyntaxWarning)
+        theirs = ast.parse(source)
     mine = python_ast.parse(source)
     assert ast.dump(mine, indent=1) == ast.dump(theirs, indent=1)
     assert positions(mine) == positions(theirs)
@@ -174,3 +185,8 @@ def test_expressions_give_the_tree_of_cpython() -> None:
 
 def test_statements_give_the_tree_of_cpython() -> None:
     compare(STATEMENTS)
+
+
+@pytest.mark.parametrize("path", FILES)
+def test_a_file_gives_the_tree_of_cpython(path: Path) -> None:
+    compare(path.read_text(encoding="utf-8"))
