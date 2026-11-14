@@ -14,7 +14,13 @@ author = "Dominik Schwimmbeck"
 copyright = "2026 Dominik Schwimmbeck"
 release = importlib.metadata.version("fpeg")
 
-extensions = ["myst_parser", "sphinx.ext.autodoc", "run_code_blocks", "fpeg_lexer"]
+extensions = [
+    "myst_parser",
+    "sphinx.ext.autodoc",
+    "run_code_blocks",
+    "fpeg_lexer",
+    "benchmark_results",
+]
 # Members in the order the classes define them, which groups them by topic.
 autodoc_member_order = "bysource"
 source_suffix = {".md": "markdown"}

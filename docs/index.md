@@ -69,6 +69,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 - [Python API](reference/python-api.md): `Grammar`, `Tree`, `Token`, `Transformer`, `Interpreter`, `Visitor` and the errors.
 - [Command line](reference/cli.md): `fpeg check`, `fpeg parse` and `fpeg profile`.
 - [Diagnostics](reference/diagnostics/index.md): every problem a grammar can have, with its code.
+- [Benchmarks](benchmarks.md): what fpeg and other parsers take on the same inputs.
 
 ```{toctree}
 :hidden:
@@ -85,5 +86,6 @@ reference/tree
 reference/python-api
 reference/cli
 reference/diagnostics/index
+benchmarks
 development
 ```
