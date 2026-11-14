@@ -10,7 +10,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::diag::{Diagnostic, DiagnosticCode};
-use crate::grammar::{Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span};
+use crate::grammar::{ErrorLabel, Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span};
 use crate::ir::{self, CharSet};
 use crate::items::Counts;
 use crate::vm::{Options, compile};
@@ -54,7 +54,7 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
             checker.warn(DiagnosticCode::UnreachableAlternative, message, next.span);
         }
         for alternative in &body.alternatives {
-            checker.recursion(body.name, alternative);
+            checker.recursion(body.name, body.params, alternative);
             checker.repetitions(alternative);
         }
     }
@@ -451,12 +451,20 @@ fn alike(a: &Expr, b: &Expr) -> bool {
                 negated: j,
             },
         ) => x.text == y.text && i == j,
-        (K::Label { label: x, .. }, K::Label { label: y, .. }) => x == y,
-        (K::Error { message: x }, K::Error { message: y }) => x == y,
+        (K::Label { label: x, .. }, K::Label { label: y, .. }) => label_text(x) == label_text(y),
+        (K::Error { message: x }, K::Error { message: y }) => x.value == y.value,
         (x, y) => std::mem::discriminant(x) == std::mem::discriminant(y),
     };
     let (inner_a, inner_b) = (a.children(), b.children());
     same && inner_a.len() == inner_b.len() && inner_a.iter().zip(&inner_b).all(|(x, y)| alike(x, y))
+}
+
+/// What an error label says, by message or by name, wherever it is written.
+fn label_text(label: &ErrorLabel) -> (bool, &str) {
+    match label {
+        ErrorLabel::Message(message) => (false, &message.value),
+        ErrorLabel::Named(name) => (true, &name.text),
+    }
 }
 
 /// Whether the expression matches wherever it is tried, or ends the parse with an error, so
@@ -595,16 +603,19 @@ impl Checker<'_> {
         };
         let rest = second.get(first.len()..)?;
         // Written alike they are duplicates, which the check of whole alternatives reports.
-        if !starts_with || (rest.is_empty() && first_folds == second_folds) {
+        if !starts_with || (rest.is_empty() && first_folds == second_folds && start == first) {
             return None;
         }
         // At a word boundary the shorter literal fails where the longer one goes on with a
-        // word character.
+        // word character, in either case where the longer one ignores case.
         if self.boundaries
             && let (Some(word), Some(last), Some(next)) =
                 (&self.word, first.chars().last(), rest.chars().next())
             && word.contains(last)
-            && word.contains(next)
+            && (word.contains(next)
+                || (*second_folds
+                    && (word.contains(next.to_ascii_lowercase())
+                        || word.contains(next.to_ascii_uppercase()))))
         {
             return None;
         }
@@ -677,11 +688,19 @@ impl Checker<'_> {
         }
     }
 
-    /// Warn about an alternative of `name` that begins and ends with `name` itself.
-    fn recursion(&mut self, name: &str, alternative: &Expr) {
+    /// Warn about an alternative of `name` that begins and ends with `name` itself, called
+    /// with its own parameters if it has any. In a template a bare name that calls nothing is
+    /// a parameter, also one named like the rule.
+    fn recursion(&mut self, name: &str, params: &[Name], alternative: &Expr) {
+        let own = |arg: &Expr, param: &Name| {
+            matches!(&bare(arg).kind, ExprKind::Reference { name, args }
+                if name.text == param.text && args.is_empty())
+        };
         let calls = |part: &&Expr| {
             matches!(&bare(part).kind, ExprKind::Reference { name: called, args }
-                if called.text == name && args.is_empty())
+                if called.text == name
+                    && args.len() == params.len()
+                    && args.iter().zip(params).all(|(arg, param)| own(arg, param)))
         };
         let parts = parts(alternative);
         if parts.len() > 1 && parts.first().is_some_and(calls) && parts.last().is_some_and(calls) {

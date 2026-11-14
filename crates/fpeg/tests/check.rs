@@ -102,10 +102,13 @@ fn a_literal_is_shadowed_where_the_earlier_one_matches_whenever_it_would() {
         ("start: \"a\" | \"b\" | \"c\" | \"ab\"\n", vec!["W102"]),
         // A literal that ignores case matches every spelling of the later one too.
         ("start: \"in\"i | \"INNER\"\n", vec!["W102"]),
+        ("start: \"a\"i | \"A\"i\n", vec!["W102"]),
         ("start: \"in\" | \"inner\"i\n", vec![]),
         // With word characters set, a literal of a rule fails in front of one.
         ("start: \"in\" | \"inner\"\n%word [a-z]\n", vec![]),
         ("start: \"in\" | \"in+\"\n%word [a-z]\n", vec!["W102"]),
+        // A later literal that ignores case goes on with a word character in either case.
+        ("start: \"in\"i | \"inNer\"i\n%word [a-z]\n", vec![]),
         ("start: \"+\" | \"+=\"\n%word [a-z]\n", vec!["W102"]),
         // Inside a terminal no boundary holds.
         (
@@ -142,6 +145,11 @@ fn an_alternative_is_shadowed_by_an_earlier_one_it_starts_with() {
             vec![],
         ),
         ("start: A !B | A B\nA: \"a\"\nB: \"b\"\n", vec![]),
+        // Labels written alike, wherever they stand.
+        (
+            "start: \"a\" ^ \"an a\" B | \"a\" ^ \"an a\" B C\nB: \"b\"\nC: \"c\"\n",
+            vec!["W103"],
+        ),
     ] {
         assert_eq!(codes(text), expected, "{text}");
     }
@@ -259,6 +267,16 @@ fn a_rule_that_calls_itself_at_both_ends_of_an_alternative_groups_to_the_right()
         (
             "start: x\nx: %precedence {\n    sum: sum \"+\" sum -> add\n    atom: \"1\"\n}\n",
             vec!["W202"],
+        ),
+        // A template that calls itself with its own parameters.
+        (
+            "start: list<N>\nlist<x>: list<x> \"-\" list<x> -> minus | x\nN: [0-9]+\n",
+            vec!["W202"],
+        ),
+        // A parameter of the name of its rule stands for the argument.
+        (
+            "start: pair<N>\npair<pair>: pair \"-\" pair\nN: [0-9]+\n",
+            vec![],
         ),
         // At one end only.
         ("start: e\ne: e \"-\" \"1\" | \"1\"\n", vec![]),
