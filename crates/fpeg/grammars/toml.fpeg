@@ -3,7 +3,8 @@
 
 // A subset of TOML 1.1: tables, arrays of tables, dotted keys, basic, literal and multi-line
 // strings, integers, floats, booleans, and arrays and inline tables that may span lines. Dates
-// and times are left out, and so is the check that no key or table is defined twice.
+// and times are left out, and so is the check that no key or table is defined twice. The builders
+// make the values that need no code: booleans, floats and arrays.
 
 %flag inside
 %ignore [ \t]+ | COMMENT | %if(inside) _NL
@@ -23,12 +24,12 @@ key: parts=(simple_key ++ ".")
       | LITERAL_STRING
       | FLOAT
       | INTEGER
-      | "true" -> true
-      | "false" -> false
+      | "true" -> true => True
+      | "false" -> false => False
       | array
       | inline_table
 
-array: "[" %on(inside, (items=(value ++ ",") ","?)? "]")
+array: "[" %on(inside, (items=(value ++ ",") ","?)? "]") => list
 // Line breaks may stand around the braces and commas of an inline table, never inside a pair.
 inline_table: "{" %off(inside, _NL? (pairs=(pair ++ (_NL? "," _NL?)) (_NL? ",")?)? _NL? "}")
 
@@ -45,7 +46,7 @@ NEWLINE: "\n" | "\r\n"
 ESCAPE: ["\\bfnrte] | "x" HEX{2} | "u" !([dD] [89a-fA-F]) HEX{4} | "U" ("0000" !([dD] [89a-fA-F]) HEX{4} | "000" [1-9a-fA-F] HEX{4} | "0010" HEX{4})
 HEX: [0-9A-Fa-f]
 INTEGER: "0x" HEX ("_"? HEX)* | "0o" [0-7] ("_"? [0-7])* | "0b" [01] ("_"? [01])* | [+\-]? DECIMAL
-FLOAT: [+\-]? (DECIMAL ("." DIGITS EXPONENT? | EXPONENT) | "inf" | "nan")
+FLOAT: [+\-]? (DECIMAL ("." DIGITS EXPONENT? | EXPONENT) | "inf" | "nan") => float
 DECIMAL: "0" | [1-9] ("_"? [0-9])*
 DIGITS: [0-9] ("_"? [0-9])*
 EXPONENT: [eE] [+\-]? DIGITS
