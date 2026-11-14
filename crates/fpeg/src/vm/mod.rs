@@ -41,13 +41,21 @@ pub struct Options {
 pub struct Passes {
     /// Hash the keys of remembered results with one multiplication a word, not with SipHash.
     pub hasher: bool,
+    /// Match a repetition of a class with one instruction, not one code point a step.
+    pub span: bool,
 }
 
 impl Passes {
     /// Every pass, the default.
-    pub const ALL: Passes = Passes { hasher: true };
+    pub const ALL: Passes = Passes {
+        hasher: true,
+        span: true,
+    };
     /// No pass: the plain machine.
-    pub const NONE: Passes = Passes { hasher: false };
+    pub const NONE: Passes = Passes {
+        hasher: false,
+        span: false,
+    };
 }
 
 impl Default for Passes {

@@ -600,6 +600,7 @@ pub fn sampled_passes(sample: u64) -> Passes {
     let mut rng = Rng(sample ^ PASSES_SALT);
     Passes {
         hasher: !rng.chance(PASS_OFF_PERCENT),
+        span: !rng.chance(PASS_OFF_PERCENT),
     }
 }
 

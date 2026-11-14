@@ -117,7 +117,7 @@ impl Tables<'_> {
                 index(i, p.strings.len(), "literal")?;
                 vec![(next, shape)]
             }
-            Inst::Class(i) => {
+            Inst::Class(i) | Inst::Span { class: i, .. } => {
                 index(i, p.classes.len(), "class")?;
                 vec![(next, shape)]
             }

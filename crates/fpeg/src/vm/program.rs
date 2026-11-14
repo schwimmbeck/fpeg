@@ -32,6 +32,14 @@ pub(crate) enum Inst {
     Class(u32),
     /// Match any one code point.
     Any,
+    /// Match the longest run of code points of the class with this index, and fail when it
+    /// holds fewer than `min`.
+    Span {
+        /// The class.
+        class: u32,
+        /// The fewest code points the run may hold.
+        min: u32,
+    },
     /// Push a choice entry that catches a failure and resumes at the target.
     Choice(u32),
     /// Pop the choice or label entry on top and jump.

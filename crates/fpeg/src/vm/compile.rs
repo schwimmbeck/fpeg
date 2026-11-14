@@ -11,10 +11,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::program::{Class, Inst, Program, RuleInfo};
-use super::{Memo, Options};
+use super::{Memo, Options, Passes};
 use crate::analysis;
 use crate::diag::{Diagnostic, DiagnosticCode};
-use crate::grammar::Span;
+use crate::grammar::{ClassItem, Span};
 use crate::ir::{self, RuleId};
 use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
 
@@ -41,6 +41,7 @@ pub(crate) fn compile(
         subs: Vec::new(),
         cuttable: false,
         free_cuts: HashMap::new(),
+        passes: options.passes,
     };
     let facts = analysis::analyze(grammar);
     let mut rules = Vec::new();
@@ -283,6 +284,48 @@ struct Compiler {
     cuttable: bool,
     /// Whether each shared part met so far holds a free cut.
     free_cuts: HashMap<*const ir::Expr, bool>,
+    passes: Passes,
+}
+
+/// The code points of a class, or of a literal of one code point that ignores no case.
+fn span_set(expr: &ir::Expr) -> Option<ir::CharSet> {
+    match expr {
+        ir::Expr::Class(set) => Some((**set).clone()),
+        ir::Expr::Literal {
+            text,
+            case_insensitive: false,
+        } => {
+            let mut chars = text.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Some(ir::CharSet {
+                    negated: false,
+                    items: vec![ClassItem::Range(c, c)],
+                }),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The code points and the fewest of them for a span that matches `e{min,}` exactly: `c{min,}`
+/// of a class or one code point `c`, `(c*){min,}`, `(c+)*` and `(c+)+`. A step that matches
+/// nothing is the last and satisfies the minimum, so `(c*){min,}` takes the run whatever `min`
+/// says, while `(c+){2,}` never matches, since its first step takes the whole run.
+fn span(expr: &ir::Expr, min: u32) -> Option<(ir::CharSet, u32)> {
+    match expr {
+        ir::Expr::Repeat {
+            expr: inner,
+            min: 0,
+            max: None,
+        } => span_set(inner).map(|set| (set, 0)),
+        ir::Expr::Repeat {
+            expr: inner,
+            min: 1,
+            max: None,
+        } if min <= 1 => span_set(inner).map(|set| (set, min)),
+        _ => span_set(expr).map(|set| (set, min)),
+    }
 }
 
 impl Compiler {
@@ -553,6 +596,15 @@ impl Compiler {
     }
 
     fn repeat(&mut self, expr: &ir::Expr, min: u32, max: Option<u32>) {
+        if self.passes.span
+            && max.is_none()
+            && let Some((set, min)) = span(expr, min)
+        {
+            self.classes.push(Class::new(&set));
+            let class = (self.classes.len() - 1) as u32;
+            self.emit(Inst::Span { class, min });
+            return;
+        }
         match (min, max) {
             (0, Some(0)) => {}
             // The resolver rejects a maximum below the minimum.

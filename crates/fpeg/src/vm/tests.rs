@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use super::machine::{Machine, memo_hash};
 use super::program::{Class, Inst, Program};
 use super::verify::verify;
-use super::{Memo, Options, Parser};
+use super::{Memo, Options, Parser, Passes};
 use crate::builder::{GrammarBuilder, lit, opt, r, r_args, sep_many, seq};
 use crate::grammar::{ClassItem, Expr, ExprKind, Grammar, MAX_EXPRESSION_DEPTH, Property};
 use crate::ir::CharSet;
@@ -18,6 +18,26 @@ use crate::parse::{Limit, Limits, ParseErrorKind};
 fn parser(text: &str) -> Parser {
     let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
     Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"))
+}
+
+/// A parser without the passes of the optimizer, whose program shows the plain templates.
+fn plain(text: &str) -> Parser {
+    let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
+    let options = Options {
+        passes: Passes::NONE,
+        ..Options::default()
+    };
+    Parser::with_options(&grammar, &options).unwrap_or_else(|e| panic!("{e:?}"))
+}
+
+/// The disassembly of the routine of one rule.
+fn routine(program: &Program, rule: &str) -> String {
+    let text = program.to_string();
+    let start = text.find(&format!("rule {rule}:\n")).expect("the rule");
+    let lines = text[start..].lines().skip(1);
+    let lines = lines.take_while(|line| line.starts_with(' '));
+    let body: Vec<&str> = lines.map(str::trim_start).collect();
+    body.join("\n")
 }
 
 fn errors(text: &str) -> Vec<String> {
@@ -97,7 +117,7 @@ fn an_instruction_takes_at_most_twelve_bytes() {
 
 #[test]
 fn rules_compile_to_their_templates_and_shared_items_to_one_routine() {
-    let program = parser(concat!(
+    let program = plain(concat!(
         "start: pair\n",
         "pair: key=STRING \":\" value=value\n",
         "value: STRING | \"[\" (value ** \",\") \"]\"\n",
@@ -202,7 +222,7 @@ shared 0:
 
 #[test]
 fn repetitions_lookahead_labels_and_flags_compile_to_their_templates() {
-    let program = parser(concat!(
+    let program = plain(concat!(
         "start: \"a\"? \"b\"* \"c\"+ \"d\"{2,3} &\"e\" !\"f\" (\"g\" ^ \"need g\") ",
         "%on(x, \"h\") %if(!x) \"ij\"i\n",
         "%flag x\n",
@@ -264,6 +284,43 @@ entry start:
     50  End
 ";
     assert_eq!(program.to_string(), expected);
+}
+
+#[test]
+fn repetitions_of_a_class_compile_to_one_span() {
+    let program = parser(concat!(
+        "start: A B C\n",
+        "A: [a-z]* \" \"+ [0-9]{3,} \"é\"*\n",
+        "B: ([a-z]+)* ([a-z]+)+ ([a-z]*){2,}\n",
+        "C: ([a-z]+){2,} [a-z]{2,4} \"ab\"*\n",
+    ))
+    .program;
+    // The first step of `([a-z]+){2,}` takes the whole run, so a second step never matches,
+    // and the repetition stays.
+    let expected = "\
+12  Span [a-z] {0,}
+13  Span [ ] {1,}
+14  Span [0-9] {3,}
+15  Span [é] {0,}
+16  Ret
+17  Span [a-z] {0,}
+18  Span [a-z] {1,}
+19  Span [a-z] {0,}
+20  Ret
+21  RepOpen {2,} 24
+22  Span [a-z] {1,}
+23  RepNext 22
+24  RepOpen {2,4} 27
+25  Class [a-z]
+26  RepNext 25
+27  Choice 30
+28  Str \"ab\"
+29  LoopCommit 28
+30  Ret";
+    let rules = ["A", "B", "C"].map(|rule| routine(&program, rule));
+    assert_eq!(rules.join("\n"), expected);
+    let plain = plain("start: A\nA: [a-z]*\n").program.to_string();
+    assert!(!plain.contains("Span"), "{plain}");
 }
 
 #[test]
@@ -338,10 +395,17 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 10] = [
+    let breaks: [Break; 11] = [
         ("no rule 1000", |p| {
             let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
             p.code[call] = Inst::MemoCall(1_000);
+        }),
+        ("no class 1000", |p| {
+            let at = find(p, |i| matches!(i, Inst::Char(_)));
+            p.code[at] = Inst::Span {
+                class: 1_000,
+                min: 0,
+            };
         }),
         ("remembers a rule that is not remembered", |p| {
             p.rules.iter_mut().for_each(|rule| rule.memo = false);

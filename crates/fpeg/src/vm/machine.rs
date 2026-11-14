@@ -503,6 +503,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                     let len = self.rest().chars().next().map(char::len_utf8);
                     self.advance(len)?;
                 }
+                Inst::Span { class, min } => {
+                    let (len, count) = self.run_of(class);
+                    self.advance((count >= min).then_some(len))?;
+                }
                 Inst::Choice(alt) => self.push(Entry::Choice {
                     alt,
                     saved: self.saved(),
@@ -758,6 +762,23 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
             }
         }
+    }
+
+    /// The length in bytes of the longest run of code points of the class at the position, and
+    /// how many it holds. Its bytes count as the bytes of a literal do.
+    fn run_of(&mut self, class: u32) -> (usize, u32) {
+        let program = self.program;
+        let Some(class) = program.classes.get(class as usize) else {
+            return (0, 0);
+        };
+        let rest = self.rest();
+        let (mut len, mut count) = (0, 0);
+        while let Some(next) = (rest.get(len..)).and_then(|r| class.matches(r, &mut self.steps)) {
+            len += next;
+            count += 1;
+        }
+        self.steps += len as u64 / LITERAL_BYTES_PER_STEP;
+        (len, count)
     }
 
     fn literal(&self, index: u32) -> &'p [u8] {

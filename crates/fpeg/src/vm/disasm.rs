@@ -61,20 +61,19 @@ impl Program {
             let bytes = self.strings.get(index as usize).map_or(&[][..], |s| s);
             quoted(&String::from_utf8_lossy(bytes))
         };
+        let class = |index: u32| match self.classes.get(index as usize) {
+            Some(class) => expr_text(&Expr::new(ExprKind::Class(Class {
+                negated: class.set.negated,
+                items: class.set.items.clone(),
+            }))),
+            None => format!("?{index}"),
+        };
         match *inst {
             Inst::Char(byte) => format!("Char {:?}", char::from(byte)),
             Inst::Str(index) => format!("Str {}", string(index)),
             Inst::StrFold(index) => format!("StrFold {}", string(index)),
-            Inst::Class(index) => match self.classes.get(index as usize) {
-                Some(class) => format!(
-                    "Class {}",
-                    expr_text(&Expr::new(ExprKind::Class(Class {
-                        negated: class.set.negated,
-                        items: class.set.items.clone(),
-                    })))
-                ),
-                None => format!("Class ?{index}"),
-            },
+            Inst::Class(index) => format!("Class {}", class(index)),
+            Inst::Span { class: index, min } => format!("Span {} {{{min},}}", class(index)),
             Inst::Any => "Any".to_owned(),
             Inst::Choice(target) => format!("Choice {target}"),
             Inst::Commit(target) => format!("Commit {target}"),
