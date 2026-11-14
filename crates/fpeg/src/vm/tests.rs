@@ -4,7 +4,9 @@
 //! Tests of the compiler, the verifier and the machine that need their insides. What a parse
 //! returns is compared with the reference interpreter in the crate's differential tests.
 
-use super::machine::Machine;
+use std::collections::HashSet;
+
+use super::machine::{Machine, memo_hash};
 use super::program::{Class, Inst, Program};
 use super::verify::verify;
 use super::{Memo, Options, Parser};
@@ -489,6 +491,17 @@ fn a_remembered_rule_is_matched_once_at_a_position() {
         plain.err().map(|error| error.kind),
         Some(ParseErrorKind::Limit(Limit::Steps))
     );
+}
+
+#[test]
+fn the_memo_spreads_positions_at_any_power_of_two_apart_over_its_buckets() {
+    // 100,000 random keys take about 95,400 of the values of 20 low bits.
+    for shift in 0..13 {
+        let low: HashSet<u64> = (0..100_000u32)
+            .map(|i| memo_hash(7, i << shift, 0, false) & 0xf_ffff)
+            .collect();
+        assert!(low.len() > 90_000, "{} apart: {}", 1 << shift, low.len());
+    }
 }
 
 #[test]

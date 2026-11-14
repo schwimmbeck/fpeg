@@ -17,6 +17,7 @@
 //! further.
 
 use std::collections::{BTreeSet, HashMap};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
 use super::profile::{Profile, Profiler};
@@ -130,6 +131,62 @@ struct MemoKey {
     quiet: bool,
 }
 
+/// An odd constant whose bits are spread over the word, for [`KeyHasher`].
+const KEY_MULTIPLIER: u64 = 0x517c_c1b7_2722_0a95;
+
+/// Hashes the keys of the memo with one multiplication a word. No key is needed against
+/// collisions forced from outside, since an input decides only which of its own positions get
+/// entries. A product carries the bits of a word only upward, so `finish` folds the high half
+/// into the low bits that pick a bucket, or positions at a stride of 4,096 would share 1,024
+/// buckets.
+#[derive(Default)]
+struct KeyHasher(u64);
+
+impl KeyHasher {
+    fn add(&mut self, word: u64) {
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(KEY_MULTIPLIER);
+    }
+}
+
+impl Hasher for KeyHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut word = [0; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            self.add(u64::from_le_bytes(word));
+        }
+    }
+
+    fn write_u8(&mut self, n: u8) {
+        self.add(u64::from(n));
+    }
+
+    fn write_u32(&mut self, n: u32) {
+        self.add(u64::from(n));
+    }
+
+    fn write_u64(&mut self, n: u64) {
+        self.add(n);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0 ^ (self.0 >> 32)
+    }
+}
+
+/// The hash the memo gives a key.
+#[cfg(test)]
+pub fn memo_hash(rule: u32, pos: u32, flags: u64, quiet: bool) -> u64 {
+    use std::hash::BuildHasher;
+    let key = MemoKey {
+        rule,
+        pos,
+        flags,
+        quiet,
+    };
+    BuildHasherDefault::<KeyHasher>::default().hash_one(key)
+}
+
 /// A match kept for later: where it ended and the items it left, a range of the items kept.
 #[derive(Clone, Copy, Debug)]
 struct Match {
@@ -240,7 +297,7 @@ pub(crate) struct Machine<'p, 'i> {
     /// The oldest frame of left recursion whose entry the evaluation in progress used, or
     /// [`NO_FRAME`]. A result that used a frame older than its own call is not remembered.
     dependency: u32,
-    memo: HashMap<MemoKey, Stored>,
+    memo: HashMap<MemoKey, Stored, BuildHasherDefault<KeyHasher>>,
     /// The items of the remembered matches.
     memo_items: Vec<Item>,
     /// The length of the arena at the newest remembered match that holds a node. The nodes
@@ -287,7 +344,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             newest_recursion: NO_FRAME,
             serial: 0,
             dependency: NO_FRAME,
-            memo: HashMap::new(),
+            memo: HashMap::default(),
             memo_items: Vec::new(),
             protected: 0,
             shared: false,
