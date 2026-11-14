@@ -84,6 +84,15 @@ def _token_mode(cls: type, name: Any) -> int | None:
     return by_name[name]
 
 
+def _note(error: BaseException, where: str, line: int | None, column: int | None) -> None:
+    """Say on an error where it came from, once: the innermost method says it."""
+    notes = getattr(error, "__notes__", ())
+    if any(isinstance(note, str) and note.startswith("fpeg: ") for note in notes):
+        return
+    place = "" if line is None else f" at line {line}, column {column}"
+    error.add_note(f"fpeg: {where}{place}")
+
+
 def _call(walker: object, node: Tree) -> Any:
     """Call the method of a node as its signature asks, or return `_NO_METHOD`."""
     cls = type(walker)
@@ -94,24 +103,29 @@ def _call(walker: object, node: Tree) -> Any:
     if convention is None:
         return _NO_METHOD
     mode, fields, extras = convention
-    if mode == FIELDS:
-        args: tuple[Any, ...] = tuple(node.field(field) for field in fields)
-    elif mode == INLINE:
-        args = tuple(node.children)
-    elif mode == NOTHING:
-        args = ()
-    else:
-        args = (node,)
-    if not extras:
-        return getattr(walker, name)(*args)
-    kwargs: dict[str, Any] = {}
-    if extras & EXTRAS["meta"]:
-        kwargs["meta"] = node.meta
-    if extras & EXTRAS["node"]:
-        kwargs["node"] = node
-    if extras & EXTRAS["children"]:
-        kwargs["children"] = node.children
-    return getattr(walker, name)(*args, **kwargs)
+    try:
+        if mode == FIELDS:
+            args: tuple[Any, ...] = tuple(node.field(field) for field in fields)
+        elif mode == INLINE:
+            args = tuple(node.children)
+        elif mode == NOTHING:
+            args = ()
+        else:
+            args = (node,)
+        if not extras:
+            return getattr(walker, name)(*args)
+        kwargs: dict[str, Any] = {}
+        if extras & EXTRAS["meta"]:
+            kwargs["meta"] = node.meta
+        if extras & EXTRAS["node"]:
+            kwargs["node"] = node
+        if extras & EXTRAS["children"]:
+            kwargs["children"] = node.children
+        return getattr(walker, name)(*args, **kwargs)
+    except BaseException as error:
+        meta = node.meta
+        _note(error, f"in {cls.__qualname__}.{name}, for the node {name}", meta.line, meta.column)
+        raise
 
 
 class Interpreter:
@@ -133,12 +147,19 @@ class Interpreter:
     __fpeg_reserved__: ClassVar[frozenset[str]]
 
     def visit(self, item: Any) -> Any:
-        """Return what the method of a node or token returns, or anything else as it is."""
+        """Return what the method of a node or token returns, or anything else as it is.
+
+        `None` and a list are refused: an optional field that is absent is `None` and a field of
+        several items is a list, and visiting either as if it were an item hides a mistake.
+        """
         if isinstance(item, Tree):
             result = _call(self, item)
             return self.__default__(item) if result is _NO_METHOD else result
         if isinstance(item, Token):
             return self._visit_token(item)
+        if item is None or isinstance(item, list):
+            what = "None, as an absent optional field is" if item is None else "a list"
+            raise TypeError(f"visit takes a node or a token, and got {what}")
         return item
 
     def visit_children(self, node: Tree) -> list[Any]:
@@ -153,13 +174,19 @@ class Interpreter:
         return self.visit_children(node)
 
     def _visit_token(self, token: Token) -> Any:
+        cls = type(self)
         name: Any = token.type
-        mode = _token_mode(type(self), name)
-        if mode is None:
-            built = _fpeg.token_value(token)
-            return token if built is _NO_VALUE else built
-        method = getattr(self, name)
-        return method() if mode == NOTHING else method(token)
+        mode = _token_mode(cls, name)
+        try:
+            if mode is None:
+                built = _fpeg.token_value(token)
+                return token if built is _NO_VALUE else built
+            method = getattr(self, name)
+            return method() if mode == NOTHING else method(token)
+        except BaseException as error:
+            where = f"the builder of {name}" if mode is None else f"{cls.__qualname__}.{name}"
+            _note(error, f"in {where}, for the token {name}", token.line, token.column)
+            raise
 
 
 Interpreter.__fpeg_reserved__ = reserved_names(Interpreter)

@@ -130,6 +130,37 @@ def test_the_builder_of_a_rule_is_not_applied() -> None:
     assert fpeg.Interpreter().visit(built.parse("a b")) == [["a", "b"]]
 
 
+def test_visiting_none_or_a_list_is_an_error() -> None:
+    class Careless(fpeg.Interpreter):
+        def if_(self, test: Any, then: Any, otherwise: Any) -> Any:
+            return self.visit(otherwise)
+
+        def list_(self, items: Any) -> Any:
+            return self.visit(items)
+
+    with pytest.raises(TypeError, match="got None, as an absent optional field is") as raised:
+        Careless().visit(parse("if 1 { }"))
+    (note,) = raised.value.__notes__
+    assert note.endswith("Careless.if_, for the node if_ at line 1, column 1")
+    with pytest.raises(TypeError, match="got a list"):
+        Careless().visit(parse("x = [1];"))
+
+
+def test_an_error_gets_one_note_from_the_innermost_method() -> None:
+    with pytest.raises(KeyError) as raised:
+        Run().visit(parse("x = 1;\nif x { y = [x, zz]; }"))
+    assert raised.value.__notes__ == ["fpeg: in Run.load, for the node load at line 2, column 16"]
+
+    class Tokens(fpeg.Interpreter):
+        def NUMBER(self, token: fpeg.Token) -> int:
+            raise ValueError(str(token))
+
+    with pytest.raises(ValueError, match="7") as failed:
+        Tokens().visit(parse("x = 7;"))
+    (note,) = failed.value.__notes__
+    assert note.endswith("Tokens.NUMBER, for the token NUMBER at line 1, column 5")
+
+
 def test_a_signature_that_fits_no_convention_fails_with_the_fields_of_the_node() -> None:
     class Wrong(fpeg.Interpreter):
         def assign(self, target: Any, expr: Any) -> None:

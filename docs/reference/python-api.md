@@ -249,7 +249,7 @@ assert run.variables == {"x": 1, "y": 2}
 
 A node without a method gives `visit_children(node)`, the list of its visited children, which `start` does above. Override `__default__(self, node)` to give something else. Visiting a token gives what the method named like its terminal returns, else the value of the terminal's builder, as `int` for `NUMBER` above, else the token. The builders of rules are not applied, since a method decides when the children are visited. A tree built in Python is walked alike, by the names of its `data`. It has no fields, so its methods take the node or `*children`.
 
-`v_args` is not for an `Interpreter`.
+`visit(None)` is an error, and so is visiting a list: an optional field that is absent is `None`, and a field of several items is a list, so test the one and loop over the other. An exception keeps its type and gets one note, from the innermost method, with where its node stands. `v_args` is not for an `Interpreter`.
 
 The walk recurses in Python, a few calls deep for every level of the tree. A tree nested deeper than Python's recursion limit allows ends it with `RecursionError`, where a `Transformer` does not recurse and takes a tree of any depth.
 
