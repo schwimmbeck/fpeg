@@ -258,6 +258,36 @@ The walk recurses in Python, a few calls deep for every level of the tree. A tre
    :members: visit, visit_children, __default__
 ```
 
+## Visitor
+
+A `Visitor` calls a method for every node of a tree and gives the tree back as it is. It is for looking at a tree: collecting from it, counting, checking. `visit(tree)` calls the methods children before their parents, `visit_topdown(tree)` parents first. A method gets the parts of its node by its signature, as a method of an `Interpreter` does, and what it returns is dropped.
+
+```python
+class Names(fpeg.Visitor):
+    def __init__(self):
+        self.read = set()
+        self.written = set()
+
+    def load(self, name):
+        self.read.add(str(name))
+
+    def assign(self, target, value):
+        self.written.add(str(target))
+
+
+names = Names()
+tree = program.parse("x = 1; if x { y = z; }")
+assert names.visit(tree) is tree
+assert names.read - names.written == {"z"}
+```
+
+Tokens have no methods in a `Visitor`, and a method named like a terminal is an error. Notes on exceptions and `strict=True` are as for an `Interpreter`. The walk does not recurse, so a tree may nest as deeply as it likes.
+
+```{eval-rst}
+.. autoclass:: fpeg.Visitor
+   :members: visit, visit_topdown
+```
+
 ## Value builders
 
 A grammar can say itself what its nodes and tokens are worth: `=> builder` after an alternative, as the [grammar reference](grammar.md#values) describes. A transformer without a method for a node uses its builder, so a bare `fpeg.Transformer()` turns a tree into values with no Python method called, and a method still overrides a builder.

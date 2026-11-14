@@ -55,7 +55,7 @@ pub struct GrammarCore {
     pub name_fields: Vec<Vec<(FieldId, FieldCount)>>,
     /// The plans of the transformer classes that met the grammar.
     pub plans: Plans<Plan>,
-    /// The plans of the Interpreter classes that met the grammar, made in Python.
+    /// The plans of the Interpreter and Visitor classes that met the grammar, made in Python.
     pub walk_plans: Plans<Py<PyAny>>,
     /// The value builder of each kind, by kind id.
     pub builders: Vec<Option<Builder>>,

@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""The Interpreter: methods named like the rules of a grammar, each visiting what it asks for.
+"""The Interpreter and the Visitor: methods named like rules, called by a walk in Python.
 
 A method gets the parts of its node as parsed, not yet visited, and what it gets its signature
-says, read as the Transformer reads it, once per class and grammar. The walk is in Python and
-recurses as deeply as the tree nests.
+says, read as the Transformer reads it, once per class and grammar. The Interpreter visits what
+its methods ask for and recurses as deeply as the tree nests. The Visitor calls a method for
+every node and does not recurse.
 """
 
 from __future__ import annotations
@@ -62,8 +63,15 @@ def _make_plan(
         check_strict(cls, {name for name, _, _ in kinds})
     plan: dict[str, _Convention] = {}
     for name, token, fields in kinds:
-        if not token and name not in plan and is_handler(cls, name):
+        if not is_handler(cls, name):
+            continue
+        if not token and name not in plan:
             plan[name] = _convention(cls, name, dict(fields))
+        elif token and issubclass(cls, Visitor):
+            raise TypeError(
+                f"{cls.__qualname__}.{name} is named like a terminal, and a Visitor calls "
+                "methods for nodes only"
+            )
     return plan
 
 
@@ -131,7 +139,18 @@ def _call(walker: object, node: Tree) -> Any:
         raise
 
 
-class Interpreter:
+class _Walker:
+    """What the Interpreter and the Visitor share: `strict=True` as a class keyword."""
+
+    __fpeg_strict__: ClassVar[bool] = False
+    __fpeg_reserved__: ClassVar[frozenset[str]]
+
+    def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls.__fpeg_strict__ = strict
+
+
+class Interpreter(_Walker):
     """Walk a tree from the top, with methods named like the rules and terminals of a grammar.
 
     `visit(node)` calls the method named like the node, which decides what to visit of it and
@@ -147,13 +166,6 @@ class Interpreter:
     of the grammar it meets. The walk recurses in Python, so a tree nested deeper than Python's
     recursion limit allows ends it with `RecursionError`. A `Transformer` does not recurse.
     """
-
-    __fpeg_strict__: ClassVar[bool] = False
-    __fpeg_reserved__: ClassVar[frozenset[str]]
-
-    def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        cls.__fpeg_strict__ = strict
 
     def visit(self, item: Any) -> Any:
         """Return what the method of a node or token returns, or anything else as it is.
@@ -198,4 +210,33 @@ class Interpreter:
             raise
 
 
+class Visitor(_Walker):
+    """Call a method for every node of a tree, with methods named like the rules of a grammar.
+
+    `visit(tree)` calls the method named like each node, children before their parents, and
+    `visit_topdown(tree)` parents before their children. A method gets the parts of its node as
+    parsed, by its signature, as a method of an `Interpreter` does. What it returns is dropped:
+    a visitor looks at a tree, to collect from it or to check it, and gives it back unchanged.
+    Tokens have no methods.
+
+    `class V(Visitor, strict=True)` makes every public method of `V` name a rule of the grammar
+    it meets. The walk does not recurse, so a tree may nest as deeply as it likes.
+    """
+
+    def visit(self, tree: Any) -> Any:
+        """Call the method of every node, children before their parents, and return the tree."""
+        if isinstance(tree, Tree):
+            for node in tree.iter_subtrees():
+                _call(self, node)
+        return tree
+
+    def visit_topdown(self, tree: Any) -> Any:
+        """Call the method of every node, parents before their children, and return the tree."""
+        if isinstance(tree, Tree):
+            for node in tree.iter_subtrees_topdown():
+                _call(self, node)
+        return tree
+
+
 Interpreter.__fpeg_reserved__ = reserved_names(Interpreter)
+Visitor.__fpeg_reserved__ = reserved_names(Visitor)

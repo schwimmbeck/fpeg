@@ -5,8 +5,9 @@
 
 A `Grammar` is compiled from text at runtime and parses inputs into trees of `Tree` and
 `Token` items, views of a tree that stays in native memory. A `Transformer` turns them into
-values with one method per rule or terminal, children first, and an `Interpreter` walks
-them from the top, each method visiting what it asks for.
+values with one method per rule or terminal, children first, an `Interpreter` walks them
+from the top, each method visiting what it asks for, and a `Visitor` calls a method for
+every node.
 """
 
 from fpeg._fpeg import (
@@ -23,7 +24,7 @@ from fpeg._fpeg import (
     check,
 )
 from fpeg._transformer import Transformer, v_args
-from fpeg._visitors import Interpreter
+from fpeg._visitors import Interpreter, Visitor
 
 __all__ = [
     "Diagnostic",
@@ -37,6 +38,7 @@ __all__ = [
     "Token",
     "Transformer",
     "Tree",
+    "Visitor",
     "__version__",
     "check",
     "v_args",

@@ -684,8 +684,8 @@ pub fn scan<'py>(
     Ok(PyTuple::new(py, objects)?.into_any())
 }
 
-/// The plan of an Interpreter class for the grammar of a view: what `make_plan` gave for the
-/// class and the kinds of the grammar when the two first met. The walk is in Python, so the
+/// The plan of an Interpreter or Visitor class for the grammar of a view: what `make_plan`
+/// gave for the class and the kinds of the grammar when the two first met. The walk is in Python, so the
 /// plan is whatever its plan maker returns. `None` for a tree built in Python, which has no
 /// grammar.
 #[pyfunction]
