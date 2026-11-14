@@ -648,17 +648,25 @@ impl Checker<'_> {
             return None;
         }
         // At a word boundary the shorter literal fails where the longer one goes on with a
-        // word character, in either case where the longer one ignores case.
+        // word character, in either case where the longer one ignores case. A literal gets its
+        // boundary by its last character as written, so a later one as long fails nowhere the
+        // earlier one does where its last character is no word character.
         if self.boundaries
-            && let (Some(word), Some(last), Some(next)) =
-                (&self.word, first.chars().last(), rest.chars().next())
+            && let (Some(word), Some(last)) = (&self.word, first.chars().last())
             && word.contains(last)
-            && (word.contains(next)
-                || (*second_folds
-                    && (word.contains(next.to_ascii_lowercase())
-                        || word.contains(next.to_ascii_uppercase()))))
         {
-            return None;
+            let gives_way = match rest.chars().next() {
+                Some(next) => {
+                    word.contains(next)
+                        || (*second_folds
+                            && (word.contains(next.to_ascii_lowercase())
+                                || word.contains(next.to_ascii_uppercase())))
+                }
+                None => second.chars().last().is_some_and(|end| !word.contains(end)),
+            };
+            if gives_way {
+                return None;
+            }
         }
         Some((first.clone(), second.clone()))
     }

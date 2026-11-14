@@ -114,6 +114,9 @@ fn a_literal_is_shadowed_where_the_earlier_one_matches_whenever_it_would() {
         ("start: \"in\" | \"in+\"\n%word [a-z]\n", vec!["W102"]),
         // A later literal that ignores case goes on with a word character in either case.
         ("start: \"in\"i | \"inNer\"i\n%word [a-z]\n", vec![]),
+        // One as long that ends in no word character, as written, has no boundary of its own.
+        ("start: (\"a\"i | \"A\"i) \"b\"\n%word [a-z]\n", vec![]),
+        ("start: (\"in\"i | \"IN\") \"x\"\n%word [a-z]\n", vec![]),
         ("start: \"+\" | \"+=\"\n%word [a-z]\n", vec!["W102"]),
         // Inside a terminal no boundary holds.
         (
