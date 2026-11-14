@@ -429,6 +429,22 @@ fn rules_that_call_each_other_where_nothing_is_tried_compile_into_their_callers(
 }
 
 #[test]
+fn a_loop_over_a_class_and_other_alternatives_takes_runs_of_the_class() {
+    // `(CHAR | "\\" .)*` as `CHAR* ("\\" . CHAR*)*`, the class reached through the call of
+    // `CHAR`, compiled as its body.
+    let program = parser("start: S\nS: (CHAR | \"\\\\\" .)*\nCHAR: [a-z]\n").program;
+    let expected = "\
+11  Span [a-z] {0,}
+12  Choice 17
+13  Char '\\\\'
+14  Any
+15  Span [a-z] {0,}
+16  LoopCommit 13
+17  Ret";
+    assert_eq!(routine(&program, "S"), expected);
+}
+
+#[test]
 fn a_skip_expression_that_repeats_a_class_is_taken_as_one_run() {
     let text = "start: \"x\"\n%ignore [ \\t]+\n";
     let program = parser(text).program;

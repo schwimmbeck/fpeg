@@ -120,7 +120,7 @@ pub(crate) fn compile(
         // A cut passes the call of a shared part, and what stands around its uses is not
         // known here.
         c.cuttable = true;
-        c.expr(&expr);
+        c.expr(expr);
         c.emit(Inst::Ret);
     }
     for (at, rule) in std::mem::take(&mut c.calls) {
@@ -312,7 +312,7 @@ struct Compiler<'f> {
     /// The index of each shared part met so far, and the parts whose routines are still to
     /// be compiled.
     shared: HashMap<*const ir::Expr, usize>,
-    queue: Vec<(usize, Arc<ir::Expr>)>,
+    queue: Vec<(usize, &'f ir::Expr)>,
     shared_pcs: Vec<u32>,
     /// Calls to point at the routine of the shared part they call, once every part has one.
     subs: Vec<(usize, usize)>,
@@ -480,7 +480,7 @@ impl<'f> Compiler<'f> {
 
     /// Compile an expression. It recurses as deeply as the expression nests, which the
     /// resolver bounds.
-    fn expr(&mut self, expr: &ir::Expr) {
+    fn expr(&mut self, expr: &'f ir::Expr) {
         use ir::Expr as E;
         match expr {
             E::Empty => {}
@@ -601,7 +601,7 @@ impl<'f> Compiler<'f> {
                         let index = self.shared_pcs.len();
                         self.shared_pcs.push(0);
                         self.shared.insert(key, index);
-                        self.queue.push((index, Arc::clone(expr)));
+                        self.queue.push((index, &**expr));
                         index
                     }
                 };
@@ -616,7 +616,7 @@ impl<'f> Compiler<'f> {
     }
 
     /// Compile `expr` where a cut can mark an entry of the routine, or cannot.
-    fn inside(&mut self, cuttable: bool, expr: &ir::Expr) {
+    fn inside(&mut self, cuttable: bool, expr: &'f ir::Expr) {
         let outer = std::mem::replace(&mut self.cuttable, cuttable);
         self.expr(expr);
         self.cuttable = outer;
@@ -626,7 +626,7 @@ impl<'f> Compiler<'f> {
     /// own: the last alternative of a choice, an expression repeated exactly once, the skip
     /// expression. A cut in it must not mark an entry around it, so where it holds a free cut
     /// and there is such an entry, it gets a guard, a choice entry that resumes at a failure.
-    fn cut_scope(&mut self, expr: &ir::Expr) {
+    fn cut_scope(&mut self, expr: &'f ir::Expr) {
         if !(self.cuttable && self.free_cut(expr)) {
             self.expr(expr);
             return;
@@ -739,7 +739,7 @@ impl<'f> Compiler<'f> {
         Some(id)
     }
 
-    fn choice(&mut self, alternatives: &[ir::Expr]) {
+    fn choice(&mut self, alternatives: &'f [ir::Expr]) {
         let Some((last, rest)) = alternatives.split_last() else {
             self.emit(Inst::Fail);
             return;
@@ -778,13 +778,43 @@ impl<'f> Compiler<'f> {
         }
     }
 
-    fn repeat(&mut self, expr: &ir::Expr, min: u32, max: Option<u32>) {
+    /// The code points of the first alternative of `expr` and the alternatives after it,
+    /// where a loop over `expr` can split as `c* (e c*)*`: the first alternative is a class
+    /// or one code point, maybe through a call compiled as its body, and no other holds a
+    /// free cut. Both forms take `c` where it matches and try `e` where it does not, and a
+    /// step of `e` that matches nothing ends both, since `c*` then matches nothing either.
+    fn split(&mut self, expr: &'f ir::Expr) -> Option<(ir::CharSet, &'f [ir::Expr])> {
+        let ir::Expr::Choice(alternatives) = self.seen_through(expr) else {
+            return None;
+        };
+        let (first, rest) = alternatives.split_first()?;
+        let set = span_set(self.seen_through(first))?;
+        let free = rest.iter().any(|alternative| self.free_cut(alternative));
+        (self.passes.split && !rest.is_empty() && !free).then_some((set, rest))
+    }
+
+    /// `expr`, or the body it compiles as where it is a call compiled into its caller.
+    fn seen_through(&self, expr: &'f ir::Expr) -> &'f ir::Expr {
+        match expr {
+            ir::Expr::Call(rule) => {
+                (self.inlined(*rule)).map_or(expr, |body| self.seen_through(body))
+            }
+            _ => expr,
+        }
+    }
+
+    /// The class of a span, added to the program.
+    fn class(&mut self, set: &ir::CharSet) -> u32 {
+        self.classes.push(Class::new(set));
+        (self.classes.len() - 1) as u32
+    }
+
+    fn repeat(&mut self, expr: &'f ir::Expr, min: u32, max: Option<u32>) {
         if self.passes.span
             && max.is_none()
             && let Some((set, min)) = span(expr, min)
         {
-            self.classes.push(Class::new(&set));
-            let class = (self.classes.len() - 1) as u32;
+            let class = self.class(&set);
             self.emit(Inst::Span { class, min });
             return;
         }
@@ -803,6 +833,27 @@ impl<'f> Compiler<'f> {
                 let commit = self.emit(Inst::Commit(0));
                 self.patch(choice);
                 self.patch(commit);
+                if let Some(test) = test {
+                    self.patch(test);
+                }
+            }
+            (0, None) if let Some((set, rest)) = self.split(expr) => {
+                let class = self.class(&set);
+                self.emit(Inst::Span { class, min: 0 });
+                let choice = self.emit(Inst::Choice(0));
+                let step = self.here();
+                let test = match rest {
+                    [one] => (self.test_for(one, true))
+                        .map(|test| self.emit(Inst::Test { test, target: 0 })),
+                    _ => None,
+                };
+                match rest {
+                    [one] => self.inside(true, one),
+                    _ => self.inside_choice(rest),
+                }
+                self.emit(Inst::Span { class, min: 0 });
+                self.emit(Inst::LoopCommit(step));
+                self.patch(choice);
                 if let Some(test) = test {
                     self.patch(test);
                 }
@@ -832,7 +883,14 @@ impl<'f> Compiler<'f> {
     }
 
     /// `Open`, the expression, and the instruction that closes what it collected.
-    fn collect(&mut self, expr: &ir::Expr, close: Inst) {
+    /// The alternatives as a choice where a cut can mark an entry of the routine.
+    fn inside_choice(&mut self, alternatives: &'f [ir::Expr]) {
+        let outer = std::mem::replace(&mut self.cuttable, true);
+        self.choice(alternatives);
+        self.cuttable = outer;
+    }
+
+    fn collect(&mut self, expr: &'f ir::Expr, close: Inst) {
         self.emit(Inst::Open);
         self.expr(expr);
         self.emit(close);

@@ -207,3 +207,11 @@ NAME: [a-z]+
 error at 2: expected NAME
 --- "if x"
 (start ~"if" NAME"x")
+
+=== a loop over a class and other expressions takes the class wherever it matches
+start: WORD
+WORD: ([a-z] | "-" [0-9] | "_"?)*
+--- "ab-1cd_ef"
+(start WORD"ab-1cd_ef")
+--- "ab-x"
+error at 2: expected end of input

@@ -54,6 +54,9 @@ pub struct Passes {
     /// Compile a call of a small rule as the rule's body, so that it takes no call and no
     /// return, and no activation of the depth limit.
     pub inline: bool,
+    /// Match `(c | e)*`, where `c` is a class, as `c* (e c*)*`, so that each run of the class
+    /// takes one instruction.
+    pub split: bool,
 }
 
 impl Passes {
@@ -64,6 +67,7 @@ impl Passes {
         skip: true,
         dispatch: true,
         inline: true,
+        split: true,
     };
     /// No pass: the plain machine.
     pub const NONE: Passes = Passes {
@@ -72,6 +76,7 @@ impl Passes {
         skip: false,
         dispatch: false,
         inline: false,
+        split: false,
     };
 }
 
