@@ -32,12 +32,14 @@ Every change passes these checks before it is committed. Continuous integration 
 | Python lints | `uv run ruff check` |
 | Python types | `uv run pyright --warnings` |
 | Python stubs | `uv run python -m mypy.stubtest fpeg._fpeg` |
-| Python tests | `uv run pytest` |
+| Python tests | `uv run --group oracles pytest` |
 | Documentation | `uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html` |
 | Licence headers | `uv run python scripts/check_licence_headers.py` |
 | REUSE compliance | `uv run reuse lint` |
 
 Every file states its copyright and licence, in a header or, for files that cannot carry one, in `REUSE.toml`, and `LICENSES/` holds the text of every licence used, as the [REUSE specification](https://reuse.software/spec/) asks.
+
+The dependency group `oracles` holds what a test compares fpeg with beyond the standard library, today `llvmlite`, which runs the LLVM IR that a test compiles a small language to. A test skips without its oracle, so `uv run pytest` alone works as well.
 
 `uv run python scripts/check.py` runs all of these in order, together with the checks of the benchmark and fuzz crates below, and stops at the first failure.
 

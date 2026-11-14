@@ -46,6 +46,8 @@ bench = [
     "tree-sitter>=0.26.1",
     "tree-sitter-python>=0.25",
 ]
+# What a test compares fpeg with beyond the standard library. A test skips without its oracle.
+oracles = ["llvmlite>=0.50"]
 
 [tool.maturin]
 manifest-path = "crates/fpeg-py/Cargo.toml"

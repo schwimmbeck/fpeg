@@ -65,7 +65,7 @@ uv run ruff format --check
 uv run ruff check
 uv run pyright --warnings
 uv run python -m mypy.stubtest fpeg._fpeg
-uv run pytest
+uv run --group oracles pytest
 uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 uv run python scripts/check_licence_headers.py
 uv run reuse lint
@@ -79,6 +79,7 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 - The docs build runs every Python code block in the docs.
 - The second clippy builds the crates as users and the Python package get them. The tests turn on the `reference` feature for the whole workspace, so only that build sees code the tests alone use.
 - The licence check holds project files to the project's licence and holder. `reuse lint` checks that the repository follows the REUSE specification: `REUSE.toml` gives copyright and licence to the files that cannot carry a header, and `LICENSES/` holds the text of every licence used.
+- The dependency group `oracles` holds what a test compares fpeg with beyond the standard library, today `llvmlite`. A test skips without its oracle, so `uv run pytest` alone works too, and the test jobs of CI run it that way.
 - pyright checks `python/`, `tests/` and `scripts/`, and mypy's stubtest holds the stubs of the native module to the module as built. The benchmarks and the docs import their own dependency groups, and ruff lints them.
 - Benchmarks: `uv run --group bench python benchmarks/run.py`. `--mode smoke` checks that every suite runs, `--record` writes a run to commit. `docs/development.md` lists the options.
 

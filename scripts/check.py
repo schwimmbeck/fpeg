@@ -23,7 +23,7 @@ CHECKS = [
     ("Python lints", "uv run ruff check"),
     ("Python types", "uv run pyright --warnings"),
     ("Python stubs", "uv run python -m mypy.stubtest fpeg._fpeg"),
-    ("Python tests", "uv run pytest -q"),
+    ("Python tests", "uv run --group oracles pytest -q"),
     (
         "documentation",
         "uv run --group docs sphinx-build -W --keep-going -q -b html docs docs/_build/html",
