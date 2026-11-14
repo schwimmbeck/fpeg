@@ -357,8 +357,8 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
     };
     let tree = doubling(10).parse("", "start").expect("the input parses");
     assert_eq!(tree.len(), 1 << 11);
-    // An entry laid out counts as the steps it would have taken to make it unshared, so 8,192
-    // entries need over 40,000 steps, though the parse takes a few hundred.
+    // An entry that repeats a shared node counts as the steps it would have taken to make it
+    // unshared, so 8,192 entries need over 30,000 steps, though the parse takes a few hundred.
     let limits = Limits {
         max_steps: 20_000,
         ..Limits::default()
@@ -375,6 +375,36 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
         .parse_with("", "start", limits)
         .expect_err("a larger tree than the steps allow");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
+}
+
+#[test]
+fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
+    // An empty seed, and a remembered match given once, mark a tree as one that may repeat
+    // nodes, and it is sized. Every node stands under one parent, so the parse may use all its
+    // steps.
+    for (text, input, memo) in [
+        (
+            "start: list\nlist: list \",\" \"a\" | ()\n",
+            ",a".repeat(2_000),
+            Memo::Grammar,
+        ),
+        (
+            "start: (w \"x\" | w \"y\")*\n@memo\nw: \"a\"\n",
+            "ay".repeat(2_000),
+            Memo::Grammar,
+        ),
+    ] {
+        let grammar = Grammar::from_text(text).expect("the grammar reads");
+        let parser = Parser::with_options(&grammar, &Options { memo }).expect("it compiles");
+        let (parsed, profile) = parser.profile(&input, "start", Limits::default());
+        parsed.expect("the input parses");
+        let limits = Limits {
+            max_steps: profile.steps,
+            ..Limits::default()
+        };
+        let tree = parser.parse_with(&input, "start", limits);
+        assert!(tree.is_ok(), "{text}: {:?}", tree.err());
+    }
 }
 
 #[test]

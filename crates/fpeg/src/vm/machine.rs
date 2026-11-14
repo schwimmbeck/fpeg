@@ -182,10 +182,10 @@ struct Frame {
     outer_dependency: u32,
 }
 
-/// The steps that an entry of a tree with shared nodes counts as when it is laid out: what
-/// the cheapest entry costs a parse that shares nothing, so that sharing builds no larger
-/// tree than the same steps could without it.
-const TREE_ENTRY_STEPS: u64 = 5;
+/// The steps that an entry repeating a shared node counts as when the tree is laid out: what
+/// the cheapest entry, a literal in a sequence, costs a parse that shares nothing, so that
+/// sharing builds no larger tree than the same steps could without it.
+const TREE_ENTRY_STEPS: u64 = 4;
 
 /// No frame, where an index of [`Machine::frames`] is expected.
 const NO_FRAME: u32 = u32::MAX;
@@ -1177,14 +1177,23 @@ impl<'p, 'i> Machine<'p, 'i> {
         roots.fold(0, |sum, item| sum.saturating_add(size(&sizes, item)))
     }
 
+    /// How many entries the arena holds: its nodes, and the tokens among their children and at
+    /// the top. A tree that repeats no node has no more.
+    fn arena_entries(&self) -> u64 {
+        let tokens = |items: &[Item]| items.iter().filter(|item| item.flags & TOKEN != 0).count();
+        (self.nodes.len() + tokens(&self.children) + tokens(&self.items)) as u64
+    }
+
     /// Lay out the items of a successful parse as the top level of a tree, in postorder. A tree
-    /// that repeats shared nodes is sized first, and refused before any of it is built where
-    /// its entries would take more steps than the parse has left.
+    /// that may repeat shared nodes is sized first, and refused before any of it is built where
+    /// its repeats would take more steps than the parse has left. What the arena holds, the
+    /// steps of the parse made.
     pub fn tree(&self) -> Result<Tree, Limit> {
         if self.shared {
             let left = self.limits.max_steps.saturating_sub(self.steps);
             let entries = self.tree_entries();
-            if entries > u64::from(u32::MAX) || entries.saturating_mul(TREE_ENTRY_STEPS) > left {
+            let repeats = entries.saturating_sub(self.arena_entries());
+            if entries > u64::from(u32::MAX) || repeats.saturating_mul(TREE_ENTRY_STEPS) > left {
                 return Err(Limit::Steps);
             }
         }
