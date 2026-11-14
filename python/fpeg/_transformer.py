@@ -255,18 +255,30 @@ def _extras(extras: int, tree: Tree, children: list[Any]) -> dict[str, Any]:
     return kwargs
 
 
+def static_attribute(cls: type, name: str) -> Any:
+    """Return what the class or one of its bases holds under `name`, or `None`.
+
+    Unlike `inspect.getattr_static`, it does not look at the metaclass, whose methods, such as
+    `mro`, a rule may be named like.
+    """
+    for base in cls.__mro__:
+        if name in vars(base):
+            return vars(base)[name]
+    return None
+
+
 def is_handler(cls: type, name: str) -> bool:
     """Tell whether the class has a method for the rule or terminal `name`."""
     if name in getattr(cls, "__fpeg_reserved__", ()) or not name.isidentifier():
         return False
-    attribute = inspect.getattr_static(cls, name, None)
+    attribute = static_attribute(cls, name)
     return attribute is not None and (
         callable(attribute) or isinstance(attribute, (staticmethod, classmethod))
     )
 
 
 def _overrides(cls: type, name: str) -> bool:
-    return inspect.getattr_static(cls, name) is not vars(Transformer)[name]
+    return static_attribute(cls, name) is not vars(Transformer)[name]
 
 
 def _unwrap(method: Any) -> Any:
@@ -278,7 +290,7 @@ def _unwrap(method: Any) -> Any:
 
 def function_of(cls: type, name: str) -> tuple[Callable[..., Any] | None, Any]:
     """Return the function behind a method and its `v_args` options."""
-    attribute = inspect.getattr_static(cls, name)
+    attribute = static_attribute(cls, name)
     if isinstance(attribute, _VArgs):
         return None, attribute.__fpeg_v_args__
     function = _unwrap(attribute)
@@ -305,7 +317,7 @@ else:
 def _parameters(cls: type, name: str, function: Callable[..., Any]) -> list[inspect.Parameter]:
     """Return the parameters of a method after `self` or `cls`."""
     parameters = list(_signature(function).parameters.values())
-    if not isinstance(inspect.getattr_static(cls, name), staticmethod):
+    if not isinstance(static_attribute(cls, name), staticmethod):
         parameters = parameters[1:]
     return parameters
 
@@ -431,7 +443,9 @@ def _make_plan(
 
 def check_strict(cls: type, names: Iterable[str]) -> None:
     known = set(names)
-    for name in sorted(_public_methods(cls)):
+    # An override of a method of the base class names no rule, and needs none.
+    reserved: frozenset[str] = getattr(cls, "__fpeg_reserved__", frozenset[str]())
+    for name in sorted(_public_methods(cls) - reserved):
         if name not in known:
             close = difflib.get_close_matches(name, known, n=1)
             hint = f", did you mean {close[0]}?" if close else ""

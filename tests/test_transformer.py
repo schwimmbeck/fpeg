@@ -31,6 +31,40 @@ def parse(text: str) -> fpeg.Tree:
     return tree
 
 
+def test_a_rule_named_like_a_method_of_type_is_looked_for_on_the_class_only() -> None:
+    grammar = fpeg.Grammar("start: mro\nmro: NAME\nNAME: [a-z]+")
+    tree = grammar.parse("a")
+    assert fpeg.Transformer().transform(tree) == tree
+    assert fpeg.Interpreter().visit(tree) == [["a"]]
+    assert fpeg.Visitor().visit(tree) is tree
+
+
+def test_strict_takes_overrides_of_the_methods_of_the_base_class() -> None:
+    class Calls(fpeg.Transformer, strict=True):
+        def transform(self, tree: Any) -> Any:
+            return ("transformed", super().transform(tree))
+
+    class Names(fpeg.Visitor, strict=True):
+        def __init__(self) -> None:
+            self.names: list[str] = []
+
+        def visit(self, tree: Any) -> list[str]:
+            super().visit(tree)
+            return self.names
+
+        def call(self, name: fpeg.Token, args: Any, kw: Any) -> None:
+            self.names.append(str(name))
+
+    class Run(fpeg.Interpreter, strict=True):
+        def visit_children(self, node: fpeg.Tree) -> list[Any]:
+            return ["children", *super().visit_children(node)]
+
+    tree = parse("f(), g()")
+    assert Calls().transform(tree)[0] == "transformed"
+    assert Names().visit(tree) == ["f", "g"]
+    assert Run().visit(tree)[0] == "children"
+
+
 def test_one_parameter_that_names_no_field_gets_the_list_of_children() -> None:
     class Lists(fpeg.Transformer):
         def call(self, children: list[Any]) -> list[Any]:
