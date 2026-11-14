@@ -156,6 +156,14 @@ def arguments_of(items: list[Any]) -> Any:
     return ast.arguments(posonly, args, vararg, kwonly, kw_defaults, kwarg, defaults)
 
 
+def dotted(parts: list[Any]) -> Any:
+    """Names joined by dots as attributes of the first, each spanning the names up to it."""
+    value = parts[0]
+    for part in parts[1:]:
+        value = spanning(ast.Attribute(value, name_of(part), ast.Load()), value, part)
+    return value
+
+
 def decode(text: str, raw: bool, braces: bool) -> str:
     """The value of the text of a string part: escapes taken where it is not raw, and doubled
     braces made single in an f-string or t-string."""
@@ -291,6 +299,9 @@ class ToAst(fpeg.Transformer, positions="ast"):
     def augmented_assign(self, target: Any, op: Any, value: Any) -> Any:
         return ast.AugAssign(with_context(target, ast.Store), AUGMENTED[str(op)](), value)
 
+    def type_alias(self, name: Any, params: Any, value: Any) -> Any:
+        return ast.TypeAlias(with_context(name, ast.Store), params or [], value)
+
     def return_(self, value: Any) -> Any:
         return ast.Return(value)
 
@@ -408,6 +419,82 @@ class ToAst(fpeg.Transformer, positions="ast"):
     def except_star(self, types: Any, name: Any, body: Any) -> Any:
         return ast.ExceptHandler(types, None if name is None else name_of(name), body)
 
+    def match(self, subject: Any, cases: Any) -> Any:
+        return ast.Match(subject, cases)
+
+    def case(self, pattern: Any, guard: Any, body: Any) -> Any:
+        return ast.match_case(pattern, guard, body)
+
+    # Patterns
+
+    def sequence_pattern(self, items: Any) -> Any:
+        return ast.MatchSequence(items)
+
+    def as_pattern(self, pattern: Any, target: Any) -> Any:
+        return ast.MatchAs(pattern, name_of(target))
+
+    def or_pattern(self, alternatives: Any) -> Any:
+        return ast.MatchOr(alternatives)
+
+    def literal_pattern(self, value: Any) -> Any:
+        if isinstance(value, fpeg.Token):
+            return ast.MatchSingleton({"None": None, "True": True, "False": False}[str(value)])
+        return ast.MatchValue(value)
+
+    def complex_number(self, real: Any, op: Any, imaginary: Any) -> Any:
+        return ast.BinOp(real, BINARY[str(op)](), imaginary)
+
+    def signed_number(self, sign: Any, number: Any) -> Any:
+        if sign is None:
+            return number
+        return ast.UnaryOp(UNARY[str(sign)](), number)
+
+    def class_pattern(self, children: Any) -> Any:
+        # The field class names no parameter, and comes first.
+        class_, arguments = children[0], children[1:]
+        positional = [a for a in arguments if not isinstance(a, tuple)]
+        keywords = [a for a in arguments if isinstance(a, tuple)]
+        return ast.MatchClass(
+            class_, positional, [k for k, _ in keywords], [p for _, p in keywords]
+        )
+
+    def keyword_pattern(self, name: Any, pattern: Any) -> Any:
+        return (name_of(name), pattern)
+
+    def value_pattern(self, parts: Any) -> Any:
+        return ast.MatchValue(dotted(parts))
+
+    def wildcard_pattern(self) -> Any:
+        return ast.MatchAs()
+
+    def capture_pattern(self, name: Any) -> Any:
+        return ast.MatchAs(name=name_of(name))
+
+    def group_pattern(self, pattern: Any) -> Any:
+        return pattern
+
+    def star_pattern(self, target: Any) -> Any:
+        name = name_of(target)
+        return ast.MatchStar(None if name == "_" else name)
+
+    def mapping_pattern(self, items: Any) -> Any:
+        pairs = [i for i in items if isinstance(i, tuple)]
+        rest = next((i for i in items if isinstance(i, str)), None)
+        return ast.MatchMapping([k for k, _ in pairs], [p for _, p in pairs], rest)
+
+    def key_pattern(self, key: Any, pattern: Any) -> Any:
+        if isinstance(key, ast.MatchSingleton):
+            value = ast.Constant(key.value)
+            ast.copy_location(value, key)
+            return (value, pattern)
+        return (key.value, pattern)
+
+    def double_star_pattern(self, target: Any) -> str:
+        return name_of(target)
+
+    def pattern_name(self, parts: Any) -> Any:
+        return dotted(parts)
+
     # Parameters and arguments
 
     def parameters(self, items: Any) -> Any:
@@ -435,6 +522,18 @@ class ToAst(fpeg.Transformer, positions="ast"):
         arg = parameter_arg(name, annotation)
         arg.fpeg_star = 2
         return arg
+
+    def type_params(self, items: Any) -> Any:
+        return items
+
+    def param_spec(self, name: Any, default: Any) -> Any:
+        return ast.ParamSpec(name_of(name), default)
+
+    def type_var_tuple(self, name: Any, default: Any) -> Any:
+        return ast.TypeVarTuple(name_of(name), default)
+
+    def type_var(self, name: Any, bound: Any, default: Any) -> Any:
+        return ast.TypeVar(name_of(name), bound, default)
 
     def arguments(self, items: Any) -> Any:
         keywords = [i for i in items if isinstance(i, ast.keyword)]

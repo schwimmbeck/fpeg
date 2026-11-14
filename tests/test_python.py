@@ -153,10 +153,7 @@ finally:
 """
 
 SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "python"
-FILES = [
-    pytest.param(SAMPLES / name, id=name)
-    for name in ("fstrings.py", "layout.py", "small.py", "strings.py")
-]
+FILES = [pytest.param(path, id=path.name) for path in sorted(SAMPLES.glob("*.py"))]
 
 
 def compare(source: str) -> None:
