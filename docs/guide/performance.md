@@ -138,6 +138,6 @@ A parse that reaches the step limit on real input is a sign to profile the gramm
 
 - **Every node and token is made.** A terminal makes one token however much it matches, a rule a node for each match. Text that needs no structure belongs in a terminal.
 - **Ignored text is skipped before every token.** A long `%ignore` choice is tried at each of them, so its commonest alternative goes first.
-- **Failing late costs more than failing early.** The column `given back` of the profile counts the bytes that calls matched before they failed. A rule that gives much back is tried where it does not belong, or shares its start with the alternative that then matches.
+- **Failing late costs more than failing early.** The column `given back` of the profile counts the bytes that failed calls had got through before they failed. A rule that gives much back is tried where it does not belong, or shares its start with the alternative that then matches.
 
 Measured times for whole grammars, and the scripts that take them, are in the `benchmarks` folder of the repository.

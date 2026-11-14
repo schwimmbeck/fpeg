@@ -69,18 +69,25 @@ fn a_profile_counts_calls_and_those_that_repeat_one() {
 
 #[test]
 fn a_profile_counts_failed_calls_and_the_bytes_they_give_back() {
-    let profile = profile("start: pair \"!\" | \"xy\"\npair: \"x\" \"z\"\n", "xy");
-    let pair = row(&profile, "pair");
+    let pairs = profile("start: pair \"!\" | \"xy\"\npair: \"x\" \"z\"\n", "xy");
+    let pair = row(&pairs, "pair");
     // The call matched the x before it failed at the y.
     assert_eq!(
         (pair.calls, pair.failures, pair.backtracked_bytes),
         (1, 1, 1)
     );
-    assert_eq!(row(&profile, "start").failures, 0);
+    assert_eq!(row(&pairs, "start").failures, 0);
     // Everything but the code around the parse happens inside the call of start.
-    let (start, around) = (row(&profile, "start"), row(&profile, "(parse)"));
-    assert_eq!(start.steps_with_callees, profile.steps - around.steps);
+    let (start, around) = (row(&pairs, "start"), row(&pairs, "(parse)"));
+    assert_eq!(start.steps_with_callees, pairs.steps - around.steps);
     assert_eq!(start.steps_with_callees, start.steps + pair.steps);
+    // The first try got through two bytes, the last none.
+    let items = profile(
+        "start: item | \"abd\"\nitem: \"a\" \"b\" \"c\" | \"x\"\n",
+        "abd",
+    );
+    let item = row(&items, "item");
+    assert_eq!((item.failures, item.backtracked_bytes), (1, 2));
 }
 
 #[test]

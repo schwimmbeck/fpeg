@@ -53,7 +53,8 @@ pub struct ProfileRow {
     /// Where a rule calls itself, or a template another instance of itself, the outermost call
     /// counts.
     pub steps_with_callees: u64,
-    /// Bytes that failed calls had matched and gave back.
+    /// Bytes that failed calls had got through before they failed: from where each started
+    /// to the farthest point one of its tries failed at.
     pub backtracked_bytes: u64,
     /// Calls at a position where the rule had been called before, with the same flags and the
     /// same recording of failures: what remembering the rule would answer.
@@ -78,6 +79,8 @@ struct Active {
     /// The row that the steps went to before the call, and go to again after it: the rule
     /// that called, or the skip routine, which calls terminals.
     caller: u32,
+    /// The farthest position that a try in the call failed at.
+    reached: u32,
 }
 
 /// The counting state of a profiling parse.
@@ -179,6 +182,7 @@ impl Profiler {
             start: pos,
             entered: steps,
             caller,
+            reached: pos,
         });
         if let Some(nesting) = self.nesting(rule) {
             *nesting += 1;
@@ -204,10 +208,22 @@ impl Profiler {
             row.steps_with_callees += if outermost { steps - call.entered } else { 0 };
             if let Some(pos) = failed_at {
                 row.failures += 1;
-                row.backtracked_bytes += u64::from(pos.saturating_sub(call.start));
+                let reached = call.reached.max(pos);
+                row.backtracked_bytes += u64::from(reached.saturating_sub(call.start));
             }
         }
+        // The tries of a call are tries of its caller too.
+        if let Some(outer) = self.active.last_mut() {
+            outer.reached = outer.reached.max(call.reached);
+        }
         self.switch(steps, call.caller);
+    }
+
+    /// A try failed at `pos`, which the call in progress got as far as.
+    pub fn failed(&mut self, pos: u32) {
+        if let Some(call) = self.active.last_mut() {
+            call.reached = call.reached.max(pos);
+        }
     }
 
     /// The skip routine starts.

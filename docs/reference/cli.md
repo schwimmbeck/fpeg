@@ -92,7 +92,7 @@ A step is one instruction of the parser, the unit its step limit counts. The num
 | `failed` | calls that ran the rule and did not match |
 | `steps`, `share` | steps spent in the rule itself, without the rules it calls, and their share of all steps |
 | `with callees` | steps from the calls of the rule to their ends, the rules it calls included |
-| `given back` | bytes that failed calls had matched before they failed |
+| `given back` | bytes that failed calls had got through before they failed, to the farthest point one of their tries failed at |
 | `repeats` | calls at a position where the rule was called before: what remembering the rule answers |
 | `hits`, `stored` | calls that a remembered result answered, and results that were remembered |
 | `grown` | passes of a left recursion that made its match longer |

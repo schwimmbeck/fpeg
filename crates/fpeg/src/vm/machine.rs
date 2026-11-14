@@ -975,6 +975,9 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// Unwind the stack to the newest entry that catches a failure and resume there, or stop
     /// when none does.
     fn fail(&mut self) -> Result<(), Stop> {
+        if let Some(profiler) = self.profiler.as_deref_mut() {
+            profiler.failed(self.pos);
+        }
         while let Some(entry) = self.stack.pop() {
             let caught = match entry {
                 // A cut made the failure pass the entry, so what it guards fails as a whole.
