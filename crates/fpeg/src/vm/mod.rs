@@ -31,6 +31,29 @@ use program::Program;
 pub struct Options {
     /// Which rules remember their results.
     pub memo: Memo,
+    /// Which passes of the optimizer run.
+    pub passes: Passes,
+}
+
+/// The passes of the optimizer, one switch each, all on by default. A parse gives the same tree
+/// or error with any of them off, only its time changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Passes {
+    /// Hash the keys of remembered results with one multiplication a word, not with SipHash.
+    pub hasher: bool,
+}
+
+impl Passes {
+    /// Every pass, the default.
+    pub const ALL: Passes = Passes { hasher: true };
+    /// No pass: the plain machine.
+    pub const NONE: Passes = Passes { hasher: false };
+}
+
+impl Default for Passes {
+    fn default() -> Passes {
+        Passes::ALL
+    }
 }
 
 /// Which rules remember their results, so that a second call of a rule at a position is

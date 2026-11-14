@@ -353,7 +353,14 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
             text += &format!("x{level}: x{} x{}\n", level - 1, level - 1);
         }
         let grammar = Grammar::from_text(&text).expect("the grammar reads");
-        Parser::with_options(&grammar, &Options { memo: Memo::All }).expect("it compiles")
+        Parser::with_options(
+            &grammar,
+            &Options {
+                memo: Memo::All,
+                ..Options::default()
+            },
+        )
+        .expect("it compiles")
     };
     let tree = doubling(10).parse("", "start").expect("the input parses");
     assert_eq!(tree.len(), 1 << 11);
@@ -395,7 +402,11 @@ fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
         ),
     ] {
         let grammar = Grammar::from_text(text).expect("the grammar reads");
-        let parser = Parser::with_options(&grammar, &Options { memo }).expect("it compiles");
+        let options = Options {
+            memo,
+            ..Options::default()
+        };
+        let parser = Parser::with_options(&grammar, &options).expect("it compiles");
         let (parsed, profile) = parser.profile(&input, "start", Limits::default());
         parsed.expect("the input parses");
         let limits = Limits {
@@ -423,7 +434,11 @@ fn an_empty_seed_of_left_recursion_given_at_every_call_counts_its_tree() {
         ..Limits::default()
     };
     for memo in [Memo::Grammar, Memo::Off, Memo::All] {
-        let parser = Parser::with_options(&grammar, &Options { memo }).expect("it compiles");
+        let options = Options {
+            memo,
+            ..Options::default()
+        };
+        let parser = Parser::with_options(&grammar, &options).expect("it compiles");
         let error = (parser.parse_with("x", "start", limits))
             .expect_err("a larger tree than the steps allow");
         assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps), "{memo:?}");

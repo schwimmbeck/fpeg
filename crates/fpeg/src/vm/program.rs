@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::Passes;
 use crate::ir::{CharSet, Reserved};
 use crate::tree::{FieldId, Kind, KindId, Names};
 
@@ -241,4 +242,7 @@ pub(crate) struct Program {
     pub kinds: Vec<Kind>,
     /// For each entry, whether a parse from it always leaves one visible item.
     pub single_item: HashMap<String, bool>,
+    /// The passes it was compiled with, which the machine reads for those that change how it
+    /// runs rather than the code.
+    pub passes: Passes,
 }

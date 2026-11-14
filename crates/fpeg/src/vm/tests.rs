@@ -443,7 +443,11 @@ entry start:
 fn the_options_decide_which_calls_remember() {
     let grammar = Grammar::from_text("start: m m\n@memo\nm: \"a\"\n").expect("it reads");
     let remembered = |memo| {
-        let parser = Parser::with_options(&grammar, &Options { memo }).expect("it compiles");
+        let options = Options {
+            memo,
+            ..Options::default()
+        };
+        let parser = Parser::with_options(&grammar, &options).expect("it compiles");
         let calls = parser.program.code.iter();
         calls.filter(|i| matches!(i, Inst::MemoCall(_))).count()
     };

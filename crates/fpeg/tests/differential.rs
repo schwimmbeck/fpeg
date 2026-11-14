@@ -4,7 +4,7 @@
 //! The parsing machine against the reference interpreter: every case file, every acceptance
 //! grammar with its samples, and generated grammars with generated inputs give the same tree, or
 //! the same error with the same expected set, on both engines, whatever the machine
-//! remembers.
+//! remembers and whichever passes of the optimizer run.
 //!
 //! Grammars the machine does not run yet are skipped, and each test reports how many and holds
 //! what it compares above a floor, so that a growing count shows. The case files and the
@@ -19,10 +19,10 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use common::cases::{CheckKind, case_files, parse_cases};
-use common::generator::{Features, check_seeds, generate_with, reference_limits};
+use common::generator::{Features, check_seeds, generate_with, reference_limits, sampled_passes};
 use fpeg::{
-    Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser, Reference, RuleKind,
-    Tree,
+    Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser, Passes, Reference,
+    RuleKind, Tree,
 };
 
 /// What the machine reports for what it does not run yet.
@@ -35,27 +35,43 @@ const MACHINE_MAX_STEPS: u64 = 200_000;
 /// What the machine remembers in each of the parsers a grammar is compared with.
 const MEMO: [Memo; 3] = [Memo::Grammar, Memo::Off, Memo::All];
 
+/// The settings of the parsers a grammar is compared with: each of [`MEMO`], the first with
+/// every pass as users get it, the others with passes picked by `sample`, so that every
+/// combination meets its share of the grammars.
+fn settings(sample: u64) -> [Options; 3] {
+    let passes = [
+        Passes::ALL,
+        sampled_passes(2 * sample),
+        sampled_passes(2 * sample + 1),
+    ];
+    [0, 1, 2].map(|i| Options {
+        memo: MEMO[i],
+        passes: passes[i],
+    })
+}
+
 /// What a grammar gives the comparison.
 enum Engines {
     /// Both engines reject it, with the same errors.
     Rejected,
     /// The reference runs it and the machine does not yet.
     Waiting,
-    /// The reference, and the machine once for each setting of [`MEMO`].
-    Both(Box<Reference>, Vec<Parser>),
+    /// The reference, and the machine once for each of the [`settings`].
+    Both(Box<Reference>, Vec<(Options, Parser)>),
 }
 
-/// The engines for a grammar. The machine must reject what the reference rejects with the same
-/// errors, and otherwise only what waits for a milestone.
-fn engines(grammar: &Grammar) -> Result<Engines, String> {
+/// The engines for a grammar, with the machine at the [`settings`] of `sample`. The machine
+/// must reject what the reference rejects with the same errors, and otherwise only what waits
+/// for a milestone.
+fn engines(grammar: &Grammar, sample: u64) -> Result<Engines, String> {
     match (Reference::new(grammar), Parser::new(grammar)) {
         (Ok(reference), Ok(_)) => {
-            let parsers: Result<Vec<Parser>, _> = (MEMO.iter())
-                .map(|&memo| Parser::with_options(grammar, &Options { memo }))
+            let parsers: Result<Vec<_>, _> = (settings(sample).into_iter())
+                .map(|options| Parser::with_options(grammar, &options).map(|p| (options, p)))
                 .collect();
             match parsers {
                 Ok(parsers) => Ok(Engines::Both(Box::new(reference), parsers)),
-                Err(errors) => Err(format!("a memo setting rejects it: {errors:?}")),
+                Err(errors) => Err(format!("a setting rejects it: {errors:?}")),
             }
         }
         (Ok(_), Err(errors)) if errors.iter().all(|e| e.message.contains(NOT_YET)) => {
@@ -104,30 +120,30 @@ fn default_limits() -> [Limits; 2] {
 /// that remembers nothing is left out.
 fn compare(
     reference: &Reference,
-    parsers: &[Parser],
+    parsers: &[(Options, Parser)],
     input: &str,
     start: &str,
     limits: [Limits; 2],
     remembering: bool,
 ) -> Vec<Verdict> {
     let expected = shown(reference.parse_with(input, start, limits[0]), input);
-    let verdict = |(parser, memo): (&Parser, &Memo)| {
-        if remembering && *memo == Memo::Off {
+    let verdict = |(options, parser): &(Options, Parser)| {
+        if remembering && options.memo == Memo::Off {
             return None;
         }
         let actual = shown(parser.parse_with(input, start, limits[1]), input);
         Some(match (&expected, actual) {
             (Ok(expected), Ok(actual)) if *expected == actual => Verdict::Same,
             (Ok(expected), Ok(actual)) => Verdict::Differ(format!(
-                "on {input:?} the reference gives\n{expected}\nand the machine, remembering \
-                 {memo:?},\n{actual}\n{}",
+                "on {input:?} the reference gives\n{expected}\nand the machine with \
+                 {options:?}\n{actual}\n{}",
                 parser.disassemble()
             )),
             (Ok(_), Err(limit)) => Verdict::MachineLimit(limit),
             (Err(_), _) => Verdict::ReferenceLimit,
         })
     };
-    parsers.iter().zip(&MEMO).filter_map(verdict).collect()
+    parsers.iter().filter_map(verdict).collect()
 }
 
 /// How many parses were compared and skipped.
@@ -165,6 +181,7 @@ impl Tally {
 fn case_files_give_the_same_results_on_both_engines() {
     let mut tally = Tally::default();
     let mut failures = Vec::new();
+    let mut sample = 0;
     for path in case_files() {
         let text = std::fs::read_to_string(&path).expect("the case file is readable");
         for case in parse_cases(&text) {
@@ -172,7 +189,8 @@ fn case_files_give_the_same_results_on_both_engines() {
             let Ok(grammar) = Grammar::from_text(&case.grammar) else {
                 continue;
             };
-            let engines = match engines(&grammar) {
+            sample += 1;
+            let engines = match engines(&grammar, sample) {
                 Err(problem) => {
                     failures.push(format!("{at}: {problem}"));
                     continue;
@@ -217,11 +235,11 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
     let mut tally = Tally::default();
     let mut failures = Vec::new();
     let mut run = Vec::new();
-    for path in &paths {
+    for (sample, path) in (0..).zip(&paths) {
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let text = std::fs::read_to_string(path).expect("the grammar is readable");
         let grammar = Grammar::from_text(&text).expect("the grammar reads");
-        let engines = match engines(&grammar) {
+        let engines = match engines(&grammar, sample) {
             Ok(Engines::Rejected) => panic!("{name} does not resolve"),
             Ok(engines) => engines,
             Err(problem) => {
@@ -273,9 +291,10 @@ fn check_against_reference(seed: u64) -> Option<String> {
     // grammars until the machine runs one.
     let mut attempt = 0;
     let (grammar, inputs, reference, parsers) = loop {
-        let (grammar, inputs) = generate_with(seed * ATTEMPTS + attempt, Features::MACHINE);
+        let sample = seed * ATTEMPTS + attempt;
+        let (grammar, inputs) = generate_with(sample, Features::MACHINE);
         attempt += 1;
-        match engines(&grammar) {
+        match engines(&grammar, sample) {
             Err(problem) => return Some(format!("{problem}\n{grammar}")),
             Ok(Engines::Rejected) => return None,
             Ok(Engines::Both(reference, parsers)) => break (grammar, inputs, reference, parsers),

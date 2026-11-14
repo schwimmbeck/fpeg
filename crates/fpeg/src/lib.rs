@@ -42,7 +42,7 @@ pub use parse::{DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, Limit, Limits, ParseError,
 #[cfg(feature = "reference")]
 pub use reference::Reference;
 pub use tree::{FieldCount, FieldId, Kind, KindId, Names, NodeRef, Tree};
-pub use vm::{Memo, Options, Parser, Profile, ProfileRow};
+pub use vm::{Memo, Options, Parser, Passes, Profile, ProfileRow};
 
 /// The version of this crate, which the command line and the Python package report.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -11,7 +11,8 @@ use std::sync::Mutex;
 
 use fpeg::builder::*;
 use fpeg::{
-    Alternative, ClassItem, Expr, ExprKind, Grammar, Level, Limits, Rule, RuleBody, Span, Text,
+    Alternative, ClassItem, Expr, ExprKind, Grammar, Level, Limits, Passes, Rule, RuleBody, Span,
+    Text,
 };
 
 /// Grammars a normal test run tries.
@@ -35,6 +36,14 @@ const MAX_DEPTH: u32 = 4;
 /// Steps a parse may take on the reference interpreter, so that grammars with exponential time
 /// end quickly.
 const MAX_STEPS: u64 = 20_000;
+
+/// Mixed into a sample's number before it picks passes, so that they do not follow the choices
+/// that the same number made for a grammar.
+const PASSES_SALT: u64 = 0x7061_7373_6573;
+
+/// The chance in percent that a sampled pass is off, so that every pass is off for a quarter of
+/// the grammars and some grammars get every pass.
+const PASS_OFF_PERCENT: u64 = 25;
 
 /// The characters inputs are made of: the letters the grammars use, layout, and a two-byte one.
 const INPUT_CHARS: [char; 6] = ['a', 'b', 'c', ' ', '\n', 'é'];
@@ -584,6 +593,14 @@ pub fn generate_with(seed: u64, features: Features) -> (Grammar, Vec<String>) {
         .map(|i| generator.input(&grammar, i))
         .collect();
     (grammar, inputs)
+}
+
+/// The passes for one parser that a comparison samples.
+pub fn sampled_passes(sample: u64) -> Passes {
+    let mut rng = Rng(sample ^ PASSES_SALT);
+    Passes {
+        hasher: !rng.chance(PASS_OFF_PERCENT),
+    }
 }
 
 /// Run a check on every seed, spread over the available threads, and fail with the first few

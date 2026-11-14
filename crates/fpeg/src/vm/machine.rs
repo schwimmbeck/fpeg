@@ -17,7 +17,7 @@
 //! further.
 
 use std::collections::{BTreeSet, HashMap};
-use std::hash::{BuildHasherDefault, Hasher};
+use std::hash::{BuildHasher, DefaultHasher, Hasher, RandomState};
 use std::sync::Arc;
 
 use super::profile::{Profile, Profiler};
@@ -134,17 +134,40 @@ struct MemoKey {
 /// An odd constant whose bits are spread over the word, for [`KeyHasher`].
 const KEY_MULTIPLIER: u64 = 0x517c_c1b7_2722_0a95;
 
-/// Hashes the keys of the memo with one multiplication a word. No key is needed against
-/// collisions forced from outside, since an input decides only which of its own positions get
-/// entries. A product carries the bits of a word only upward, so `finish` folds the high half
-/// into the low bits that pick a bucket, or positions at a stride of 4,096 would share 1,024
-/// buckets.
-#[derive(Default)]
-struct KeyHasher(u64);
+/// Makes the hashers of the memo, by one multiplication a word or, with the pass off, by
+/// SipHash.
+#[derive(Clone)]
+enum KeyState {
+    Multiply,
+    Sip(RandomState),
+}
+
+impl BuildHasher for KeyState {
+    type Hasher = KeyHasher;
+
+    fn build_hasher(&self) -> KeyHasher {
+        match self {
+            KeyState::Multiply => KeyHasher::Multiply(0),
+            KeyState::Sip(state) => KeyHasher::Sip(state.build_hasher()),
+        }
+    }
+}
+
+/// Hashes a key of the memo. One multiplication a word needs no key against collisions forced
+/// from outside, since an input decides only which of its own positions get entries. A product
+/// carries the bits of a word only upward, so `finish` folds the high half into the low bits
+/// that pick a bucket, or positions at a stride of 4,096 would share 1,024 buckets.
+enum KeyHasher {
+    Multiply(u64),
+    Sip(DefaultHasher),
+}
 
 impl KeyHasher {
     fn add(&mut self, word: u64) {
-        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(KEY_MULTIPLIER);
+        match self {
+            KeyHasher::Multiply(h) => *h = (h.rotate_left(5) ^ word).wrapping_mul(KEY_MULTIPLIER),
+            KeyHasher::Sip(state) => state.write_u64(word),
+        }
     }
 }
 
@@ -170,21 +193,23 @@ impl Hasher for KeyHasher {
     }
 
     fn finish(&self) -> u64 {
-        self.0 ^ (self.0 >> 32)
+        match self {
+            KeyHasher::Multiply(h) => h ^ (h >> 32),
+            KeyHasher::Sip(state) => state.finish(),
+        }
     }
 }
 
 /// The hash the memo gives a key.
 #[cfg(test)]
 pub fn memo_hash(rule: u32, pos: u32, flags: u64, quiet: bool) -> u64 {
-    use std::hash::BuildHasher;
     let key = MemoKey {
         rule,
         pos,
         flags,
         quiet,
     };
-    BuildHasherDefault::<KeyHasher>::default().hash_one(key)
+    KeyState::Multiply.hash_one(key)
 }
 
 /// A match kept for later: where it ended and the items it left, a range of the items kept.
@@ -297,7 +322,7 @@ pub(crate) struct Machine<'p, 'i> {
     /// The oldest frame of left recursion whose entry the evaluation in progress used, or
     /// [`NO_FRAME`]. A result that used a frame older than its own call is not remembered.
     dependency: u32,
-    memo: HashMap<MemoKey, Stored, BuildHasherDefault<KeyHasher>>,
+    memo: HashMap<MemoKey, Stored, KeyState>,
     /// The items of the remembered matches.
     memo_items: Vec<Item>,
     /// The length of the arena at the newest remembered match that holds a node. The nodes
@@ -344,7 +369,11 @@ impl<'p, 'i> Machine<'p, 'i> {
             newest_recursion: NO_FRAME,
             serial: 0,
             dependency: NO_FRAME,
-            memo: HashMap::default(),
+            memo: HashMap::with_hasher(if program.passes.hasher {
+                KeyState::Multiply
+            } else {
+                KeyState::Sip(RandomState::new())
+            }),
             memo_items: Vec::new(),
             protected: 0,
             shared: false,

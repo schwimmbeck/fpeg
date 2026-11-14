@@ -143,6 +143,7 @@ pub(crate) fn compile(
         labels,
         kinds: grammar.kinds(),
         single_item: grammar.single_item.clone(),
+        passes: options.passes,
     })
 }
 

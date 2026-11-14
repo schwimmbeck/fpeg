@@ -24,7 +24,11 @@ const SMALL_SUM: &str = "1 + 2";
 
 fn load(memo: Memo) -> fpeg::Parser {
     let grammar = fpeg::Grammar::from_text(FPEG_EXPRESSIONS_GRAMMAR).expect("the grammar reads");
-    fpeg::Parser::with_options(&grammar, &Options { memo }).expect("the grammar compiles")
+    let options = Options {
+        memo,
+        ..Options::default()
+    };
+    fpeg::Parser::with_options(&grammar, &options).expect("the grammar compiles")
 }
 
 fn expressions(c: &mut Criterion) {
