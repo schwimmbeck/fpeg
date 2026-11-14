@@ -255,9 +255,9 @@ struct SkipCache {
 const FIRST_ROOM: usize = 16;
 
 /// The memory a parse holds and may hold, in bytes: the room of the machine's vectors and
-/// tables, which never shrink during a parse.
+/// tables and of a profiler's, which never shrink during a parse.
 #[derive(Clone, Copy, Debug)]
-struct Memory {
+pub(super) struct Memory {
     held: u64,
     limit: u64,
 }
@@ -285,7 +285,7 @@ impl Memory {
 
     /// Make room for one more entry in a table, which doubles its buckets of an entry and a
     /// byte of control each when it is full.
-    fn room_in<K: Hash + Eq, V, S: BuildHasher>(
+    pub(super) fn room_in<K: Hash + Eq, V, S: BuildHasher>(
         &mut self,
         table: &mut HashMap<K, V, S>,
     ) -> Result<(), Stop> {
@@ -802,7 +802,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.depth += 1;
                     if let Some(profiler) = self.profiler.as_deref_mut() {
                         let rule = self.program.rule_at(target);
-                        profiler.called((rule, self.pos, self.flags, self.quiet > 0), false);
+                        let key = (rule, self.pos, self.flags, self.quiet > 0);
+                        profiler.called(key, false, &mut self.memory)?;
                         let (stack, nodes) = (self.stack.len(), self.nodes.len());
                         profiler.entered(rule, self.pos, self.steps, stack, nodes);
                     }
@@ -1101,7 +1102,8 @@ impl<'p, 'i> Machine<'p, 'i> {
         };
         let entry = recursive.then(|| self.active(rule)).flatten();
         if let Some(profiler) = self.profiler.as_deref_mut() {
-            profiler.called((rule, key.pos, key.flags, key.quiet), entry.is_some());
+            let seen = (rule, key.pos, key.flags, key.quiet);
+            profiler.called(seen, entry.is_some(), &mut self.memory)?;
         }
         if let Some(index) = entry {
             return self.use_entry(index);

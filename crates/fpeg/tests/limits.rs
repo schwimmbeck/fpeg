@@ -112,10 +112,6 @@ fn a_parse_that_starts_again_goes_on_as_it_started_where_remembering_takes_too_m
         let tree = parser.parse_with(&input, "start", limits);
         assert!(tree.is_ok(), "{limits:?}: {tree:?}");
     }
-    // The profile runs with no rule compiled into its callers either.
-    let (tree, profile) = parser.profile(&input, "start", memory);
-    assert!(tree.is_ok(), "{tree:?}");
-    assert_eq!(profile.restarts, 1);
 }
 
 #[test]
@@ -486,6 +482,36 @@ fn a_parse_holds_no_more_memory_than_its_limit() {
         let error = parser(24).parse("", "start").expect_err("too large");
         assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Memory), "{memo:?}");
     }
+}
+
+/// Rules that each call of `item` tries in the grammar of the next test, the length of its
+/// input in bytes, and the memory its parses may hold.
+const PROFILE_RULES: usize = 50;
+const PROFILE_INPUT_BYTES: usize = 2_000;
+const PROFILE_MEMORY_BYTES: u64 = 1 << 20;
+
+#[test]
+fn a_profile_holds_no_more_memory_than_the_limit_of_its_parse() {
+    // Each position calls every rule once, and the profile keeps each call to tell a repeat.
+    let rules: Vec<String> = (0..PROFILE_RULES).map(|i| format!("r{i}")).collect();
+    let mut text = format!("start: item*\nitem: {} | \"a\"\n", rules.join(" | "));
+    for (i, rule) in rules.iter().enumerate() {
+        text += &format!("{rule}: \"b{i}\"\n");
+    }
+    let parser = Parser::new(&Grammar::from_text(&text).expect("the grammar reads"));
+    let parser = parser.expect("it compiles");
+    let input = "a".repeat(PROFILE_INPUT_BYTES);
+    let limits = Limits {
+        max_memory_bytes: Some(PROFILE_MEMORY_BYTES),
+        ..Limits::default()
+    };
+    let tree = parser.parse_with(&input, "start", limits);
+    assert!(tree.is_ok(), "{tree:?}");
+    let error = parser
+        .profile(&input, "start", limits)
+        .0
+        .expect_err("too large");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Memory));
 }
 
 #[test]

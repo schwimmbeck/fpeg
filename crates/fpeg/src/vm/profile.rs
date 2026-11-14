@@ -9,8 +9,9 @@
 //! the code that starts and ends a parse have rows of their own, so the rows sum to the steps
 //! of the parse.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
+use super::machine::{Memory, Stop};
 use super::program::Program;
 
 /// The name of the row for the skip routine.
@@ -130,7 +131,8 @@ pub(super) struct Profiler {
     skipping_for: u32,
     /// Where the skip routine returns.
     skip_ret: u32,
-    seen: HashSet<Seen>,
+    /// The calls made so far, which grow within the memory of the parse.
+    seen: HashMap<Seen, ()>,
     peak_stack: u64,
     peak_nodes: u64,
 }
@@ -161,7 +163,7 @@ impl Profiler {
             mark: 0,
             skipping_for: parse,
             skip_ret,
-            seen: HashSet::new(),
+            seen: HashMap::new(),
             peak_stack: 0,
             peak_nodes: 0,
         }
@@ -187,14 +189,24 @@ impl Profiler {
         self.nesting.get_mut(name as usize)
     }
 
-    /// A rule is called: count the call, and whether it repeats one. The left-recursive use of
-    /// the entry of a call in progress repeats nothing that remembering the rule would answer.
-    pub fn called(&mut self, key: Seen, left_recursive: bool) {
-        let repeated = !left_recursive && !self.seen.insert(key);
+    /// A rule is called: count the call, and whether it repeats one, unless keeping it takes
+    /// the parse past its memory limit. The left-recursive use of the entry of a call in
+    /// progress repeats nothing that remembering the rule would answer.
+    pub fn called(
+        &mut self,
+        key: Seen,
+        left_recursive: bool,
+        memory: &mut Memory,
+    ) -> Result<(), Stop> {
+        let repeated = !left_recursive && {
+            memory.room_in(&mut self.seen)?;
+            self.seen.insert(key, ()).is_some()
+        };
         if let Some(row) = self.row(key.0) {
             row.calls += 1;
             row.repeats += u64::from(repeated);
         }
+        Ok(())
     }
 
     /// The call just counted runs the rule's routine.

@@ -292,7 +292,8 @@ impl Parser {
 
     /// Parse as [`Parser::parse_with`] does and count what each rule did: how often it was
     /// called and failed, the steps spent in it, and what remembering it answered or would
-    /// answer. For finding the rules that take the time. The counting slows the parse.
+    /// answer. For finding the rules that take the time. The counting slows the parse, and
+    /// the calls it keeps to tell the repeats count against the memory limit.
     ///
     /// The parse runs without the passes of the optimizer, so that every rule keeps the calls,
     /// failures and steps of the grammar as written, but for left recursion run as a loop,
