@@ -35,7 +35,7 @@ pub struct Profile {
     /// The results the parse remembered.
     pub memo_entries: u64,
     /// The parses that ran out of their budget of steps and started again with every rule
-    /// remembered. Their counts hold both runs.
+    /// remembered. Their counts hold every run.
     pub restarts: u64,
 }
 

@@ -77,6 +77,47 @@ fn a_parse_that_repeats_work_starts_again_with_every_rule_remembered() {
     }
 }
 
+/// Rules that each call of `item` tries in the grammar of the next test: more steps for each
+/// byte than a parse may take before it starts again.
+const RESTART_RULES: usize = 300;
+
+/// The input of the next test, in bytes, and the memory and the depth its parses may have.
+const RESTART_INPUT_BYTES: usize = 1_000;
+const RESTART_MEMORY_BYTES: u64 = 8 << 20;
+const RESTART_DEPTH: u32 = 4;
+
+#[test]
+fn a_parse_that_starts_again_goes_on_as_it_started_where_remembering_takes_too_much() {
+    // Remembering every rule keeps a result of each rule at each position, where the grammar
+    // as it stands keeps none, and compiles no rule into its callers, so that each rule of the
+    // chain from `c0` to `item` makes an activation.
+    let rules: Vec<String> = (0..RESTART_RULES).map(|i| format!("r{i}")).collect();
+    let mut text = "start: c0*\nc0: c1\nc1: c2\nc2: c3\nc3: item\n".to_owned();
+    text += &format!("item: {} | \"a\"\n", rules.join(" | "));
+    for (i, rule) in rules.iter().enumerate() {
+        text += &format!("{rule}: \"ab{i}\"\n");
+    }
+    let parser = Parser::new(&Grammar::from_text(&text).expect("the grammar reads"));
+    let parser = parser.expect("it compiles");
+    let input = "a".repeat(RESTART_INPUT_BYTES);
+    let memory = Limits {
+        max_memory_bytes: Some(RESTART_MEMORY_BYTES),
+        ..Limits::default()
+    };
+    let depth = Limits {
+        max_depth: RESTART_DEPTH,
+        ..Limits::default()
+    };
+    for limits in [memory, depth] {
+        let tree = parser.parse_with(&input, "start", limits);
+        assert!(tree.is_ok(), "{limits:?}: {tree:?}");
+    }
+    // The profile runs with no rule compiled into its callers either.
+    let (tree, profile) = parser.profile(&input, "start", memory);
+    assert!(tree.is_ok(), "{tree:?}");
+    assert_eq!(profile.restarts, 1);
+}
+
 #[test]
 fn a_rule_compiled_into_its_callers_makes_no_activation() {
     // A chain of eight rules. Compiled into each other they make no activation under that of

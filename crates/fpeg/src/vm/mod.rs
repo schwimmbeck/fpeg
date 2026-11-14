@@ -46,7 +46,10 @@ pub struct Options {
     /// remembered, for the steps the limit leaves. The budget is a million steps, or a
     /// thousand for each byte of input where that is more. Remembering never changes a
     /// result, and it bounds the time of a grammar that repeats work no rule it remembers
-    /// by default saves.
+    /// by default saves. Where remembering every rule needs more memory or deeper nesting
+    /// than the limits allow, the parse runs once more as it started, for the steps left.
+    /// The steps of the runs before count against the limit, so a parse that needs nearly
+    /// all of it may reach it.
     pub restart: bool,
 }
 
@@ -218,7 +221,7 @@ impl Parser {
 
     /// Parse with the program without the passes where `plain`. A parse that runs out of
     /// its budget of steps starts again with every rule remembered, for the steps the limit
-    /// leaves, and its profile counts both runs.
+    /// leaves, and its profile counts every run.
     fn run(
         &self,
         plain: bool,
@@ -233,34 +236,39 @@ impl Parser {
             .max(RESTART_MIN_STEPS);
         let restarts = self.options.restart && self.options.memo != Memo::All;
         let budget = if restarts { budget } else { limits.max_steps };
-        let spent = match attempt(program, input, start, limits, budget, profiling) {
-            Ok(done) => return done,
-            Err(spent) => spent,
-        };
-        let again = self.program_for(plain, true);
-        let left = Limits {
-            max_steps: limits.max_steps.saturating_sub(spent.steps),
+        let first = attempt(program, input, start, limits, budget, profiling);
+        if let Some(result) = first.result {
+            return (result, first.profile);
+        }
+        let left = |steps: u64| Limits {
+            max_steps: limits.max_steps.saturating_sub(steps),
             ..limits
         };
-        // With no budget below the limit, the second run cannot run out of one.
-        let (result, profile) = (attempt(again, input, start, left, left.max_steps, profiling))
-            .unwrap_or_else(|second| {
-                (
-                    Err(ParseError {
-                        position: 0,
-                        kind: ParseErrorKind::Limit(Limit::Steps),
-                    }),
-                    second.profile,
-                )
-            });
-        let profile = match (spent.profile, profile) {
-            (Some(mut first), Some(second)) => {
-                first.add(second);
-                first.restarts += 1;
-                Some(first)
+        let again = self.program_for(plain, true);
+        let second = attempt(again, input, start, left(first.steps), u64::MAX, profiling);
+        let mut profile = joined(first.profile, second.profile);
+        if let Some(profile) = &mut profile {
+            profile.restarts += 1;
+        }
+        let result = match second.result {
+            // Remembering every rule holds more memory, and with no rule compiled into its
+            // callers makes more activations, so the first program goes on once more.
+            Some(Err(ParseError {
+                kind: ParseErrorKind::Limit(Limit::Memory | Limit::Depth),
+                ..
+            })) => {
+                let steps = first.steps + second.steps;
+                let third = attempt(program, input, start, left(steps), u64::MAX, profiling);
+                profile = joined(profile, third.profile);
+                third.result
             }
-            (first, _) => first,
+            result => result,
         };
+        // With no budget below the limit, a run after the first cannot run out of one.
+        let result = result.unwrap_or(Err(ParseError {
+            position: 0,
+            kind: ParseErrorKind::Limit(Limit::Steps),
+        }));
         (result, profile)
     }
 
@@ -333,9 +341,21 @@ fn build(grammar: &ir::Grammar, options: &Options) -> Result<Program, Vec<Diagno
     Ok(program)
 }
 
-/// What a parse that ran out of its budget had done: its steps, and its counts where it was
-/// profiling.
-struct Spent {
+/// The counts of two runs of a parse, or of the first where the second has none.
+fn joined(first: Option<Profile>, second: Option<Profile>) -> Option<Profile> {
+    match (first, second) {
+        (Some(mut first), Some(second)) => {
+            first.add(second);
+            Some(first)
+        }
+        (first, _) => first,
+    }
+}
+
+/// What a run of a program gave: its result, or none where it ran out of its budget, the steps
+/// it took, and its counts where it was profiling.
+struct Attempt {
+    result: Option<Result<Tree, ParseError>>,
     steps: u64,
     profile: Option<Profile>,
 }
@@ -349,10 +369,11 @@ fn attempt(
     limits: Limits,
     budget: u64,
     profiling: bool,
-) -> Result<(Result<Tree, ParseError>, Option<Profile>), Spent> {
-    let refused = |kind| {
-        let error = ParseError { position: 0, kind };
-        Ok((Err(error), None))
+) -> Attempt {
+    let refused = |kind| Attempt {
+        result: Some(Err(ParseError { position: 0, kind })),
+        steps: 0,
+        profile: None,
     };
     let Some(&entry) = program.entries.get(start) else {
         return refused(ParseErrorKind::UnknownStart(start.to_owned()));
@@ -366,6 +387,7 @@ fn attempt(
     }
     let outcome = machine.run(entry);
     let profile = machine.profile();
+    let steps = machine.steps();
     let farthest = machine.farthest();
     let position = farthest.unwrap_or(0) as usize;
     let result = match outcome {
@@ -403,9 +425,16 @@ fn attempt(
             kind: ParseErrorKind::Limit(limit),
         }),
         Err(Stop::Budget) => {
-            let steps = machine.steps();
-            return Err(Spent { steps, profile });
+            return Attempt {
+                result: None,
+                steps,
+                profile,
+            };
         }
     };
-    Ok((result, profile))
+    Attempt {
+        result: Some(result),
+        steps,
+        profile,
+    }
 }
