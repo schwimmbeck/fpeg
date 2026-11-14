@@ -41,7 +41,7 @@ fn the_rows_of_a_profile_sum_to_the_steps_of_the_parse() {
 }
 
 #[test]
-fn a_profile_counts_the_grammar_as_written_whatever_passes_the_parser_runs() {
+fn a_grammar_without_left_recursion_profiles_alike_whatever_passes_the_parser_runs() {
     let grammar = Grammar::from_text("start: WORD+\nWORD: [a-z]+\n%ignore \" \"+\n");
     let grammar = grammar.expect("the grammar reads");
     let [optimized, plain] = [Passes::ALL, Passes::NONE].map(|passes| {
