@@ -267,6 +267,24 @@ fn a_repetition_of_what_can_match_nothing_ends_at_an_empty_step() {
         ("start: (\"a\"? ~ \"b\" | ()){2} \"c\"\n", vec![]),
         ("start: (\"a\"? ~ \"b\" | ())* \"c\"\n", vec![]),
         ("start: ((\"b\" ^ \"a b\")?)* \"c\"\n", vec![]),
+        // Also a label in a rule that the alternative calls, in a level that a block starts
+        // with, or in the level that a level falls through to.
+        (
+            "start: item* \"c\"\nitem: thing | \"b\"?\nthing: \"a\" ^ \"an a\"\n",
+            vec![],
+        ),
+        (
+            "start: item* \"c\"\nitem: e | \"b\"?\ne: %precedence {\n    \
+             neg: \"-\" \"1\" -> neg\n    atom: \"1\" ^ \"a one\"\n}\n",
+            vec![],
+        ),
+        // A skip expression that can fail a label may do so before any token, so only the
+        // repetitions of terminals, which do not skip, are reported.
+        (
+            "start: (\"a\"?)* T\nT: (\"b\"?)* \"c\"\n\
+             %ignore \" \" | \"/*\" (!\"*/\" .)* (\"*/\" ^ \"the end of a comment\")\n",
+            vec!["W201"],
+        ),
         // A cut inside a choice of its own, or a label inside a lookahead, stops nothing.
         ("start: ((\"a\" | ~ \"b\") | \"c\"?)* \"d\"\n", vec!["W201"]),
         (

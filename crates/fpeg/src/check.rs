@@ -5,9 +5,8 @@
 //!
 //! A warning says only what holds for every input. Whether an alternative can ever match is
 //! undecidable in general, so each check is a named case that can be told from the grammar as
-//! written, and what it cannot tell it leaves alone. Two take something for granted that a
-//! grammar can make untrue, which their pages say: W201 that the rules it calls raise no error
-//! before the empty alternative, and W301 that every part can match as written.
+//! written, and what it cannot tell it leaves alone. One takes something for granted that a
+//! grammar can make untrue, which its page says: W301, that every part can match as written.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -44,6 +43,10 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
         empty: Empties::of(grammar, &bodies),
         found: Vec::new(),
     };
+    // An error of the skip expression comes before a token, also where a step would match
+    // nothing, so only the repetitions of terminals, which do not skip, are left to tell.
+    let raising = &checker.empty.raising;
+    let skip_raises = (grammar.ignore.iter()).any(|expr| may_raise(expr, &[], raising));
     for body in &bodies {
         // Only the literals of rules that make nodes end at a word boundary.
         checker.boundaries = checker.word.is_some() && !body.terminal;
@@ -60,7 +63,9 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
         }
         for alternative in &body.alternatives {
             checker.recursion(body.name, body.params, alternative);
-            checker.repetitions(alternative);
+            if body.terminal || !skip_raises {
+                checker.repetitions(alternative);
+            }
         }
     }
     checker.boundaries = false;
@@ -246,6 +251,8 @@ struct Empties<'g> {
     need: Vec<u32>,
     /// The expressions that each one is such a part of.
     wholes: Vec<Vec<u32>>,
+    /// The rules and levels that can end the parse with an error.
+    raising: HashSet<&'g str>,
 }
 
 impl<'g> Empties<'g> {
@@ -268,9 +275,10 @@ impl<'g> Empties<'g> {
             // A rule matches the empty string once one of its alternatives does.
             need: vec![1; bodies.len()],
             wholes: vec![Vec::new(); bodies.len()],
+            raising: raising(grammar, bodies),
         };
         for (body, number) in bodies.iter().zip(0..) {
-            let closed = closing(&body.alternatives, body.params);
+            let closed = closing(&body.alternatives, body.params, &empties.raising);
             for (index, alternative) in body.alternatives.iter().enumerate() {
                 let part = empties.number(alternative, body.params);
                 if closed.is_none_or(|last| index <= last) {
@@ -320,14 +328,15 @@ impl<'g> Empties<'g> {
             }
             ExprKind::Sequence(_) => (parts.len() as u32, parts.len()),
             ExprKind::Choice(_) => {
-                let counted = closing(&inner, params).map_or(parts.len(), |last| last + 1);
+                let counted =
+                    closing(&inner, params, &self.raising).map_or(parts.len(), |last| last + 1);
                 (1, counted)
             }
             ExprKind::Repeat { max: Some(0), .. } => (0, 0),
             // No step is made where the expression fails, unless it fails abruptly.
             ExprKind::Repeat {
                 expr: step, min: 0, ..
-            } => match abrupt(step, params) {
+            } => match abrupt(step, params, &self.raising) {
                 false => (0, 0),
                 true => (1, 1),
             },
@@ -338,8 +347,8 @@ impl<'g> Empties<'g> {
                 separator,
                 at_least_one,
             } => match (
-                abrupt(separator, params),
-                *at_least_one || abrupt(item, params),
+                abrupt(separator, params, &self.raising),
+                *at_least_one || abrupt(item, params, &self.raising),
             ) {
                 (true, _) => (NEVER, 0),
                 (false, true) => (1, 1),
@@ -588,28 +597,83 @@ fn may_cut(expr: &Expr, params: &[Name]) -> bool {
 }
 
 /// Whether the expression can end the parse with an error: it holds an error label outside a
-/// lookahead, which catches errors. Rules are not looked into, and an argument can hold a
+/// lookahead, which catches errors, or calls a rule there that can. An argument can hold a
 /// label.
-fn may_raise(expr: &Expr, params: &[Name]) -> bool {
+fn may_raise(expr: &Expr, params: &[Name], raising: &HashSet<&str>) -> bool {
     match &expr.kind {
         ExprKind::Label { .. } => true,
-        ExprKind::Reference { name, .. } => is_param(name, params),
+        ExprKind::Reference { name, .. } => {
+            is_param(name, params) || raising.contains(name.text.as_str())
+        }
         ExprKind::And(_) | ExprKind::Not(_) => false,
-        _ => (expr.children().iter()).any(|child| may_raise(child, params)),
+        _ => (expr.children().iter()).any(|child| may_raise(child, params, raising)),
+    }
+}
+
+/// The rules and levels that can end the parse with an error: those with an error label or a
+/// parameter outside a lookahead, and those that call one of them there, a level also by
+/// falling through to the next. Found by walking each body once and passing what raises back
+/// to its callers, in time linear in the size of the grammar.
+fn raising<'g>(grammar: &'g Grammar, bodies: &[Body<'g>]) -> HashSet<&'g str> {
+    let mut callers: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut ready = Vec::new();
+    for body in bodies {
+        let mut calls = Vec::new();
+        let labeled = (body.alternatives.iter())
+            .any(|alternative| labels(alternative, body.params, &mut calls));
+        if labeled {
+            ready.push(body.name);
+        }
+        calls.extend(body.next.map(|next| next.text.as_str()));
+        for called in calls {
+            callers.entry(called).or_default().push(body.name);
+        }
+    }
+    // A precedence block calls its first level.
+    for rule in &grammar.rules {
+        if let RuleBody::Precedence(levels) = &rule.body
+            && let Some(first) = levels.first()
+        {
+            let callers = callers.entry(first.name.text.as_str()).or_default();
+            callers.push(&rule.name.text);
+        }
+    }
+    let mut raising = HashSet::new();
+    while let Some(name) = ready.pop() {
+        if raising.insert(name) {
+            ready.extend(callers.get(name).into_iter().flatten().copied());
+        }
+    }
+    raising
+}
+
+/// Whether the expression holds an error label or a parameter outside a lookahead. The names it
+/// calls there are noted until one is found.
+fn labels<'g>(expr: &'g Expr, params: &[Name], calls: &mut Vec<&'g str>) -> bool {
+    match &expr.kind {
+        ExprKind::Label { .. } => true,
+        ExprKind::Reference { name, .. } if is_param(name, params) => true,
+        ExprKind::Reference { name, .. } => {
+            calls.push(&name.text);
+            false
+        }
+        ExprKind::And(_) | ExprKind::Not(_) => false,
+        _ => (expr.children().into_iter()).any(|child| labels(child, params, calls)),
     }
 }
 
 /// Whether the expression can fail abruptly: after a cut, which ends the choice or the
 /// repetition around it, or with an error, which ends the parse.
-fn abrupt(expr: &Expr, params: &[Name]) -> bool {
-    may_cut(expr, params) || may_raise(expr, params)
+fn abrupt(expr: &Expr, params: &[Name], raising: &HashSet<&str>) -> bool {
+    may_cut(expr, params) || may_raise(expr, params, raising)
 }
 
 /// The place of the first alternative after which no other is sure to be tried: one that
 /// cannot fail, or one that can fail abruptly.
-fn closing(alternatives: &[&Expr], params: &[Name]) -> Option<usize> {
-    (alternatives.iter())
-        .position(|alternative| never_fails(alternative, params) || abrupt(alternative, params))
+fn closing(alternatives: &[&Expr], params: &[Name], raising: &HashSet<&str>) -> Option<usize> {
+    (alternatives.iter()).position(|alternative| {
+        never_fails(alternative, params) || abrupt(alternative, params, raising)
+    })
 }
 
 struct Checker<'g> {
