@@ -4,8 +4,9 @@
 """Run the benchmark suites and write their results.
 
 Prepares the inputs, runs the pyperf suites and the criterion suite, and writes ``results.json``,
-a ``summary.md`` and the raw pyperf files to ``benchmarks/.cache/last-run``. With ``--record``
-a complete run is then moved to ``benchmarks/results/<date>-<platform>``.
+a ``summary.md`` and the raw pyperf files to ``benchmarks/.cache/last-run``. With ``--pgo`` the
+criterion suite runs a second time, built with a profile of fpeg's machine. With ``--record`` a
+complete run is then moved to ``benchmarks/results/<date>-<platform>``.
 """
 
 import argparse
@@ -31,10 +32,11 @@ RESULTS = BENCHMARKS / "results"
 LAST_RUN = BENCHMARKS / ".cache" / "last-run"
 RUST = BENCHMARKS / "rust"
 RUST_TARGET = RUST / "target"
-CRITERION = RUST_TARGET / "criterion"
 
 PYPERF_SUITES = ("json", "binding", "calculator", "python", "ord")
 SUITES = (*PYPERF_SUITES, "rust")
+# The criterion suite built with a profile, which only --pgo runs.
+PGO_SUITE = "rust-pgo"
 MODES = ("default", "fast", "rigorous", "smoke")
 RECORD_MODES = ("default", "rigorous")
 PYPERF_MODE_ARGS = {
@@ -147,17 +149,56 @@ def scrub_pyperf_file(path: Path) -> None:
     path.write_text(json.dumps(scrub(data)), encoding="utf-8", newline="\n")
 
 
-def run_rust_suite(mode: str) -> list[Row]:
-    """Run the criterion benchmarks and read their estimates."""
-    shutil.rmtree(CRITERION, ignore_errors=True)
+def cargo_env(target: Path) -> dict[str, str]:
+    """Return the environment of cargo, building into `target`."""
     # Pin where criterion writes, and run in the package so rustup picks its pinned toolchain.
-    env = {k: v for k, v in os.environ.items() if k != "CRITERION_HOME"}
-    env["CARGO_TARGET_DIR"] = str(RUST_TARGET)
+    env = {k: v for k, v in os.environ.items() if k not in ("CRITERION_HOME", "RUSTFLAGS")}
+    env["CARGO_TARGET_DIR"] = str(target)
+    return env
+
+
+def llvm_profdata() -> Path:
+    """Find the merger of profiles that rustup's component llvm-tools brings."""
+    run = {"cwd": RUST, "capture_output": True, "text": True, "check": True}
+    sysroot = subprocess.run(["rustc", "--print", "sysroot"], **run).stdout.strip()
+    host = re.search(r"^host: (\S+)", subprocess.run(["rustc", "-vV"], **run).stdout, re.M)
+    name = "llvm-profdata.exe" if sys.platform == "win32" else "llvm-profdata"
+    tool = Path(sysroot) / "lib" / "rustlib" / (host[1] if host else "") / "bin" / name
+    if not tool.is_file():
+        raise SystemExit("--pgo needs llvm-profdata: rustup component add llvm-tools")
+    return tool
+
+
+def train_profile() -> Path:
+    """Build the passes suite to count what runs, run it briefly, and merge its counts."""
+    data = RUST_TARGET / "pgo-data"
+    shutil.rmtree(data, ignore_errors=True)
+    data.mkdir(parents=True)
+    env = cargo_env(RUST_TARGET / "pgo-train")
+    env["RUSTFLAGS"] = f"-Cprofile-generate={data}"
+    command = ["cargo", "bench", "--bench", "passes", "--", "--quick"]
+    subprocess.run(command, cwd=RUST, env=env, check=True, stdout=subprocess.DEVNULL)
+    merged = data / "merged.profdata"
+    subprocess.run([llvm_profdata(), "merge", "-o", merged, data], check=True)
+    return merged
+
+
+def run_rust_suite(mode: str, pgo: bool = False) -> list[Row]:
+    """Run the criterion benchmarks and read their estimates.
+
+    With `pgo`, the benchmarks are built with a profile of the passes suite.
+    """
+    target = RUST_TARGET / "pgo" if pgo else RUST_TARGET
+    criterion = target / "criterion"
+    shutil.rmtree(criterion, ignore_errors=True)
+    env = cargo_env(target)
+    if pgo:
+        env["RUSTFLAGS"] = f"-Cprofile-use={train_profile()}"
     benches = [arg for name in RUST_BENCHES for arg in ("--bench", name)]
     command = ["cargo", "bench", *benches, "--", *CRITERION_MODE_ARGS[mode]]
     subprocess.run(command, cwd=RUST, env=env, check=True)
     rows = []
-    for meta_path in sorted(CRITERION.rglob("new/benchmark.json")):
+    for meta_path in sorted(criterion.rglob("new/benchmark.json")):
         folder = meta_path.parent
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         estimates = json.loads((folder / "estimates.json").read_text(encoding="utf-8"))
@@ -165,7 +206,7 @@ def run_rust_suite(mode: str) -> list[Row]:
         per_iteration = [t / n for t, n in zip(sample["times"], sample["iters"], strict=True)]
         rows.append(
             Row(
-                suite="rust",
+                suite=PGO_SUITE if pgo else "rust",
                 name=meta["full_id"],
                 input=RUST_INPUTS[group].name
                 if (group := meta["group_id"]) in RUST_INPUTS
@@ -178,7 +219,7 @@ def run_rust_suite(mode: str) -> list[Row]:
             )
         )
     if not rows:
-        raise SystemExit(f"criterion wrote no estimates under {CRITERION}")
+        raise SystemExit(f"criterion wrote no estimates under {criterion}")
     return rows
 
 
@@ -275,7 +316,7 @@ def summary(title: str, mode: str, env: Environment, rows: list[Row]) -> str:
         f"- Rust crates: {crates}",
         f"- Inputs: {inputs}",
     ]
-    for suite in SUITES:
+    for suite in (*SUITES, PGO_SUITE):
         suite_rows = [r for r in rows if r.suite == suite]
         if not suite_rows:
             continue
@@ -304,6 +345,9 @@ def main() -> None:
     parser.add_argument("--suite", choices=SUITES, action="append", help="run only these suites")
     parser.add_argument("--mode", choices=MODES, default="default", help="how long to measure")
     parser.add_argument(
+        "--pgo", action="store_true", help="run the Rust suites built with a profile as well"
+    )
+    parser.add_argument(
         "--record", action="store_true", help="move a complete run to benchmarks/results"
     )
     args = parser.parse_args()
@@ -312,9 +356,9 @@ def main() -> None:
     title = f"{today}-{PLATFORM_NAMES.get(sys.platform, sys.platform)}"
     record = RESULTS / title
     if args.record:
-        if args.suite or args.mode not in RECORD_MODES:
+        if args.suite or not args.pgo or args.mode not in RECORD_MODES:
             modes = " or ".join(RECORD_MODES)
-            raise SystemExit(f"--record needs every suite and the mode {modes}")
+            raise SystemExit(f"--record needs every suite, --pgo and the mode {modes}")
         if record.exists():
             raise SystemExit(f"{record} exists already, delete it to record again")
     shutil.rmtree(LAST_RUN, ignore_errors=True)
@@ -328,6 +372,8 @@ def main() -> None:
             rows += run_rust_suite(args.mode)
         else:
             rows += run_pyperf_suite(suite, args.mode, LAST_RUN)
+    if args.pgo:
+        rows += run_rust_suite(args.mode, pgo=True)
 
     results = {"date": today, "mode": args.mode, **asdict(env), "rows": [asdict(r) for r in rows]}
     (LAST_RUN / "results.json").write_text(
