@@ -142,16 +142,17 @@ fn report(path: &Path, text: &str, found: &[Diagnostic]) {
 }
 
 /// Read and compile a grammar, or report its errors.
-fn compile(path: &Path) -> Result<Parser, Failure> {
+fn compile(path: &Path) -> Result<(Grammar, Parser), Failure> {
     let text = read_grammar(path)?;
     let grammar = Grammar::from_text(&text).map_err(|errors| {
         report(path, &text, &errors);
         Failure::Problem
     })?;
-    Parser::new(&grammar).map_err(|errors| {
+    let parser = Parser::new(&grammar).map_err(|errors| {
         report(path, &text, &errors);
         Failure::Problem
-    })
+    })?;
+    Ok((grammar, parser))
 }
 
 fn check(args: &[OsString]) -> Result<(), Failure> {
@@ -225,7 +226,7 @@ fn parse_options(args: &[OsString]) -> Result<ParseOptions, Failure> {
 fn parse(args: &[OsString]) -> Result<(), Failure> {
     let options = parse_options(args)?;
     let grammar = PathBuf::from(&options.paths[0]);
-    let parser = compile(&grammar)?;
+    let (_, parser) = compile(&grammar)?;
     let (name, input) = match options.paths.get(1).filter(|path| *path != "-") {
         Some(path) => (
             path.to_string_lossy().into_owned(),

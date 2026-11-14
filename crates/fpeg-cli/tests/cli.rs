@@ -310,6 +310,75 @@ fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
         "{}",
         text(&out.stdout)
     );
+    // Nor is a rule marked @nomemo, nor a precedence block or its levels, which @memo cannot
+    // stand on. The start rule, called inside them, may be.
+    let unmarked = grammar.replace("item:", "@nomemo\nitem:");
+    let block = "start: e \".\" | e \"!\" | e\n@nomemo\ne: %precedence {\n    \
+                 sum: left=sum \"+\" right=atom -> add\n    atom: \"(\" start \")\" | \"x\"\n}\n";
+    for (name, grammar, names) in [
+        ("unmarked", unmarked.as_str(), &["item"][..]),
+        ("block", block, &["e", "sum", "atom"][..]),
+    ] {
+        let paths = files(
+            name,
+            &[("again.fpeg", grammar), ("input.txt", "((((((x))))))")],
+        );
+        let out = run([
+            "profile".as_ref(),
+            paths[0].as_os_str(),
+            paths[1].as_os_str(),
+        ]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        for rule in names {
+            let line = format!("@memo on {rule}:");
+            assert!(
+                !text(&out.stdout).contains(&line),
+                "{name}: {}",
+                text(&out.stdout)
+            );
+        }
+    }
+}
+
+#[test]
+fn profile_goes_on_past_an_unreadable_input_and_stops_at_an_unknown_start() {
+    let paths = files(
+        "profile_inputs",
+        &[("sums.fpeg", SUMS), ("good.txt", "1 + 2")],
+    );
+    let missing = paths[1].with_file_name("missing.txt");
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        missing.as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).starts_with(&format!("{}: error: cannot read it", missing.display()))
+    );
+    assert!(
+        text(&out.stdout).contains("\nstart "),
+        "{}",
+        text(&out.stdout)
+    );
+    let out = run([
+        "profile".as_ref(),
+        "--start".as_ref(),
+        "nope".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        format!(
+            "{}: error: no rule nope to start from\n",
+            paths[0].display()
+        )
+    );
+    assert!(out.stdout.is_empty(), "{}", text(&out.stdout));
 }
 
 #[test]

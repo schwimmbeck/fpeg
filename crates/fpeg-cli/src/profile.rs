@@ -3,12 +3,13 @@
 
 //! `fpeg profile`: what each rule of a grammar did while it parsed inputs.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::PathBuf;
 
-use fpeg::{Limits, Profile, ProfileRow};
+use fpeg::{Grammar, Limits, ParseErrorKind, Profile, ProfileRow, RuleBody};
 
 use crate::{Failure, compile, push_json_string, read, report_failure};
 
@@ -71,22 +72,31 @@ pub(crate) fn profile(args: &[OsString]) -> Result<(), Failure> {
             "profile needs a grammar and an input".into(),
         ));
     };
-    let parser = compile(grammar)?;
+    let (model, parser) = compile(grammar)?;
     let start = start.as_deref().unwrap_or("start");
     let mut total = Profile::default();
-    let mut failed = false;
+    let (mut failed, mut parsed) = (false, 0);
     for path in inputs {
-        let input = read(path)?;
+        let Ok(input) = read(path) else {
+            failed = true;
+            continue;
+        };
         let (result, profile) = parser.profile(&input, start, Limits::default());
         if let Err(error) = result {
             report_failure(grammar, &path.to_string_lossy(), &input, &error);
+            // A start rule that the grammar lacks fails every input alike.
+            if matches!(error.kind, ParseErrorKind::UnknownStart(_)) {
+                return Err(Failure::Problem);
+            }
             failed = true;
         }
         add(&mut total, profile);
+        parsed += 1;
     }
-    let text = match json {
-        true => as_json(&total),
-        false => table(&total),
+    let text = match (parsed, json) {
+        (0, _) => String::new(),
+        (_, true) => as_json(&total),
+        (_, false) => table(&total, &unmarkable(&model)),
     };
     // A closed pipe is no failure of the command.
     let _ = std::io::stdout().write_all(text.as_bytes());
@@ -120,6 +130,26 @@ fn add(total: &mut Profile, part: Profile) {
     }
 }
 
+/// The names that `@memo` cannot stand on, or where it would contradict the rule's mark: the
+/// levels of precedence blocks, the blocks, whose marks are for their levels, and the rules
+/// marked `@nomemo`.
+fn unmarkable(grammar: &Grammar) -> HashSet<&str> {
+    let mut names = HashSet::new();
+    for rule in &grammar.rules {
+        match &rule.body {
+            RuleBody::Precedence(levels) => {
+                names.insert(rule.name.text.as_str());
+                names.extend(levels.iter().map(|level| level.name.text.as_str()));
+            }
+            RuleBody::Alternatives(_) if rule.has_attribute("nomemo") => {
+                names.insert(rule.name.text.as_str());
+            }
+            RuleBody::Alternatives(_) => {}
+        }
+    }
+    names
+}
+
 /// The rules a parse reached, those with the most steps of their own first.
 fn reached(profile: &Profile) -> Vec<&ProfileRow> {
     let mut rows: Vec<&ProfileRow> = (profile.rows.iter())
@@ -129,8 +159,9 @@ fn reached(profile: &Profile) -> Vec<&ProfileRow> {
     rows
 }
 
-/// The profile as a table, a line of totals, and what it suggests.
-fn table(profile: &Profile) -> String {
+/// The profile as a table, a line of totals, and what it suggests, which is never `@memo` on
+/// a name in `unmarkable`.
+fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
     let rows = reached(profile);
     let mut lines: Vec<Vec<String>> = Vec::new();
     let mut headings = vec!["rule".to_owned()];
@@ -167,7 +198,10 @@ fn table(profile: &Profile) -> String {
     for row in rows {
         // A call that repeats an earlier one costs what an average call of the rule costs.
         let saved = row.repeats * row.steps_with_callees / row.calls.max(1);
-        if !row.remembered && saved * 100 >= profile.steps * SUGGEST_MEMO_PERCENT {
+        if !row.remembered
+            && !unmarkable.contains(row.name.as_str())
+            && saved * 100 >= profile.steps * SUGGEST_MEMO_PERCENT
+        {
             let _ = writeln!(
                 out,
                 "@memo on {}: {} of its {} calls repeat an earlier one, about {}% of all steps",
