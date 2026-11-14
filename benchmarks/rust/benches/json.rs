@@ -47,6 +47,13 @@ fn json(c: &mut Criterion) {
                 .len()
         })
     });
+    // What counting the work of every rule adds to the parse above.
+    group.bench_function("fpeg machine with its profile, tree", |b| {
+        b.iter(|| {
+            let (tree, profile) = parser.profile(&text, "start", fpeg::Limits::default());
+            tree.expect("the input is valid JSON").len() + profile.rows.len()
+        })
+    });
     group.bench_function("pest generated, token queue", |b| {
         b.iter(|| {
             JsonParser::parse(Rule::json, &text)
