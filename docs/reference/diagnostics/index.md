@@ -3,7 +3,7 @@
 Everything fpeg finds in a grammar has a stable code, and every code has a page here with a grammar that shows it and the grammar fixed. The message beside the code says what exactly is meant.
 
 - A code that starts with `E` is an error: the grammar cannot be used until it is fixed.
-- A code that starts with `W` is a warning: the grammar works, and likely not as its author meant. A warning is given only for what holds whatever the input is, so a grammar without warnings is not proven right, and a warning is never a guess.
+- A code that starts with `W` is a warning: the grammar works, and likely not as its author meant. A warning says what holds whatever the input is, so a grammar without warnings is not proven right. Where a check takes something for granted that a grammar can make untrue, its page says what, as the pages of [W201](W201.md) and [W301](W301.md) do.
 
 `fpeg check` prints each one with its place in the grammar file, line and column counted from 1:
 

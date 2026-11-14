@@ -5,7 +5,9 @@
 //!
 //! A warning says only what holds for every input. Whether an alternative can ever match is
 //! undecidable in general, so each check is a named case that can be told from the grammar as
-//! written, and what it cannot tell it leaves alone.
+//! written, and what it cannot tell it leaves alone. Two take something for granted that a
+//! grammar can make untrue, which their pages say: W201 that the rules it calls raise no error
+//! before the empty alternative, and W301 that every part can match as written.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
