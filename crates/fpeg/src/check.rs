@@ -8,6 +8,7 @@
 //! written, and what it cannot tell it leaves alone.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{ErrorLabel, Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span};
@@ -457,6 +458,44 @@ fn alike(a: &Expr, b: &Expr) -> bool {
     same && inner_a.len() == inner_b.len() && inner_a.iter().zip(&inner_b).all(|(x, y)| alike(x, y))
 }
 
+/// A hash of how an expression is written, apart from fields. Expressions that are [`alike`]
+/// share it, so that most pairs that are not are told apart without comparing them.
+fn written(expr: &Expr) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hash_written(expr, &mut hasher);
+    hasher.finish()
+}
+
+/// Hash what [`alike`] compares. It recurses as deeply as the expression nests, which the
+/// resolver bounds.
+fn hash_written(expr: &Expr, hasher: &mut DefaultHasher) {
+    use ExprKind as K;
+    let expr = bare(expr);
+    std::mem::discriminant(&expr.kind).hash(hasher);
+    match &expr.kind {
+        K::Reference { name, .. }
+        | K::FlagOn { flag: name, .. }
+        | K::FlagOff { flag: name, .. }
+        | K::Def { name, .. }
+        | K::Ref { name } => name.text.hash(hasher),
+        K::Literal {
+            text,
+            case_insensitive,
+        } => (text, case_insensitive).hash(hasher),
+        K::Repeat { min, max, .. } => (min, max).hash(hasher),
+        K::Separated { at_least_one, .. } => at_least_one.hash(hasher),
+        K::FlagTest { flag, negated } => (&flag.text, negated).hash(hasher),
+        K::Label { label, .. } => label_text(label).hash(hasher),
+        K::Error { message } => message.value.hash(hasher),
+        _ => {}
+    }
+    let children = expr.children();
+    children.len().hash(hasher);
+    for child in children {
+        hash_written(child, hasher);
+    }
+}
+
 /// What an error label says, by message or by name, wherever it is written.
 fn label_text(label: &ErrorLabel) -> (bool, &str) {
     match label {
@@ -622,7 +661,16 @@ impl Checker<'_> {
 
     /// The checks of an ordered choice between `alternatives`, in a rule with `params`.
     fn alternatives(&mut self, alternatives: &[&Expr], params: &[Name]) {
-        for (index, later) in alternatives.iter().enumerate().skip(1) {
+        // The parts of every alternative and how each is written, made once for all pairs.
+        let split: Vec<(Vec<&Expr>, Vec<u64>)> = (alternatives.iter())
+            .map(|alternative| {
+                let parts = parts(alternative);
+                let keys = parts.iter().map(|part| written(part)).collect();
+                (parts, keys)
+            })
+            .collect();
+        let numbered = alternatives.iter().zip(&split).enumerate();
+        for (index, (later, (whole, whole_keys))) in numbered.skip(1) {
             let before = alternatives.get(..index).unwrap_or_default();
             if before
                 .last()
@@ -634,8 +682,8 @@ impl Checker<'_> {
                 self.warn(code, message.to_owned(), later.span);
             }
             let compared = before.len().saturating_sub(MAX_COMPARED_ALTERNATIVES);
-            let whole = parts(later);
-            for earlier in before.iter().skip(compared) {
+            let pairs = before.iter().zip(&split).skip(compared);
+            for (earlier, (start, start_keys)) in pairs {
                 if let Some((first, second)) = self.shadowed(earlier, later) {
                     let message = format!(
                         "{second:?} never matches here, since {first:?} before it matches first"
@@ -643,8 +691,8 @@ impl Checker<'_> {
                     self.warn(DiagnosticCode::ShadowedLiteral, message, later.span);
                     break;
                 }
-                let start = parts(earlier);
-                if start.len() <= whole.len() && start.iter().zip(&whole).all(|(a, b)| alike(a, b))
+                if whole_keys.starts_with(start_keys)
+                    && start.iter().zip(whole).all(|(a, b)| alike(a, b))
                 {
                     let message = "this alternative never matches, since it starts with the whole \
                                    of an earlier one";

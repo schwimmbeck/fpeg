@@ -155,21 +155,28 @@ fn an_alternative_is_shadowed_by_an_earlier_one_it_starts_with() {
     }
 }
 
-/// Time the check of a choice between 30,000 alternatives may take in a debug build. Each is
-/// compared with the 256 before it, which takes a second or two. All pairs take a minute.
+/// Time the check of a choice between thousands of alternatives may take in a debug build.
+/// Each is compared with the 256 before it, by a hash of each part first, which takes a few
+/// seconds. All pairs take a minute, and pairs compared down to the bottom of a deep first
+/// part they share half a minute.
 const LONG_CHOICE_SECONDS: f64 = 20.0;
 
 #[test]
 fn a_choice_between_thousands_of_alternatives_is_checked_in_time() {
-    let alternatives = (0..30_000).map(|i| seq([lit(&format!("k{i:05}")), r("X")]));
-    let mut g = GrammarBuilder::new();
-    g.rule("start", Expr::new(ExprKind::Choice(alternatives.collect())));
-    g.rule("X", lit("x"));
-    let grammar = g.build();
-    let started = Instant::now();
-    assert!(fpeg::check(&grammar).is_empty());
-    let seconds = started.elapsed().as_secs_f64();
-    assert!(seconds < LONG_CHOICE_SECONDS, "{seconds:.1} s");
+    let distinct = (0..30_000).map(|i| seq([lit(&format!("k{i:05}")), r("X")]));
+    // A first part ninety levels deep that all alternatives share, then one of their own.
+    let deep = || (0..90).fold(r("X"), |part, _| opt(part));
+    let shared = (0..8_000).map(|i| seq([deep(), lit(&format!("k{i:05}"))]));
+    for alternatives in [distinct.collect::<Vec<_>>(), shared.collect()] {
+        let mut g = GrammarBuilder::new();
+        g.rule("start", Expr::new(ExprKind::Choice(alternatives)));
+        g.rule("X", lit("x"));
+        let grammar = g.build();
+        let started = Instant::now();
+        assert!(fpeg::check(&grammar).is_empty());
+        let seconds = started.elapsed().as_secs_f64();
+        assert!(seconds < LONG_CHOICE_SECONDS, "{seconds:.1} s");
+    }
 }
 
 /// Time the check of 30,000 rules may take in a debug build, each of which can match nothing
