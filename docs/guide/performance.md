@@ -145,7 +145,9 @@ steps
 depth
 ```
 
-A parse that reaches the step limit on real input is a sign to profile the grammar on a smaller input of the same shape.
+A parse that takes more than a million steps, or a thousand for each byte of input where that is more, starts again with every rule remembered, for the steps its limit leaves. Remembering never changes what a parse gives, so a grammar that tries a rule again where nothing remembers it, as the first grammar of this guide does, still parses in time that grows with the input. The first try then is work lost, which the profile shows: it counts both runs, and says how many parses started again.
+
+A parse that reaches the step limit on real input, or that starts again, is a sign to profile the grammar on a smaller input of the same shape.
 
 ## What else costs
 

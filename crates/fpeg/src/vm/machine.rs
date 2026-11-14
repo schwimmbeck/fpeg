@@ -312,6 +312,8 @@ pub(crate) enum Stop {
         position: u32,
     },
     Limit(Limit),
+    /// The steps of the run's budget ran out before those of the limit.
+    Budget,
 }
 
 /// What a failure expects.
@@ -366,6 +368,8 @@ pub(crate) struct Machine<'p, 'i> {
     depth: u32,
     steps: u64,
     limits: Limits,
+    /// The steps the run may take, at most those of the limit.
+    budget: u64,
     /// The farthest position a failure was recorded at.
     farthest: Option<u32>,
     /// In diagnose mode, the farthest failure position of the run before, and what failed there.
@@ -415,6 +419,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             depth: 0,
             steps: 0,
             limits,
+            budget: limits.max_steps,
             farthest: None,
             diagnose: diagnose.map(|at| (at, BTreeSet::new())),
             profiler: None,
@@ -425,6 +430,18 @@ impl<'p, 'i> Machine<'p, 'i> {
     pub fn profiling(mut self) -> Machine<'p, 'i> {
         self.profiler = Some(Box::new(Profiler::new(self.program)));
         self
+    }
+
+    /// The machine that stops with [`Stop::Budget`] after `budget` steps, where they are
+    /// fewer than the limit allows.
+    pub fn budgeted(mut self, budget: u64) -> Machine<'p, 'i> {
+        self.budget = budget.min(self.limits.max_steps);
+        self
+    }
+
+    /// The steps the parse took.
+    pub fn steps(&self) -> u64 {
+        self.steps
     }
 
     /// What the parse did, if the machine was profiling.
@@ -500,8 +517,11 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.pc = entry;
         loop {
             self.steps += 1;
-            if self.steps > self.limits.max_steps {
-                return Err(Stop::Limit(Limit::Steps));
+            if self.steps > self.budget {
+                return Err(match self.budget < self.limits.max_steps {
+                    true => Stop::Budget,
+                    false => Stop::Limit(Limit::Steps),
+                });
             }
             // The verifier holds every jump inside the program.
             let Some(&inst) = self.program.code.get(self.pc as usize) else {

@@ -11,8 +11,9 @@ use fpeg::{
     Memo, Options, ParseErrorKind, Parser, Passes, Reference,
 };
 
-/// A stack too small for printing that recursed once per level of a deep tree.
-const PRINT_STACK_BYTES: usize = 64 * 1024;
+/// A stack too small for printing that recursed once per level of a deep tree, with room for
+/// the frames of a build without optimizations.
+const PRINT_STACK_BYTES: usize = 128 * 1024;
 
 fn nesting() -> Reference {
     let grammar = Grammar::from_text("start: nest\nnest: \"(\" nest \")\" | \"x\"\n")
@@ -31,6 +32,48 @@ fn grammar_errors(text: &str) -> Vec<String> {
         Ok(grammar) => Reference::new(&grammar).err().unwrap_or_default(),
     };
     errors.into_iter().map(|e| e.message).collect()
+}
+
+/// Steps that a pathological parse may take with the restart: its budget of a million steps
+/// and a parse with every rule remembered, which takes a few thousand.
+const PATHOLOGICAL_MAX_STEPS: u64 = 1_100_000;
+
+/// Levels of nesting in the pathological inputs, each of which doubles the work of the parse
+/// without the restart.
+const PATHOLOGICAL_LEVELS: usize = 24;
+
+#[test]
+fn a_parse_that_repeats_work_starts_again_with_every_rule_remembered() {
+    // Each grammar matches a rule twice at every level of nesting, which nothing it remembers
+    // by default saves: through rules of their own, around a left recursion run as a loop, and
+    // in a lookahead, whose calls are kept apart from the others.
+    let cases = [
+        "start: a\na: c | d\nc: b \"x\"\nd: b \"y\"\nb: \"(\" a \")\" | \"w\"\n",
+        "start: s\ns: c | d\nc: e \"x\"\nd: e \"y\"\ne: e \"+\" t -> plus | t\n\
+         t: \"(\" s \")\" | \"w\"\n",
+        "start: s\ns: &c c | d\nc: a \"x\"\nd: a \"y\"\na: \"(\" s \")\" | \"w\"\n",
+    ];
+    let input = (0..PATHOLOGICAL_LEVELS).fold("wy".to_owned(), |inner, _| format!("({inner})y"));
+    let limits = Limits {
+        max_steps: PATHOLOGICAL_MAX_STEPS,
+        ..Limits::default()
+    };
+    for text in cases {
+        let grammar = Grammar::from_text(text).expect("the grammar reads");
+        let reference = Reference::new(&grammar).expect("it resolves");
+        let expected = reference.parse(&input, "start").expect("it parses");
+        let parser = Parser::new(&grammar).expect("it compiles");
+        let tree = parser.parse_with(&input, "start", limits);
+        let tree = tree.unwrap_or_else(|error| panic!("{text}: {error:?}"));
+        assert_eq!(tree.to_text(&input, true), expected.to_text(&input, true));
+        let options = Options {
+            restart: false,
+            ..Options::default()
+        };
+        let without = Parser::with_options(&grammar, &options).expect("it compiles");
+        let error = (without.parse_with(&input, "start", limits)).expect_err("too many steps");
+        assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps), "{text}");
+    }
 }
 
 #[test]
@@ -429,6 +472,7 @@ fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
         let options = Options {
             memo,
             passes: Passes::NONE,
+            ..Options::default()
         };
         let parser = Parser::with_options(&grammar, &options).expect("it compiles");
         let (parsed, profile) = parser.profile(&input, "start", Limits::default());

@@ -90,7 +90,7 @@ pub(crate) fn profile(args: &[OsString]) -> Result<(), Failure> {
             }
             failed = true;
         }
-        add(&mut total, profile);
+        total.add(profile);
         parsed += 1;
     }
     let text = match (parsed, json) {
@@ -103,30 +103,6 @@ pub(crate) fn profile(args: &[OsString]) -> Result<(), Failure> {
     match failed {
         true => Err(Failure::Problem),
         false => Ok(()),
-    }
-}
-
-/// Add the counts of one parse to those of the parses before. One parser gives every profile
-/// the same rows.
-fn add(total: &mut Profile, part: Profile) {
-    total.steps += part.steps;
-    total.peak_stack = total.peak_stack.max(part.peak_stack);
-    total.peak_nodes = total.peak_nodes.max(part.peak_nodes);
-    total.memo_entries = total.memo_entries.max(part.memo_entries);
-    if total.rows.is_empty() {
-        total.rows = part.rows;
-        return;
-    }
-    for (sum, row) in total.rows.iter_mut().zip(part.rows) {
-        sum.calls += row.calls;
-        sum.failures += row.failures;
-        sum.steps += row.steps;
-        sum.steps_with_callees += row.steps_with_callees;
-        sum.backtracked_bytes += row.backtracked_bytes;
-        sum.repeats += row.repeats;
-        sum.memo_hits += row.memo_hits;
-        sum.memo_stores += row.memo_stores;
-        sum.growths += row.growths;
     }
 }
 
@@ -195,6 +171,14 @@ fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
         "\n{} steps, at most {} entries on the stack and {} nodes, {} results remembered",
         profile.steps, profile.peak_stack, profile.peak_nodes, profile.memo_entries
     );
+    if profile.restarts > 0 {
+        let _ = writeln!(
+            out,
+            "{} of the parses ran out of their budget of steps and started again with every \
+             rule remembered",
+            profile.restarts
+        );
+    }
     for row in rows {
         // A call that repeats an earlier one costs what an average call of the rule costs.
         let saved = row.repeats * row.steps_with_callees / row.calls.max(1);
@@ -218,8 +202,12 @@ fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
 /// The profile as JSON: the totals, and a member `rows` with the counts of each rule reached.
 fn as_json(profile: &Profile) -> String {
     let mut out = format!(
-        "{{\"steps\":{},\"peak_stack\":{},\"peak_nodes\":{},\"memo_entries\":{},\"rows\":[",
-        profile.steps, profile.peak_stack, profile.peak_nodes, profile.memo_entries
+        "{{\"steps\":{},\"peak_stack\":{},\"peak_nodes\":{},\"memo_entries\":{},\"restarts\":{},\"rows\":[",
+        profile.steps,
+        profile.peak_stack,
+        profile.peak_nodes,
+        profile.memo_entries,
+        profile.restarts
     );
     for (index, row) in reached(profile).into_iter().enumerate() {
         out.push_str(if index > 0 {

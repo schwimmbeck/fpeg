@@ -34,6 +34,35 @@ pub struct Profile {
     pub peak_nodes: u64,
     /// The results the parse remembered.
     pub memo_entries: u64,
+    /// The parses that ran out of their budget of steps and started again with every rule
+    /// remembered. Their counts hold both runs.
+    pub restarts: u64,
+}
+
+impl Profile {
+    /// Add the counts of another parse with the same parser, whose rows are the same.
+    pub fn add(&mut self, other: Profile) {
+        self.steps += other.steps;
+        self.peak_stack = self.peak_stack.max(other.peak_stack);
+        self.peak_nodes = self.peak_nodes.max(other.peak_nodes);
+        self.memo_entries = self.memo_entries.max(other.memo_entries);
+        self.restarts += other.restarts;
+        if self.rows.is_empty() {
+            self.rows = other.rows;
+            return;
+        }
+        for (sum, row) in self.rows.iter_mut().zip(other.rows) {
+            sum.calls += row.calls;
+            sum.failures += row.failures;
+            sum.steps += row.steps;
+            sum.steps_with_callees += row.steps_with_callees;
+            sum.backtracked_bytes += row.backtracked_bytes;
+            sum.repeats += row.repeats;
+            sum.memo_hits += row.memo_hits;
+            sum.memo_stores += row.memo_stores;
+            sum.growths += row.growths;
+        }
+    }
 }
 
 /// What a parse did in the rules of one name.
@@ -293,6 +322,7 @@ impl Profiler {
             peak_stack: self.peak_stack,
             peak_nodes: self.peak_nodes.max(nodes as u64),
             memo_entries: memo_entries as u64,
+            restarts: 0,
         }
     }
 }

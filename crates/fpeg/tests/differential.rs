@@ -47,6 +47,7 @@ fn settings(sample: u64) -> [Options; 3] {
     [0, 1, 2].map(|i| Options {
         memo: MEMO[i],
         passes: passes[i],
+        ..Options::default()
     })
 }
 

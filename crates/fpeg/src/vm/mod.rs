@@ -27,14 +27,37 @@ use machine::{Machine, Stop};
 pub use profile::{Profile, ProfileRow};
 use program::Program;
 
+/// Steps a parse takes at least before it starts again with every rule remembered.
+const RESTART_MIN_STEPS: u64 = 1_000_000;
+
+/// Steps a parse takes for each byte of input before it starts again with every rule
+/// remembered, where they come to more than [`RESTART_MIN_STEPS`].
+const RESTART_STEPS_PER_BYTE: u64 = 1_000;
+
 /// How a grammar is compiled. The default suits every use but tests and measurements, which
 /// turn single parts of the engine off or on. No setting changes what a parse returns.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Options {
     /// Which rules remember their results.
     pub memo: Memo,
     /// Which passes of the optimizer run.
     pub passes: Passes,
+    /// Whether a parse that runs out of its budget of steps starts again with every rule
+    /// remembered, for the steps the limit leaves. The budget is a million steps, or a
+    /// thousand for each byte of input where that is more. Remembering never changes a
+    /// result, and it bounds the time of a grammar that repeats work no rule it remembers
+    /// by default saves.
+    pub restart: bool,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            memo: Memo::default(),
+            passes: Passes::default(),
+            restart: true,
+        }
+    }
 }
 
 /// The passes of the optimizer, one switch each, all on by default. A parse gives the same tree
@@ -126,9 +149,12 @@ pub struct Parser {
     /// The grammar as resolved, for the programs of other options.
     grammar: ir::Grammar,
     options: Options,
-    /// The program without the passes, compiled on the first profile, or none when the
-    /// compiler refuses it.
+    /// The programs of other options, each compiled when first needed, or none where the
+    /// compiler refuses it: without the passes for a profile, and with every rule
+    /// remembered for a restart, also without the passes.
     plain: OnceLock<Option<Program>>,
+    remembering: OnceLock<Option<Program>>,
+    plain_remembering: OnceLock<Option<Program>>,
 }
 
 // Not derived: the program would print every instruction.
@@ -158,22 +184,83 @@ impl Parser {
             grammar: resolved,
             options: *options,
             plain: OnceLock::new(),
+            remembering: OnceLock::new(),
+            plain_remembering: OnceLock::new(),
         })
     }
 
-    /// The program without the passes.
-    fn plain(&self) -> &Program {
-        if self.options.passes == Passes::NONE {
-            return &self.program;
-        }
+    /// The program without the passes where `plain`, and with every rule remembered where
+    /// `remembering`.
+    fn program_for(&self, plain: bool, remembering: bool) -> &Program {
         let options = Options {
-            passes: Passes::NONE,
+            memo: if remembering {
+                Memo::All
+            } else {
+                self.options.memo
+            },
+            passes: if plain {
+                Passes::NONE
+            } else {
+                self.options.passes
+            },
             ..self.options
         };
-        let plain = self
-            .plain
-            .get_or_init(|| build(&self.grammar, &options).ok());
-        plain.as_ref().unwrap_or(&self.program)
+        let lock = match (plain, remembering) {
+            _ if options == self.options => return &self.program,
+            (true, false) => &self.plain,
+            (false, true) => &self.remembering,
+            _ => &self.plain_remembering,
+        };
+        let program = lock.get_or_init(|| build(&self.grammar, &options).ok());
+        program.as_ref().unwrap_or(&self.program)
+    }
+
+    /// Parse with the program without the passes where `plain`. A parse that runs out of
+    /// its budget of steps starts again with every rule remembered, for the steps the limit
+    /// leaves, and its profile counts both runs.
+    fn run(
+        &self,
+        plain: bool,
+        input: &str,
+        start: &str,
+        limits: Limits,
+        profiling: bool,
+    ) -> (Result<Tree, ParseError>, Option<Profile>) {
+        let program = self.program_for(plain, false);
+        let budget = (input.len() as u64)
+            .saturating_mul(RESTART_STEPS_PER_BYTE)
+            .max(RESTART_MIN_STEPS);
+        let restarts = self.options.restart && self.options.memo != Memo::All;
+        let budget = if restarts { budget } else { limits.max_steps };
+        let spent = match attempt(program, input, start, limits, budget, profiling) {
+            Ok(done) => return done,
+            Err(spent) => spent,
+        };
+        let again = self.program_for(plain, true);
+        let left = Limits {
+            max_steps: limits.max_steps.saturating_sub(spent.steps),
+            ..limits
+        };
+        // With no budget below the limit, the second run cannot run out of one.
+        let (result, profile) = (attempt(again, input, start, left, left.max_steps, profiling))
+            .unwrap_or_else(|second| {
+                (
+                    Err(ParseError {
+                        position: 0,
+                        kind: ParseErrorKind::Limit(Limit::Steps),
+                    }),
+                    second.profile,
+                )
+            });
+        let profile = match (spent.profile, profile) {
+            (Some(mut first), Some(second)) => {
+                first.add(second);
+                first.restarts += 1;
+                Some(first)
+            }
+            (first, _) => first,
+        };
+        (result, profile)
     }
 
     /// Parse the whole input from the rule `start`, with the default limits.
@@ -186,7 +273,7 @@ impl Parser {
     /// A parse that fails is run a second time to collect what was expected at the farthest
     /// failure, so a valid input never pays for it.
     pub fn parse_with(&self, input: &str, start: &str, limits: Limits) -> Result<Tree, ParseError> {
-        run(&self.program, input, start, limits, false).0
+        self.run(false, input, start, limits, false).0
     }
 
     /// Parse as [`Parser::parse_with`] does and count what each rule did: how often it was
@@ -201,7 +288,7 @@ impl Parser {
         start: &str,
         limits: Limits,
     ) -> (Result<Tree, ParseError>, Profile) {
-        let (result, profile) = run(self.plain(), input, start, limits, true);
+        let (result, profile) = self.run(true, input, start, limits, true);
         (result, profile.unwrap_or_default())
     }
 
@@ -245,17 +332,26 @@ fn build(grammar: &ir::Grammar, options: &Options) -> Result<Program, Vec<Diagno
     Ok(program)
 }
 
-/// Parse the whole input with a program, counting what each rule did when `profiling`.
-fn run(
+/// What a parse that ran out of its budget had done: its steps, and its counts where it was
+/// profiling.
+struct Spent {
+    steps: u64,
+    profile: Option<Profile>,
+}
+
+/// Parse the whole input with a program in at most `budget` steps, counting what each rule
+/// did when `profiling`.
+fn attempt(
     program: &Program,
     input: &str,
     start: &str,
     limits: Limits,
+    budget: u64,
     profiling: bool,
-) -> (Result<Tree, ParseError>, Option<Profile>) {
+) -> Result<(Result<Tree, ParseError>, Option<Profile>), Spent> {
     let refused = |kind| {
         let error = ParseError { position: 0, kind };
-        (Err(error), None)
+        Ok((Err(error), None))
     };
     let Some(&entry) = program.entries.get(start) else {
         return refused(ParseErrorKind::UnknownStart(start.to_owned()));
@@ -263,7 +359,7 @@ fn run(
     if u32::try_from(input.len()).is_err() {
         return refused(ParseErrorKind::Limit(Limit::InputSize));
     }
-    let mut machine = Machine::new(program, input, limits, None);
+    let mut machine = Machine::new(program, input, limits, None).budgeted(budget);
     if profiling {
         machine = machine.profiling();
     }
@@ -279,7 +375,7 @@ fn run(
         Err(Stop::NoMatch) => {
             let expected = match farthest {
                 Some(at) => {
-                    let mut again = Machine::new(program, input, limits, Some(at));
+                    let mut again = Machine::new(program, input, limits, Some(at)).budgeted(budget);
                     // The second run follows the first exactly, so it ends the same way.
                     let _ = again.run(entry);
                     again.expected()
@@ -303,6 +399,10 @@ fn run(
             position,
             kind: ParseErrorKind::Limit(limit),
         }),
+        Err(Stop::Budget) => {
+            let steps = machine.steps();
+            return Err(Spent { steps, profile });
+        }
     };
-    (result, profile)
+    Ok((result, profile))
 }

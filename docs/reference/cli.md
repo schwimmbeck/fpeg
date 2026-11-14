@@ -105,8 +105,8 @@ A step is one instruction of the parser, the unit its step limit counts. The pro
 
 - The row `%ignore` holds the steps spent skipping ignored text, and `(parse)` those of starting and ending the parse. The rows sum to the steps of the parse.
 - A rule with parameters has one row for all its uses.
-- Below the table stand the steps of all inputs and the largest stack, node count and number of remembered results that one input needed.
+- Below the table stand the steps of all inputs and the largest stack, node count and number of remembered results that one input needed. A further line counts the parses that ran out of their budget of steps and started again with every rule remembered, whose counts hold both runs.
 - A line `@memo on` names a rule that is not remembered and whose repeated calls cost a twentieth of all steps or more. Marking the rule [`@memo`](grammar.md#remembered-results) and profiling again shows what it brings. No line names a rule marked `@nomemo`, a precedence block or one of its levels, which a mark cannot stand on.
-- `--json` prints the same counts as JSON: the totals `steps`, `peak_stack`, `peak_nodes` and `memo_entries`, and `rows` with `name`, `remembered`, `calls`, `failures`, `steps`, `steps_with_callees`, `backtracked_bytes`, `repeats`, `memo_hits`, `memo_stores` and `growths` for every rule that was reached.
+- `--json` prints the same counts as JSON: the totals `steps`, `peak_stack`, `peak_nodes`, `memo_entries` and `restarts`, and `rows` with `name`, `remembered`, `calls`, `failures`, `steps`, `steps_with_callees`, `backtracked_bytes`, `repeats`, `memo_hits`, `memo_stores` and `growths` for every rule that was reached.
 
 An input that does not parse is reported as `parse` reports it and still counted, and one that cannot be read is reported and left out. A start rule that the grammar lacks is reported once, and nothing is counted. The exit status is 1 then, and 0 when every input parses.
