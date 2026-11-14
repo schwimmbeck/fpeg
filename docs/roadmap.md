@@ -68,6 +68,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 - A language server for grammar files, a formatter and editor highlighting.
 - Wheels for all platforms and version 0.1.0.
+- This roadmap gives way to a list of the features planned for later releases, and no page refers to milestones any more.
 
 ## Later
 
