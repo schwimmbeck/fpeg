@@ -6,14 +6,6 @@
 //! Every construct of the surface language is translated into these expressions. Skip points,
 //! tokens, nodes and fields are explicit, and names are replaced by ids.
 
-#![cfg_attr(
-    not(feature = "reference"),
-    expect(
-        dead_code,
-        reason = "only the reference interpreter reads columns and captures until the machine runs them"
-    )
-)]
-
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 

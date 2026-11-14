@@ -52,14 +52,6 @@ fn routine(program: &Program, rule: &str) -> String {
     body.join("\n")
 }
 
-fn errors(text: &str) -> Vec<String> {
-    let grammar = Grammar::from_text(text).unwrap_or_else(|e| panic!("{e:?}"));
-    match Parser::new(&grammar) {
-        Ok(_) => Vec::new(),
-        Err(errors) => errors.into_iter().map(|e| e.message).collect(),
-    }
-}
-
 #[test]
 fn parsers_and_trees_cross_threads_and_entries_read_by_position() {
     fn shared<T: Send + Sync>() {}
@@ -595,7 +587,7 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 18] = [
+    let breaks: [Break; 20] = [
         ("no rule 1000", |p| {
             let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
             p.code[call] = Inst::MemoCall(1_000);
@@ -688,6 +680,14 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
         ("expects [Column] on top", |p| {
             let at = choice(p);
             p.code[at] = Inst::IndentEnd;
+        }),
+        ("expects [Def] on top", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::DefClose(0);
+        }),
+        ("expects [Captures] on top", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::CaptureKeep;
         }),
     ];
     for (problem, broken) in breaks {
@@ -871,24 +871,6 @@ fn the_rules_on_left_cycles_and_no_others_take_part_in_left_recursion() {
         let recursive = rules.iter().filter(|rule| rule.recursive);
         let names: Vec<&str> = recursive.map(|rule| rule.name.as_str()).collect();
         assert_eq!(names, expected, "{text}");
-    }
-}
-
-#[test]
-fn captures_wait_for_their_milestone() {
-    let cases = [
-        ("start: %def(x, \"a\") %ref(x)\n", "start uses %def or %ref"),
-        (
-            "start: \"a\"\n%ignore %def(x, \" \")\n",
-            "the %ignore expression uses %def or %ref",
-        ),
-    ];
-    for (text, problem) in cases {
-        let errors = errors(text);
-        assert!(
-            errors.iter().any(|e| e.contains(problem)),
-            "{text}: {errors:?}"
-        );
     }
 }
 

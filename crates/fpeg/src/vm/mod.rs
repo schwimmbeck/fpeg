@@ -172,8 +172,7 @@ impl fmt::Debug for Parser {
 }
 
 impl Parser {
-    /// Compile a grammar, or report the problems in it, the first hundred at most. Captures
-    /// are reported as problems until the milestone of the roadmap brings them to the machine.
+    /// Compile a grammar, or report the problems in it, the first hundred at most.
     pub fn new(grammar: &Grammar) -> Result<Parser, Vec<Diagnostic>> {
         Parser::with_options(grammar, &Options::default())
     }

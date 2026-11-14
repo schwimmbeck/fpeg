@@ -305,8 +305,6 @@ In the skip expression a check compares with the reference column of the token t
 
 ### Captures
 
-Status: syntax now, effect in M6.
-
 ```fpeg
 RAW_STRING: "r" %def(hashes, "#"*) "\"" (!("\"" %ref(hashes)) .)* "\"" %ref(hashes)
 ```

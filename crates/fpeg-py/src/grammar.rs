@@ -193,9 +193,9 @@ impl Grammar {
 /// Check a grammar given as text and return what is found, in the order of the text.
 ///
 /// For a text that does not read or resolve these are its errors. Otherwise they are its
-/// warnings, about forms that work and are likely not meant, and the errors of forms the
-/// parser does not run yet. The functions that its value builders call are not asked for, so
-/// a missing one is not among them.
+/// warnings, about forms that work and are likely not meant, and an error where the grammar is
+/// too large to compile. The functions that its value builders call are not asked for, so a
+/// missing one is not among them.
 #[pyfunction]
 pub fn check(text: &str) -> Vec<Diagnostic> {
     let found = match fpeg::Grammar::from_text(text) {

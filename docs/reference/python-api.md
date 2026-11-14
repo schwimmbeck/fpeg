@@ -35,7 +35,7 @@ except fpeg.GrammarError as error:
     assert str(problem) == "<grammar>:1:8: error[E201]: unknown rule pair"
 ```
 
-`check(text)` returns diagnostics as a list and raises nothing. For a text that does not read or resolve these are its errors. Otherwise they are the warnings, forms that work and are likely not meant, which `Grammar` takes without a word, and beside them the errors of forms the parser does not run yet. The functions that value builders call are not given to `check`, so a missing one, which `Grammar` reports, is not among them. The `severity` of a diagnostic tells errors and warnings apart.
+`check(text)` returns diagnostics as a list and raises nothing. For a text that does not read or resolve these are its errors. Otherwise they are the warnings, forms that work and are likely not meant, which `Grammar` takes without a word, and beside them an error where the grammar is too large to compile. The functions that value builders call are not given to `check`, so a missing one, which `Grammar` reports, is not among them. The `severity` of a diagnostic tells errors and warnings apart.
 
 ```python
 (found,) = fpeg.check('start: "a"? | "b"')

@@ -124,7 +124,7 @@ impl Features {
         cut: true,
         left_recursion: true,
         columns: true,
-        captures: false,
+        captures: true,
     };
 }
 
@@ -310,15 +310,19 @@ impl Generator {
         g.flag("f");
         if self.rng.chance(50) {
             // A class repeated, which the machine takes as one run, or a choice for its skip
-            // routine, one of which tests the flag, and one of which reads the reference column:
-            // a line break where the next line goes on right of it.
-            g.ignore(match self.rng.below(4) {
+            // routine, one of which tests the flag, one of which reads the reference column, a
+            // line break where the next line goes on right of it, and one of which matches a
+            // capture of the activation that skips.
+            g.ignore(match self.rng.below(5) {
                 0 => some(class([ch(' ')])),
                 1 => choice([some(class([ch(' ')])), seq([if_flag("f"), lit("\n")])]),
                 2 if self.features.columns => choice([
                     some(class([ch(' ')])),
                     seq([lit("\n"), many(class([ch(' '), ch('\t')])), indent(empty())]),
                 ]),
+                3 if self.features.captures => {
+                    choice([lit(" "), seq([lit("\n"), capture_ref("c")])])
+                }
                 _ => choice([lit(" "), lit("\u{e9}\u{e9}")]),
             });
         }

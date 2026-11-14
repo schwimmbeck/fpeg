@@ -87,6 +87,18 @@ NAME: [a-z]+
 --- "b></b"
 error at 4: expected %ref(tag)
 
+=== a label skips to the error's position with the captures of before its failed part
+start: (%def(c, ()) "a") ^ "oops" | "b"
+%ignore " " | "\n" %ref(c)
+--- "\n b"
+error at 0: oops
+
+=== a capture made inside a block outlives the block, so a call after it is no left recursion
+start: %indent(%def(c, ())) start | "a"
+%ignore " "
+--- " a"
+(start (start ~"a"))
+
 === contexts that map the same captures are equal, so capturing again keeps left recursion
 start: %def(c, ()) r
 r: %def(c, ()) r "a" | "b"

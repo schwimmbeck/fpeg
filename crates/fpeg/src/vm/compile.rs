@@ -8,7 +8,7 @@
 //! so the program grows linearly with the grammar.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::program::{ByteTest, Class, Inst, Program, RuleInfo};
@@ -17,22 +17,18 @@ use crate::analysis::{self, Bytes, Start, Starts};
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{ClassItem, Span};
 use crate::ir::{self, RuleId};
-use crate::resolve::{MAX_ERRORS, MAX_FLAGS};
+use crate::resolve::MAX_FLAGS;
 use crate::tree::KindId;
 
 /// The most expressions a rule may have, counting those of the rules it inlines in turn,
 /// for its calls to compile as its body.
 const MAX_INLINE_EXPRESSIONS: usize = 24;
 
-/// Compile a resolved grammar, or report what the machine cannot run yet.
+/// Compile a resolved grammar, or report that it is too large to compile.
 pub(crate) fn compile(
     grammar: &ir::Grammar,
     options: &Options,
 ) -> Result<Program, Vec<Diagnostic>> {
-    let errors = unsupported(grammar);
-    if !errors.is_empty() {
-        return Err(errors);
-    }
     let facts = analysis::analyze(grammar);
     let mut c = Compiler {
         has_skip: grammar.skip.is_some(),
@@ -57,10 +53,17 @@ pub(crate) fn compile(
         rules: &grammar.rules,
         inline: Vec::new(),
         seed_rule: None,
+        defines_shared: HashMap::new(),
+        defining: Vec::new(),
     };
+    c.defining = (grammar.rules.iter())
+        .map(|rule| c.defines(&rule.body))
+        .collect();
     let loops: Vec<Option<Loop<'_>>> = (0..grammar.rules.len())
         .map(|i| {
-            let candidate = options.passes.left_loop && facts.left_recursive[i];
+            // Each pass of the semantics starts with the captures of the call, which the passes
+            // of a loop would have to give back.
+            let candidate = options.passes.left_loop && facts.left_recursive[i] && !c.defining[i];
             candidate
                 .then(|| c.loop_of(RuleId(i as u32), &facts))
                 .flatten()
@@ -88,11 +91,17 @@ pub(crate) fn compile(
             memo: memo[i],
             recursive: growing[i],
         });
-        // A cut ends at the call of its rule.
+        // A cut ends at the call of its rule, and so do its captures.
         c.cuttable = false;
+        if c.defining[i] {
+            c.emit(Inst::CaptureMark);
+        }
         match &loops[i] {
             Some(looped) => c.left_loop(RuleId(i as u32), looped),
             None => c.expr(&rule.body),
+        }
+        if c.defining[i] {
+            c.emit(Inst::CaptureDrop);
         }
         c.emit(Inst::Ret);
     }
@@ -114,9 +123,17 @@ pub(crate) fn compile(
             let choice = c.emit(Inst::Choice(0));
             let step = c.here();
             c.cuttable = true;
+            // What a skip captures holds for that skip alone.
+            let defines = c.defines(skip);
+            if defines {
+                c.emit(Inst::CaptureMark);
+            }
             // A failure after a cut ends the skipping as any other does, so it must not pass the
             // entry of the loop.
             c.cut_scope(skip);
+            if defines {
+                c.emit(Inst::CaptureDrop);
+            }
             c.emit(Inst::LoopCommit(step));
             c.patch(choice);
             c.emit(Inst::QuietOff);
@@ -194,10 +211,14 @@ pub(crate) fn compile(
         single_item: grammar.single_item.clone(),
         passes: options.passes,
         tab_width: grammar.tab_width,
-        // A skip that checks a column depends on the reference column.
+        // A skip that checks a column or matches a capture may depend on the context. Where the
+        // captures stay inside the terminals it calls, the context at a skip is 0 all the same.
         skip_context: (grammar.skip.as_ref()).is_some_and(|skip| {
             analysis::reaches(grammar, skip, |expr| {
-                matches!(expr, ir::Expr::Indent { .. } | ir::Expr::Same { .. })
+                matches!(
+                    expr,
+                    ir::Expr::Indent { .. } | ir::Expr::Same { .. } | ir::Expr::Ref { .. }
+                )
             })
         }),
     })
@@ -220,103 +241,6 @@ fn flag_bit(flag: ir::FlagId) -> Option<u8> {
     u8::try_from(flag.0)
         .ok()
         .filter(|&bit| usize::from(bit) < MAX_FLAGS)
-}
-
-/// The core forms of a rule body that the machine does not run yet.
-#[derive(Default)]
-struct Uses {
-    captures: bool,
-}
-
-impl Uses {
-    /// Note the forms in `expr`, visiting each shared part once in the whole grammar.
-    fn scan(&mut self, expr: &ir::Expr, seen: &mut HashSet<*const ir::Expr>) {
-        use ir::Expr as E;
-        match expr {
-            E::Ref { .. } => self.captures = true,
-            E::Def { expr, .. } => {
-                self.captures = true;
-                self.scan(expr, seen);
-            }
-            E::Seq(items) | E::Choice(items) => {
-                for item in items {
-                    self.scan(item, seen);
-                }
-            }
-            E::Repeat { expr, .. }
-            | E::And(expr)
-            | E::Not(expr)
-            | E::Token { expr, .. }
-            | E::Node { expr, .. }
-            | E::Transparent { expr, .. }
-            | E::Field { expr, .. }
-            | E::Unreserved(expr)
-            | E::FlagOn { expr, .. }
-            | E::FlagOff { expr, .. }
-            | E::Indent { expr, .. }
-            | E::Label { expr, .. } => self.scan(expr, seen),
-            E::Shared(expr) => {
-                if seen.insert(Arc::as_ptr(expr)) {
-                    self.scan(expr, seen);
-                }
-            }
-            E::Empty
-            | E::Literal { .. }
-            | E::Class(_)
-            | E::Any
-            | E::Call(_)
-            | E::Cut
-            | E::Skip
-            | E::WordEnd
-            | E::FlagTest { .. }
-            | E::Same { .. }
-            | E::ErrorAlternative => {}
-        }
-    }
-
-    /// The messages for what `who` uses, with the milestone that brings it.
-    fn messages(&self, who: &str) -> Vec<String> {
-        let mut messages = Vec::new();
-        if self.captures {
-            messages.push(format!(
-                "{who} uses %def or %ref, which the parser does not run yet, see the roadmap (M6)"
-            ));
-        }
-        messages
-    }
-}
-
-/// Report what the machine does not run yet: captures, the first hundred at most.
-fn unsupported(grammar: &ir::Grammar) -> Vec<Diagnostic> {
-    let mut errors: Vec<Diagnostic> = Vec::new();
-    let mut add = |message: String, span: Span| {
-        // The instances of a template repeat the messages of their template.
-        let error = Diagnostic {
-            code: DiagnosticCode::NotYet,
-            message,
-            span,
-        };
-        if errors.len() < MAX_ERRORS && !errors.contains(&error) {
-            errors.push(error);
-        }
-    };
-    let mut seen = HashSet::new();
-    for rule in &grammar.rules {
-        let who = format!("the rule {}", rule.name);
-        let mut uses = Uses::default();
-        uses.scan(&rule.body, &mut seen);
-        for message in uses.messages(&who) {
-            add(message, rule.span);
-        }
-    }
-    if let Some(skip) = &grammar.skip {
-        let mut uses = Uses::default();
-        uses.scan(skip, &mut seen);
-        for message in uses.messages("the %ignore expression") {
-            add(message, Span::default());
-        }
-    }
-    errors
 }
 
 struct Compiler<'f> {
@@ -355,6 +279,10 @@ struct Compiler<'f> {
     /// The rule whose next call compiles as `SeedUse`: the leading call of a recursive
     /// alternative of a loop.
     seed_rule: Option<RuleId>,
+    /// Whether each shared part met so far can make a capture.
+    defines_shared: HashMap<*const ir::Expr, bool>,
+    /// Whether each rule can make a capture in its own activation.
+    defining: Vec<bool>,
 }
 
 /// A rule that runs as a loop: its recursive alternatives, each with the parts that follow
@@ -437,8 +365,14 @@ impl<'f> Compiler<'f> {
     /// other breaks into calls every so many links. Each candidate is sized once those it
     /// calls are, on an explicit stack, since chains of rules can be as long as the grammar.
     fn inlinable(&mut self, memo: &[bool], recursive: &[bool]) -> Vec<bool> {
+        // The captures a rule makes end with its activation, which an inlined body has not.
         let candidate: Vec<bool> = (0..self.rules.len())
-            .map(|i| !memo[i] && !recursive[i] && !self.free_cut(&self.rules[i].body))
+            .map(|i| {
+                !memo[i]
+                    && !recursive[i]
+                    && !self.defining[i]
+                    && !self.free_cut(&self.rules[i].body)
+            })
             .collect();
         let mut sizes: Vec<Option<usize>> = vec![None; self.rules.len()];
         for root in 0..self.rules.len() {
@@ -689,7 +623,7 @@ impl<'f> Compiler<'f> {
             E::Repeat { expr, min, max } => self.repeat(expr, *min, *max),
             E::And(inner) => {
                 let choice = self.emit(Inst::PredChoice(0));
-                self.inside(false, inner);
+                self.caught(false, inner, false);
                 let back = self.emit(Inst::BackCommit(0));
                 self.patch(choice);
                 self.emit(Inst::Fail);
@@ -697,7 +631,7 @@ impl<'f> Compiler<'f> {
             }
             E::Not(inner) => {
                 let choice = self.emit(Inst::PredChoice(0));
-                self.inside(false, inner);
+                self.caught(false, inner, false);
                 self.emit(Inst::FailTwice);
                 self.patch(choice);
             }
@@ -758,7 +692,16 @@ impl<'f> Compiler<'f> {
             },
             E::Label { label, expr, skip } => {
                 let choice = self.emit(Inst::LabelChoice(0));
+                // A failure gives back what the expression captured before the skip that finds
+                // the error's position, which may match a capture.
+                let defines = self.defines(expr);
+                if defines {
+                    self.emit(Inst::CaptureMark);
+                }
                 self.expr(expr);
+                if defines {
+                    self.emit(Inst::CaptureKeep);
+                }
                 let commit = self.emit(Inst::Commit(0));
                 self.patch(choice);
                 if *skip && self.has_skip {
@@ -795,16 +738,26 @@ impl<'f> Compiler<'f> {
                 let skip = self.skip_before(*skip);
                 self.emit(Inst::Same { skip });
             }
-            // Rejected before compiling, see `unsupported`.
-            E::Def { .. } | E::Ref { .. } => {
-                self.emit(Inst::Fail);
+            E::Def {
+                capture,
+                expr,
+                skip,
+            } => {
+                let skip = self.skip_before(*skip);
+                self.emit(Inst::DefOpen { skip });
+                self.expr(expr);
+                self.emit(Inst::DefClose(capture.0));
+            }
+            E::Ref { capture } => {
+                self.emit(Inst::Ref(capture.0));
             }
         }
     }
 
-    /// Where a column check looks past ignored text first, the `Mark` and the skip before it,
-    /// and whether it has them: the check is made where the skip ends, and what follows starts
-    /// where it started, with the same skip, which the skip cache answers.
+    /// Where a column check or a capture looks past ignored text first, the `Mark` and the skip
+    /// before it, and whether it has them: the column is checked, or the text starts, where the
+    /// skip ends, and what follows starts where it started, with the same skip, which the skip
+    /// cache answers.
     fn skip_before(&mut self, skip: bool) -> bool {
         let skip = skip && self.has_skip;
         if skip {
@@ -819,6 +772,44 @@ impl<'f> Compiler<'f> {
         let outer = std::mem::replace(&mut self.cuttable, cuttable);
         self.expr(expr);
         self.cuttable = outer;
+    }
+
+    /// As [`Compiler::inside`], for code whose failure an entry catches: where the code can make
+    /// a capture, a failure gives it back, and a success keeps it where `keep` says so, which a
+    /// lookahead does not.
+    fn caught(&mut self, cuttable: bool, expr: &'f ir::Expr, keep: bool) {
+        let defines = self.defines(expr);
+        if defines {
+            self.emit(Inst::CaptureMark);
+        }
+        self.inside(cuttable, expr);
+        if defines {
+            self.emit(if keep {
+                Inst::CaptureKeep
+            } else {
+                Inst::CaptureDrop
+            });
+        }
+    }
+
+    /// Whether `expr` can make a capture in the activation it runs in: through a `%def` in it or
+    /// in a shared part it calls. Not through a rule it calls, since a rule that makes one is
+    /// never compiled into its callers. A shared part is looked at once.
+    fn defines(&mut self, expr: &ir::Expr) -> bool {
+        match expr {
+            ir::Expr::Def { .. } => true,
+            ir::Expr::Call(_) => false,
+            ir::Expr::Shared(inner) => {
+                let key = Arc::as_ptr(inner);
+                if let Some(&known) = self.defines_shared.get(&key) {
+                    return known;
+                }
+                let found = self.defines(inner);
+                self.defines_shared.insert(key, found);
+                found
+            }
+            _ => expr.children().iter().any(|child| self.defines(child)),
+        }
     }
 
     /// Compile an expression that is a choice point of the semantics and has no entry of its
@@ -982,7 +973,7 @@ impl<'f> Compiler<'f> {
                 .flatten()
                 .map(|test| self.emit(Inst::Test { test, target: 0 }));
             let choice = self.emit(Inst::Choice(0));
-            self.inside(true, alternative);
+            self.caught(true, alternative, true);
             commits.push(self.emit(Inst::Commit(0)));
             self.patch(choice);
             if let Some(test) = test {
@@ -1059,7 +1050,7 @@ impl<'f> Compiler<'f> {
                 let test = (self.test_for(expr, false))
                     .map(|test| self.emit(Inst::Test { test, target: 0 }));
                 let choice = self.emit(Inst::Choice(0));
-                self.inside(true, expr);
+                self.caught(true, expr, true);
                 let commit = self.emit(Inst::Commit(0));
                 self.patch(choice);
                 self.patch(commit);
@@ -1076,9 +1067,16 @@ impl<'f> Compiler<'f> {
                         .map(|test| self.emit(Inst::Test { test, target: 0 })),
                     _ => None,
                 };
+                let defines = rest.iter().any(|alternative| self.defines(alternative));
+                if defines {
+                    self.emit(Inst::CaptureMark);
+                }
                 match rest {
                     [one] => self.inside(true, one),
                     _ => self.inside_choice(rest),
+                }
+                if defines {
+                    self.emit(Inst::CaptureKeep);
                 }
                 self.emit(Inst::Span { class, min: 0 });
                 self.emit(Inst::LoopCommit(step));
@@ -1092,7 +1090,7 @@ impl<'f> Compiler<'f> {
                 let step = self.here();
                 let test = (self.test_for(expr, true))
                     .map(|test| self.emit(Inst::Test { test, target: 0 }));
-                self.inside(true, expr);
+                self.caught(true, expr, true);
                 self.emit(Inst::LoopCommit(step));
                 self.patch(choice);
                 if let Some(test) = test {
@@ -1104,7 +1102,7 @@ impl<'f> Compiler<'f> {
                 let bounds = (self.bounds.len() - 1) as u32;
                 let open = self.emit(Inst::RepOpen { end: 0, bounds });
                 let step = self.here();
-                self.inside(true, expr);
+                self.caught(true, expr, true);
                 self.emit(Inst::RepNext(step));
                 self.patch(open);
             }

@@ -100,7 +100,7 @@ A rule that is not left recursive gives the same result as matching its body onc
 
 ## Skipping and tokens
 
-- `skip` matches the skip expression at `i`, in plain mode, with the current context, then again where it ended, as long as it succeeds and consumes input. Its result is success at the last end, without items. A grammar without `%ignore` has an empty skip expression, so `skip` matches the empty string.
+- `skip` matches the skip expression at `i`, in plain mode, with the current context, then again where it ended, as long as it succeeds and consumes input. Its result is success at the last end, without items, and with the captures of the context: what the skip expression captures holds for that one match. A grammar without `%ignore` has an empty skip expression, so `skip` matches the empty string.
 - `token(k, h, e)` matches `e`, drops what `e` produces, and on success produces one token of kind `k` from `i` to the end of the match, hidden if `h`.
 - `word_end` succeeds without consuming input unless a word character follows at `i`. The word characters are those of `%word`, and `[A-Za-z0-9_]` for reserved words in a grammar without `%word`.
 - `unreserved(e)` matches `e` and fails when the matched text is a reserved word. The reserved words are the texts of literals that occur as tokens of syntactic or lexical rules and consist only of word characters, minus the soft keywords. A case-insensitive literal reserves every ASCII spelling of its text.

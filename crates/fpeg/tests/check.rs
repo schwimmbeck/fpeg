@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use fpeg::builder::{GrammarBuilder, ch, class, lit, many, opt, r, seq};
-use fpeg::{Expr, ExprKind, Grammar, Severity};
+use fpeg::{Expr, ExprKind, Grammar};
 
 /// The codes `check` gives for a grammar text, in the order of their places.
 fn codes(text: &str) -> Vec<&'static str> {
@@ -21,7 +21,7 @@ fn codes(text: &str) -> Vec<&'static str> {
 }
 
 #[test]
-fn the_acceptance_grammars_give_no_warning() {
+fn the_acceptance_grammars_give_no_error_and_no_warning() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
     let mut checked = 0;
     for entry in std::fs::read_dir(&root).expect("the grammars directory exists") {
@@ -31,11 +31,8 @@ fn the_acceptance_grammars_give_no_warning() {
         }
         let text = std::fs::read_to_string(&path).expect("the grammar is readable");
         let grammar = Grammar::from_text(&text).expect("the grammar reads");
-        // What the parser does not run yet is an error, and no reason to keep quiet about more.
-        let warnings: Vec<_> = (fpeg::check(&grammar).into_iter())
-            .filter(|diagnostic| diagnostic.severity() == Severity::Warning)
-            .collect();
-        assert!(warnings.is_empty(), "{}: {warnings:?}", path.display());
+        let found = fpeg::check(&grammar);
+        assert!(found.is_empty(), "{}: {found:?}", path.display());
         checked += 1;
     }
     assert!(checked >= 10, "{checked} grammars");

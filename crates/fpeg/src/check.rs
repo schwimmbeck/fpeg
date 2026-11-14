@@ -23,9 +23,9 @@ use crate::vm::{Options, compile};
 /// and comparing all pairs of a very long one would take time that grows with its square.
 const MAX_COMPARED_ALTERNATIVES: usize = 256;
 
-/// Everything to say about a grammar. If it does not resolve, the errors of that. Otherwise the
-/// forms that the parser does not run yet, which are errors too, and the warnings. Sorted by
-/// where they stand in the grammar.
+/// Everything to say about a grammar. If it does not resolve, the errors of that. Otherwise a
+/// grammar too large to compile, which is an error too, and the warnings. Sorted by where they
+/// stand in the grammar.
 pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
     let (resolved, counts) = match crate::resolve::resolve_counted(grammar) {
         Ok(resolved) => resolved,

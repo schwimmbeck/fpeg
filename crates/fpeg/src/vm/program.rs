@@ -172,6 +172,22 @@ pub(crate) enum Inst {
         /// Whether a `Mark` and a skip come before.
         skip: bool,
     },
+    /// Note where the text of a capture starts. `skip` as for `Indent`.
+    DefOpen {
+        /// Whether a `Mark` and a skip come before.
+        skip: bool,
+    },
+    /// Remember the text since the matching `DefOpen` under the capture with this index.
+    DefClose(u16),
+    /// Match the text last remembered under the capture with this index, which the activation
+    /// or one of its callers made.
+    Ref(u16),
+    /// Note the captures, so that a failure gives back those made since.
+    CaptureMark,
+    /// Keep the captures made since the matching `CaptureMark`.
+    CaptureKeep,
+    /// Give back the captures made since the matching `CaptureMark`.
+    CaptureDrop,
 }
 
 /// What a `Test` looks at: the bytes that the code after it can start with, and what a

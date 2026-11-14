@@ -119,6 +119,15 @@ enum Entry {
     Column {
         column: u32,
     },
+    /// Where the text of a capture starts.
+    Def {
+        start: u32,
+    },
+    /// How many captures there were, and the context, at a `CaptureMark`.
+    Captures {
+        height: u32,
+        context: u32,
+    },
     /// A call of a rule that is remembered or on a left cycle. What it needs is the newest of
     /// [`Machine::frames`], so that the entries keep their size.
     Frame,
@@ -142,7 +151,8 @@ struct MemoKey {
     rule: u32,
     pos: u32,
     flags: u64,
-    /// The context besides the flags: the reference column.
+    /// The context besides the flags: the reference column and the visible captures, as an id
+    /// of the parse.
     context: u32,
     quiet: bool,
 }
@@ -255,6 +265,16 @@ pub fn memo_hashes(keys: impl Iterator<Item = (u32, u32, u64)>) -> Vec<u64> {
         })
     })
     .collect()
+}
+
+/// A text remembered under a capture: the capture, the text's range of the input, and the id of
+/// the captures visible with it, the newest text of each capture.
+#[derive(Clone, Copy, Debug)]
+struct Capture {
+    name: u16,
+    start: u32,
+    end: u32,
+    map: u32,
 }
 
 /// A skip that ran the skip routine: where it started, with which flags and context, and where
@@ -491,6 +511,19 @@ pub(crate) struct Machine<'p, 'i> {
     flags: u64,
     /// The reference column of `%indent` and `%same`.
     column: u32,
+    /// The texts remembered under captures, oldest first: those of the activation in progress
+    /// above those of its callers, so the newest of a capture is the visible one.
+    captures: Vec<Capture>,
+    /// The id of the reference column and the visible captures, 0 for column 0 and none.
+    context: u32,
+    /// The ids of the contexts met, by column and the id of the visible captures.
+    contexts: HashMap<(u32, u32), u32>,
+    /// The ids of the captured texts met, one for equal texts.
+    texts: HashMap<&'i str, u32>,
+    /// The visible captures met, each the text id of each capture sorted by capture, and their
+    /// ids, from 1, since 0 is none. `map_list` holds the one of id `n` at `n - 1`.
+    maps: HashMap<Box<[(u16, u32)]>, u32>,
+    map_list: Vec<Box<[(u16, u32)]>>,
     /// Failures are recorded only while this is 0: outside lookahead and the skip routine.
     quiet: u32,
     depth: u32,
@@ -541,6 +574,12 @@ impl<'p, 'i> Machine<'p, 'i> {
             token: None,
             flags: 0,
             column: 0,
+            captures: Vec::new(),
+            context: 0,
+            contexts: HashMap::new(),
+            texts: HashMap::new(),
+            maps: HashMap::new(),
+            map_list: Vec::new(),
             quiet: 0,
             depth: 0,
             steps: 0,
@@ -1025,7 +1064,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Inst::Indent { skip } => self.indent(skip)?,
                 Inst::IndentEnd => {
                     if let Some(Entry::Column { column }) = self.stack.pop() {
-                        self.column = column;
+                        self.end_column(column)?;
                     }
                     self.pc += 1;
                 }
@@ -1037,6 +1076,46 @@ impl<'p, 'i> Machine<'p, 'i> {
                         self.record(self.pos, Expected::Indentation);
                         self.fail()?;
                     }
+                }
+                Inst::DefOpen { skip } => {
+                    let start = self.pos;
+                    self.take_back(skip);
+                    self.push(Entry::Def { start })?;
+                }
+                Inst::DefClose(name) => {
+                    if let Some(Entry::Def { start }) = self.stack.pop() {
+                        self.capture(name, start.min(self.pos))?;
+                    }
+                    self.pc += 1;
+                }
+                Inst::Ref(name) => {
+                    let input = self.input;
+                    let text = (self.captures.iter().rev())
+                        .find(|capture| capture.name == name)
+                        .and_then(|capture| {
+                            input.get(capture.start as usize..capture.end as usize)
+                        });
+                    let len = text.and_then(|text| {
+                        // Comparing a text is work of its length, as for a literal.
+                        self.steps += text.len() as u64 / LITERAL_BYTES_PER_STEP;
+                        self.rest().starts_with(text).then_some(text.len())
+                    });
+                    self.advance(len)?;
+                }
+                Inst::CaptureMark => {
+                    let height = self.captures.len() as u32;
+                    let context = self.context;
+                    self.push(Entry::Captures { height, context })?;
+                }
+                Inst::CaptureKeep => {
+                    self.stack.pop();
+                    self.pc += 1;
+                }
+                Inst::CaptureDrop => {
+                    if let Some(Entry::Captures { height, context }) = self.stack.pop() {
+                        self.give_back(height, context);
+                    }
+                    self.pc += 1;
                 }
             }
         }
@@ -1055,7 +1134,95 @@ impl<'p, 'i> Machine<'p, 'i> {
             column: self.column,
         })?;
         self.column = column;
+        self.context = self.context_of(column, self.map())?;
         self.pc += 1;
+        Ok(())
+    }
+
+    /// Restore the reference column of before an `Indent`. A capture made inside the block
+    /// outlives it, so the context is that of the column with the captures visible now.
+    fn end_column(&mut self, column: u32) -> Result<(), Stop> {
+        self.column = column;
+        self.context = self.context_of(column, self.map())?;
+        Ok(())
+    }
+
+    /// Give back the captures made since a `CaptureMark`, with the context of then. The column
+    /// is that of then too, since every `Indent` since has been left.
+    fn give_back(&mut self, height: u32, context: u32) {
+        self.captures.truncate(height as usize);
+        self.context = context;
+    }
+
+    /// The id of the visible captures.
+    fn map(&self) -> u32 {
+        self.captures.last().map_or(0, |capture| capture.map)
+    }
+
+    /// The id of the context of a column and visible captures, made when it is new.
+    fn context_of(&mut self, column: u32, map: u32) -> Result<u32, Stop> {
+        if (column, map) == (0, 0) {
+            return Ok(0);
+        }
+        if let Some(&id) = self.contexts.get(&(column, map)) {
+            return Ok(id);
+        }
+        self.memory.room_in(&mut self.contexts)?;
+        // Ids stay below the count of `Indent` and `DefClose` run, which the steps bound.
+        let id = self.contexts.len() as u32 + 1;
+        self.contexts.insert((column, map), id);
+        Ok(id)
+    }
+
+    /// Remember the text from `start` to the position under the capture `name`: its text id, the
+    /// visible captures with it, and their context. Hashing the text and sorting the captures is
+    /// work of their sizes.
+    fn capture(&mut self, name: u16, start: u32) -> Result<(), Stop> {
+        let input = self.input;
+        let text = input
+            .get(start as usize..self.pos as usize)
+            .unwrap_or_default();
+        self.steps += text.len() as u64 / LITERAL_BYTES_PER_STEP + 1;
+        let text_id = match self.texts.get(text) {
+            Some(&id) => id,
+            None => {
+                self.memory.room_in(&mut self.texts)?;
+                let id = self.texts.len() as u32;
+                self.texts.insert(text, id);
+                id
+            }
+        };
+        let old = (self.map() as usize).checked_sub(1);
+        let mut map = old
+            .and_then(|i| self.map_list.get(i))
+            .map_or_else(Vec::new, |m| m.to_vec());
+        match map.binary_search_by_key(&name, |&(capture, _)| capture) {
+            Ok(at) => map[at].1 = text_id,
+            Err(at) => map.insert(at, (name, text_id)),
+        }
+        self.steps += map.len() as u64;
+        let map: Box<[(u16, u32)]> = map.into();
+        let map_id = match self.maps.get(&map) {
+            Some(&id) => id,
+            None => {
+                // The map is held twice, as a key and in the list.
+                self.memory.take(2 * size_of_val(&*map) as u64)?;
+                self.memory.room_in(&mut self.maps)?;
+                self.memory.room(&mut self.map_list, 1)?;
+                self.map_list.push(map.clone());
+                let id = self.map_list.len() as u32;
+                self.maps.insert(map, id);
+                id
+            }
+        };
+        self.memory.room(&mut self.captures, 1)?;
+        self.captures.push(Capture {
+            name,
+            start,
+            end: self.pos,
+            map: map_id,
+        });
+        self.context = self.context_of(self.column, map_id)?;
         Ok(())
     }
 
@@ -1099,7 +1266,7 @@ impl<'p, 'i> Machine<'p, 'i> {
 
     /// The context the keys of the memo and of left recursion hold besides the flags.
     fn context(&self) -> u32 {
-        self.column
+        self.context
     }
 
     /// The context the skip cache keys by: the context where the skip expression reads it.
@@ -1563,7 +1730,12 @@ impl<'p, 'i> Machine<'p, 'i> {
                     None
                 }
                 Entry::Column { column } => {
-                    self.column = column;
+                    self.end_column(column)?;
+                    None
+                }
+                Entry::Def { .. } => None,
+                Entry::Captures { height, context } => {
+                    self.give_back(height, context);
                     None
                 }
                 Entry::Loop => {
@@ -1604,7 +1776,9 @@ impl<'p, 'i> Machine<'p, 'i> {
                 | Entry::Open { .. }
                 | Entry::Mark { .. }
                 | Entry::Flags { .. }
-                | Entry::Column { .. } => passed += 1,
+                | Entry::Column { .. }
+                | Entry::Def { .. }
+                | Entry::Captures { .. } => passed += 1,
             }
         }
         self.steps += passed;
@@ -1650,7 +1824,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.profile_left(false);
                 }
                 Entry::Flags { saved } => self.flags = saved,
-                Entry::Column { column } => self.column = column,
+                Entry::Column { column } => self.end_column(column)?,
+                Entry::Captures { height, context } => self.give_back(height, context),
                 Entry::Loop => self.drop_loop(),
                 // The skip routine, which a `Skip` before its return called, ends here too.
                 Entry::Sub { ret } => {

@@ -29,6 +29,8 @@ enum Entry {
     Flags,
     Loop,
     Column,
+    Def,
+    Captures,
 }
 
 /// What holds before an instruction: the entries its routine pushed, oldest first, whether a
@@ -113,7 +115,8 @@ impl Tables<'_> {
             shape.entries.pop();
             shape
         };
-        // A column check after a skip takes the position of the `Mark` before the skip back.
+        // A column check or a capture after a skip takes back the position of the `Mark` before
+        // the skip.
         let taken_back = |shape: Shape, skip: bool| match skip {
             true => top(&shape, &[Entry::Mark]).map(|()| popped(&shape)),
             false => Ok(shape),
@@ -302,6 +305,17 @@ impl Tables<'_> {
                 vec![(next, popped(&shape))]
             }
             Inst::Same { skip } => vec![(next, taken_back(shape, skip)?)],
+            Inst::DefOpen { skip } => vec![(next, taken_back(shape, skip)?.with(Entry::Def))],
+            Inst::DefClose(_) => {
+                top(&shape, &[Entry::Def])?;
+                vec![(next, popped(&shape))]
+            }
+            Inst::Ref(_) => vec![(next, shape)],
+            Inst::CaptureMark => vec![(next, shape.with(Entry::Captures))],
+            Inst::CaptureKeep | Inst::CaptureDrop => {
+                top(&shape, &[Entry::Captures])?;
+                vec![(next, popped(&shape))]
+            }
         })
     }
 }
