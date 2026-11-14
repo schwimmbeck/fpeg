@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 to M3 are done. Work continues with M4.
+M0 to M4 are done. Work continues with M5.
 
 ## M0 Foundations
 
@@ -30,10 +30,12 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## M4 The language, complete for context-free use
 
-- Operator precedence blocks, parameterized rules, keyword handling, flags, cut, left recursion and memoization.
-- The grammar checks of `fpeg check` and a profiler.
+- Operator precedence blocks, parameterized rules, keyword handling, flags, cut, left recursion and memoization, all run by the parsing machine.
+- Warnings of `fpeg check` and `fpeg.check` about grammars that likely do not do what they seem to, each with its page, and `fpeg profile`, which shows where a parse spends its work.
 - `Interpreter` and `Visitor` in Python.
 - The grammar language parsed by its own grammar.
+- Expressions checked against their generator, a calculator against `eval`, TOML against `tomllib`, and a tiny language run and compiled to LLVM IR.
+- Guides to operator precedence, building an AST and performance.
 
 ## M5 Optimizer
 
