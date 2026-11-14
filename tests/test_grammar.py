@@ -57,14 +57,18 @@ def test_check_returns_the_errors_of_a_grammar_instead_of_raising() -> None:
     ]
     assert [found.code for found in fpeg.check("start: (")] == ["E101"]
     assert fpeg.check(PAIRS) == []
-    # In the order of the text.
-    found = fpeg.check('start: b a\nstart: "x"\nc: zz\n')
+    # In the order of the text, as `Grammar` raises them.
+    text = 'start: b a\nstart: "x"\nc: zz\n'
+    found = fpeg.check(text)
     assert [(d.code, d.line, d.column) for d in found] == [
         ("E201", 1, 8),
         ("E201", 1, 10),
         ("E204", 2, 1),
         ("E201", 3, 4),
     ]
+    with pytest.raises(fpeg.GrammarError) as raised:
+        fpeg.Grammar(text)
+    assert list(raised.value.diagnostics) == found
 
 
 def test_check_returns_the_warnings_of_a_grammar_that_compiles() -> None:

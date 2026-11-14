@@ -303,12 +303,12 @@ pub(crate) fn resolve_counted(
                 ),
             };
             r.error(DiagnosticCode::TooLarge, message, span);
-            return Err(r.errors);
+            return Err(in_order(r.errors));
         }
     };
     r.check_builders(&counts);
     if !r.errors.is_empty() {
-        return Err(r.errors);
+        return Err(in_order(r.errors));
     }
     let facts = counts.facts(&r.rules, &entry, r.kind_names.len());
     let rules = r.rules.into_iter().flatten().collect();
@@ -332,6 +332,13 @@ pub(crate) fn resolve_counted(
         labels: r.labels,
     };
     Ok((resolved, counts))
+}
+
+/// The errors in the order of the text. The resolver reports a problem where it meets it, a
+/// duplicate rule before the unknown names in the rules before it.
+fn in_order(mut errors: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    errors.sort_by_key(|error| (error.span.start, error.span.end));
+    errors
 }
 
 /// The alternatives of a rule, those of its levels for a precedence block.

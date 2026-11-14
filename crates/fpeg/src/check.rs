@@ -28,11 +28,7 @@ const MAX_COMPARED_ALTERNATIVES: usize = 256;
 pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
     let (resolved, counts) = match crate::resolve::resolve_counted(grammar) {
         Ok(resolved) => resolved,
-        Err(mut errors) => {
-            // The resolver reports in the order it meets the problems.
-            errors.sort_by_key(|diagnostic| (diagnostic.span.start, diagnostic.span.end));
-            return errors;
-        }
+        Err(errors) => return errors,
     };
     let mut found = compile::compile(&resolved, &Options::default())
         .err()
