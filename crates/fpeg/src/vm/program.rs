@@ -158,6 +158,20 @@ pub(crate) enum Inst {
         /// Whether the flag must be off.
         negated: bool,
     },
+    /// Fail unless the column of the position is right of the reference column, and make it
+    /// the reference column until the matching `IndentEnd`. With `skip`, the position is where
+    /// the skip before ended, and the position before it, kept by a `Mark`, is taken back.
+    Indent {
+        /// Whether a `Mark` and a skip come before.
+        skip: bool,
+    },
+    /// Restore the reference column of before the matching `Indent`.
+    IndentEnd,
+    /// Fail unless the column of the position is the reference column. `skip` as for `Indent`.
+    Same {
+        /// Whether a `Mark` and a skip come before.
+        skip: bool,
+    },
 }
 
 /// What a `Test` looks at: the bytes that the code after it can start with, and what a
@@ -304,4 +318,8 @@ pub(crate) struct Program {
     /// The passes it was compiled with, which the machine reads for those that change how it
     /// runs rather than the code.
     pub passes: Passes,
+    /// How a tab counts when columns are compared.
+    pub tab_width: u32,
+    /// Whether the skip expression reads the context, so that the skip cache keys by it.
+    pub skip_context: bool,
 }

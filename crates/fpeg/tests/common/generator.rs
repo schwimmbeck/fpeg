@@ -45,8 +45,9 @@ const PASSES_SALT: u64 = 0x7061_7373_6573;
 /// the grammars and some grammars get every pass.
 const PASS_OFF_PERCENT: u64 = 25;
 
-/// The characters inputs are made of: the letters the grammars use, layout, and a two-byte one.
-const INPUT_CHARS: [char; 6] = ['a', 'b', 'c', ' ', '\n', 'é'];
+/// The characters inputs are made of: the letters the grammars use, layout with the tab and the
+/// carriage return that columns count apart, and a two-byte one.
+const INPUT_CHARS: [char; 8] = ['a', 'b', 'c', ' ', '\n', '\t', '\r', 'é'];
 
 /// SplitMix64, enough to spread seeds over the choices below.
 struct Rng(u64);
@@ -122,7 +123,7 @@ impl Features {
     pub const MACHINE: Features = Features {
         cut: true,
         left_recursion: true,
-        columns: false,
+        columns: true,
         captures: false,
     };
 }
@@ -309,10 +310,15 @@ impl Generator {
         g.flag("f");
         if self.rng.chance(50) {
             // A class repeated, which the machine takes as one run, or a choice for its skip
-            // routine, one of which tests the flag.
-            g.ignore(match self.rng.below(3) {
+            // routine, one of which tests the flag, and one of which reads the reference column:
+            // a line break where the next line goes on right of it.
+            g.ignore(match self.rng.below(4) {
                 0 => some(class([ch(' ')])),
                 1 => choice([some(class([ch(' ')])), seq([if_flag("f"), lit("\n")])]),
+                2 if self.features.columns => choice([
+                    some(class([ch(' ')])),
+                    seq([lit("\n"), many(class([ch(' '), ch('\t')])), indent(empty())]),
+                ]),
                 _ => choice([lit(" "), lit("\u{e9}\u{e9}")]),
             });
         }

@@ -22,7 +22,7 @@ use crate::diag::Diagnostic;
 use crate::grammar::Grammar;
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
-use crate::parse::{END_OF_INPUT, Limit, Limits, ParseError, ParseErrorKind};
+use crate::parse::{END_OF_INPUT, INDENTATION, Limit, Limits, ParseError, ParseErrorKind};
 use crate::tree::{FieldId, Kind, KindId, Names, Tree};
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
@@ -33,9 +33,6 @@ const STACK_BYTES: usize = 256 * 1024 * 1024;
 /// targets differ, so this keeps the recursion within `STACK_BYTES` with room to spare. The most
 /// nested Python file of CPython's tests needs about 1000.
 const MAX_NESTED_EVALUATIONS: u32 = 10_000;
-
-/// What a failed column check expects, in an expected set.
-const INDENTATION: &str = "indentation";
 
 /// An item as the interpreter produces it, before the tree is laid out.
 #[derive(Clone, Debug, PartialEq)]

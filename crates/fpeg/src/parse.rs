@@ -30,6 +30,9 @@ pub const DEFAULT_MAX_MEMORY_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// What a parse that stopped before the end of the input expects, in an expected set.
 pub(crate) const END_OF_INPUT: &str = "end of input";
 
+/// What a failed column check expects, in an expected set.
+pub(crate) const INDENTATION: &str = "indentation";
+
 /// How far a parse may go before it stops with [`ParseErrorKind::Limit`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {

@@ -595,7 +595,7 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
     fn choice(p: &Program) -> usize {
         find(p, |i| matches!(i, Inst::Choice(_)))
     }
-    let breaks: [Break; 16] = [
+    let breaks: [Break; 18] = [
         ("no rule 1000", |p| {
             let call = find(p, |i| matches!(i, Inst::MemoCall(_)));
             p.code[call] = Inst::MemoCall(1_000);
@@ -680,6 +680,14 @@ fn the_verifier_rejects_programs_that_break_the_machine_s_rules() {
         ("expects [Loop] on top", |p| {
             let at = choice(p);
             p.code[at] = Inst::SeedClose;
+        }),
+        ("expects [Mark] on top", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::Same { skip: true };
+        }),
+        ("expects [Column] on top", |p| {
+            let at = choice(p);
+            p.code[at] = Inst::IndentEnd;
         }),
     ];
     for (problem, broken) in breaks {
@@ -867,9 +875,8 @@ fn the_rules_on_left_cycles_and_no_others_take_part_in_left_recursion() {
 }
 
 #[test]
-fn columns_and_captures_wait_for_their_milestone() {
+fn captures_wait_for_their_milestone() {
     let cases = [
-        ("start: %indent(\"a\")\n", "start uses %indent or %same"),
         ("start: %def(x, \"a\") %ref(x)\n", "start uses %def or %ref"),
         (
             "start: \"a\"\n%ignore %def(x, \" \")\n",

@@ -28,6 +28,7 @@ enum Entry {
     Mark,
     Flags,
     Loop,
+    Column,
 }
 
 /// What holds before an instruction: the entries its routine pushed, oldest first, whether a
@@ -111,6 +112,11 @@ impl Tables<'_> {
             let mut shape = shape.clone();
             shape.entries.pop();
             shape
+        };
+        // A column check after a skip takes the position of the `Mark` before the skip back.
+        let taken_back = |shape: Shape, skip: bool| match skip {
+            true => top(&shape, &[Entry::Mark]).map(|()| popped(&shape)),
+            false => Ok(shape),
         };
         Ok(match inst {
             Inst::Char(_) | Inst::Any | Inst::WordEnd | Inst::Cut => vec![(next, shape)],
@@ -290,6 +296,12 @@ impl Tables<'_> {
                 index(u32::from(flag), MAX_FLAGS, "flag")?;
                 vec![(next, shape)]
             }
+            Inst::Indent { skip } => vec![(next, taken_back(shape, skip)?.with(Entry::Column))],
+            Inst::IndentEnd => {
+                top(&shape, &[Entry::Column])?;
+                vec![(next, popped(&shape))]
+            }
+            Inst::Same { skip } => vec![(next, taken_back(shape, skip)?)],
         })
     }
 }

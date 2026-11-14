@@ -248,7 +248,7 @@ expr: %precedence {
 %ignore "//" [^\n]*
 ```
 
-The skip expression is the ordered choice of all `%ignore` expressions. It is applied before every token of a syntactic rule, before the end of the input, and before the column checks of `%indent` and `%same` in syntactic rules. It is repeated as long as it matches a non-empty text. It may test flags. It produces no tokens and must not use syntactic or lexical rules.
+The skip expression is the ordered choice of all `%ignore` expressions. It is applied before every token of a syntactic rule, before the end of the input, and before the column checks of `%indent` and `%same` in syntactic rules. It is repeated as long as it matches a non-empty text. It may test flags and check the column against the reference column. It produces no tokens and must not use syntactic or lexical rules.
 
 A grammar without `%ignore` skips nothing.
 
@@ -285,8 +285,6 @@ A flag holds for the whole extent of `e`, including the rules it calls and the s
 
 ### Indentation
 
-Status: syntax now, effect in M6.
-
 ```fpeg
 block: NEWLINE %indent((%same stmt)+)
 ```
@@ -297,7 +295,13 @@ block: NEWLINE %indent((%same stmt)+)
 | `%same` | the next token must start exactly at the reference column. Consumes nothing |
 | `%tabs n` | a tab advances to the next multiple of `n` columns when columns are compared. Default 8 |
 
-The reference column is 0 at the start of a parse. Columns count code points from the start of the line, starting at 0, and a form feed sets the count back to 0.
+The reference column is 0 at the start of a parse. Columns count code points from the start of the line, starting at 0, and a form feed sets the count back to 0. A failed check expects indentation, at the position it checked.
+
+In the skip expression a check compares with the reference column of the token the skip stands before, so a line break can be ignored where the next line starts right of that column, which continues a block's item on the next line:
+
+```fpeg
+%ignore " "+ | "\n" " "* %indent(())
+```
 
 ### Captures
 

@@ -41,7 +41,8 @@ enum Form {
     Test,
     /// A cut, which commits a choice.
     Cut,
-    /// Columns, captures and the alternative for errors, which the machine does not run yet.
+    /// Column checks, captures and the alternative for errors: a column check can fail before
+    /// its first byte, depending on the column and not on the byte, which no test can tell.
     Unknown,
     /// The children in turn.
     Sequence,
@@ -395,7 +396,8 @@ impl Facts {
     /// `growing` says which rules keep the growing loop.
     pub fn starts(&self, grammar: &ir::Grammar, growing: &[bool]) -> Starts<'_> {
         let graph = &self.graph;
-        let skip_reads_flags = (grammar.skip.as_ref()).is_some_and(|s| reads_flags(grammar, s));
+        let skip_reads_flags = (grammar.skip.as_ref())
+            .is_some_and(|s| reaches(grammar, s, |e| matches!(e, ir::Expr::FlagTest { .. })));
         let mut parents: Vec<Vec<(u32, Role)>> = vec![Vec::new(); graph.nodes.len()];
         for node in 0..graph.nodes.len() as u32 {
             for (child, role) in graph.roles(node, &self.nullable, &self.skips) {
@@ -701,14 +703,19 @@ pub(crate) fn joined(known: Option<Vec<KindId>>, added: Option<&[KindId]>) -> Op
     (known.len() <= MAX_HEAD_KINDS).then_some(known)
 }
 
-/// Whether `expr` or a rule it calls tests a flag. Each rule and shared part is looked at once.
-fn reads_flags(grammar: &ir::Grammar, expr: &ir::Expr) -> bool {
+/// Whether `expr` or a rule it calls holds a form that `found` picks. Each rule and shared part
+/// is looked at once.
+pub(crate) fn reaches(
+    grammar: &ir::Grammar,
+    expr: &ir::Expr,
+    found: fn(&ir::Expr) -> bool,
+) -> bool {
     let mut seen = vec![false; grammar.rules.len()];
     let mut seen_shared = HashSet::new();
     let mut todo = vec![expr];
     while let Some(expr) = todo.pop() {
         match expr {
-            ir::Expr::FlagTest { .. } => return true,
+            _ if found(expr) => return true,
             ir::Expr::Call(rule) => {
                 if let Some(body) = grammar.rules.get(rule.0 as usize).map(|r| &r.body)
                     && !std::mem::replace(&mut seen[rule.0 as usize], true)

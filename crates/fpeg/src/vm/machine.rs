@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use super::profile::{Profile, Profiler};
 use super::program::{Inst, Program};
-use crate::parse::{END_OF_INPUT, Limit, Limits};
+use crate::parse::{END_OF_INPUT, INDENTATION, Limit, Limits};
 use crate::tree::{FieldId, KindId, Tree};
 
 /// Bytes of a literal compared in one step, about the work of one instruction.
@@ -115,6 +115,10 @@ enum Entry {
     Flags {
         saved: u64,
     },
+    /// The reference column before an `Indent`.
+    Column {
+        column: u32,
+    },
     /// A call of a rule that is remembered or on a left cycle. What it needs is the newest of
     /// [`Machine::frames`], so that the entries keep their size.
     Frame,
@@ -130,15 +134,26 @@ struct Seeded {
     seed: Option<Match>,
 }
 
-/// What a remembered result depends on: the rule, the position, the flags that are on, and
-/// whether failures were being recorded, since a result found while they were not recorded none.
-/// Without the last, it is the key of the table of left recursion.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// What a remembered result depends on: the rule, the position, the flags that are on, the rest
+/// of the context, and whether failures were being recorded, since a result found while they
+/// were not recorded none. Without the last, it is the key of the table of left recursion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MemoKey {
     rule: u32,
     pos: u32,
     flags: u64,
+    /// The context besides the flags: the reference column.
+    context: u32,
     quiet: bool,
+}
+
+impl Hash for MemoKey {
+    /// Three words, one multiplication each under the memo's hasher.
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(u64::from(self.rule) << 32 | u64::from(self.pos));
+        state.write_u64(self.flags);
+        state.write_u64(u64::from(self.context) << 1 | u64::from(self.quiet));
+    }
 }
 
 /// Makes the hashers of the memo, by one multiplication a word with keys drawn for each parse
@@ -235,19 +250,22 @@ pub fn memo_hashes(keys: impl Iterator<Item = (u32, u32, u64)>) -> Vec<u64> {
             rule,
             pos,
             flags,
+            context: 0,
             quiet: false,
         })
     })
     .collect()
 }
 
-/// A skip that ran the skip routine: where it started, with which flags, and where it ended.
-/// Skipping depends on nothing else, since the skip expression makes no items, records no
-/// failures and calls no rule that skips, so a skip from there with those flags ends there.
+/// A skip that ran the skip routine: where it started, with which flags and context, and where
+/// it ended. Skipping depends on nothing else, since the skip expression makes no items, records
+/// no failures and calls no rule that skips, so a skip from there with those flags and that
+/// context ends there. The context counts only where the skip expression reads it.
 #[derive(Clone, Copy, Debug)]
 struct SkipCache {
     start: u32,
     flags: u64,
+    context: u32,
     end: u32,
 }
 
@@ -427,6 +445,8 @@ pub(crate) enum Stop {
 enum Expected {
     Kind(KindId),
     EndOfInput,
+    /// A column check failed.
+    Indentation,
 }
 
 pub(crate) struct Machine<'p, 'i> {
@@ -469,6 +489,8 @@ pub(crate) struct Machine<'p, 'i> {
     skip_ret: u32,
     token: Option<OpenToken>,
     flags: u64,
+    /// The reference column of `%indent` and `%same`.
+    column: u32,
     /// Failures are recorded only while this is 0: outside lookahead and the skip routine.
     quiet: u32,
     depth: u32,
@@ -518,6 +540,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             skip_ret: program.skip_return().unwrap_or(u32::MAX),
             token: None,
             flags: 0,
+            column: 0,
             quiet: 0,
             depth: 0,
             steps: 0,
@@ -584,6 +607,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     .cloned()
                     .unwrap_or_default(),
                 Expected::EndOfInput => END_OF_INPUT.to_owned(),
+                Expected::Indentation => INDENTATION.to_owned(),
             })
             .collect();
         shown.into_iter().collect()
@@ -824,9 +848,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                         return Err(Stop::Limit(Limit::Depth));
                     }
                     self.depth += 1;
+                    let context = self.context();
                     if let Some(profiler) = self.profiler.as_deref_mut() {
                         let rule = self.program.rule_at(target);
-                        let key = (rule, self.pos, self.flags, self.quiet > 0);
+                        let key = (rule, self.pos, self.flags, context, self.quiet > 0);
                         profiler.called(key, false, &mut self.memory)?;
                         let (stack, nodes) = (self.stack.len(), self.nodes.len());
                         profiler.entered(rule, self.pos, self.steps, stack, nodes);
@@ -848,7 +873,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                     (None, Some(_))
                         if self.program.passes.skip
                             && let Some(last) = self.skip_cache
-                            && (last.start, last.flags) == (self.pos, self.flags) =>
+                            && (last.start, last.flags, last.context)
+                                == (self.pos, self.flags, self.skip_context()) =>
                     {
                         self.pos = last.end;
                         self.pc += 1;
@@ -877,6 +903,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                             self.skip_cache = Some(SkipCache {
                                 start: self.skip_start,
                                 flags: self.flags,
+                                context: self.skip_context(),
                                 end: self.pos,
                             });
                         }
@@ -995,7 +1022,91 @@ impl<'p, 'i> Machine<'p, 'i> {
                     let on = self.flags >> flag & 1 == 1;
                     self.test(on != negated)?;
                 }
+                Inst::Indent { skip } => self.indent(skip)?,
+                Inst::IndentEnd => {
+                    if let Some(Entry::Column { column }) = self.stack.pop() {
+                        self.column = column;
+                    }
+                    self.pc += 1;
+                }
+                Inst::Same { skip } => {
+                    if self.column_at(self.pos) == self.column {
+                        self.take_back(skip);
+                        self.pc += 1;
+                    } else {
+                        self.record(self.pos, Expected::Indentation);
+                        self.fail()?;
+                    }
+                }
             }
+        }
+    }
+
+    /// Check that the column of the position is right of the reference column and make it the
+    /// reference column, or record the failed check and fail.
+    fn indent(&mut self, skip: bool) -> Result<(), Stop> {
+        let column = self.column_at(self.pos);
+        if column <= self.column {
+            self.record(self.pos, Expected::Indentation);
+            return self.fail();
+        }
+        self.take_back(skip);
+        self.entry(Entry::Column {
+            column: self.column,
+        })?;
+        self.column = column;
+        self.pc += 1;
+        Ok(())
+    }
+
+    /// Where a `Mark` and a skip came before a column check, go back to the position the `Mark`
+    /// kept: the check looks past ignored text, but what follows starts where the skip did.
+    fn take_back(&mut self, skip: bool) {
+        if skip && let Some(Entry::Mark { pos }) = self.stack.pop() {
+            self.pos = pos;
+        }
+    }
+
+    /// The column of a position: one for each code point from the start of its line, a tab to
+    /// the next multiple of the tab width, a form feed back to 0. A carriage return before a
+    /// line feed ends its line after the line feed. Finding the start and counting are work of
+    /// the bytes passed, as for a literal.
+    fn column_at(&mut self, pos: u32) -> u32 {
+        let bytes = self.input.as_bytes();
+        let pos = (pos as usize).min(bytes.len());
+        let mut start = pos;
+        while let Some(&before) = start.checked_sub(1).and_then(|at| bytes.get(at)) {
+            match before {
+                b'\n' => break,
+                b'\r' if bytes.get(start) != Some(&b'\n') => break,
+                _ => start -= 1,
+            }
+        }
+        let tab = self.program.tab_width;
+        let mut column = 0u32;
+        for &byte in bytes.get(start..pos).unwrap_or_default() {
+            column = match byte {
+                b'\t' if tab > 0 => (column / tab + 1).saturating_mul(tab),
+                0x0C => 0,
+                // A byte that continues a code point adds nothing.
+                _ if byte & 0xC0 == 0x80 => column,
+                _ => column.saturating_add(1),
+            };
+        }
+        self.steps += (pos - start) as u64 / LITERAL_BYTES_PER_STEP;
+        column
+    }
+
+    /// The context the keys of the memo and of left recursion hold besides the flags.
+    fn context(&self) -> u32 {
+        self.column
+    }
+
+    /// The context the skip cache keys by: the context where the skip expression reads it.
+    fn skip_context(&self) -> u32 {
+        match self.program.skip_context {
+            true => self.context(),
+            false => 0,
         }
     }
 
@@ -1008,10 +1119,13 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some(test) = program.tests.get(index as usize) else {
             return true;
         };
+        let context = self.skip_context();
         let at = match (test.after_skip, program.skip_class, self.skip_cache) {
             (false, _, _) => self.pos,
             (true, Some(class), _) => self.pos + self.run_of(class).0 as u32,
-            (true, None, Some(last)) if (last.start, last.flags) == (self.pos, self.flags) => {
+            (true, None, Some(last))
+                if (last.start, last.flags, last.context) == (self.pos, self.flags, context) =>
+            {
                 last.end
             }
             (true, None, _) => return true,
@@ -1122,11 +1236,12 @@ impl<'p, 'i> Machine<'p, 'i> {
             rule,
             pos: self.pos,
             flags: self.flags,
+            context: self.context(),
             quiet: self.quiet > 0,
         };
         let entry = recursive.then(|| self.active(rule)).flatten();
         if let Some(profiler) = self.profiler.as_deref_mut() {
-            let seen = (rule, key.pos, key.flags, key.quiet);
+            let seen = (rule, key.pos, key.flags, key.context, key.quiet);
             profiler.called(seen, entry.is_some(), &mut self.memory)?;
         }
         if let Some(index) = entry {
@@ -1187,16 +1302,20 @@ impl<'p, 'i> Machine<'p, 'i> {
         Ok(())
     }
 
-    /// The frame of `rule` that started at this position with these flags, if there is one:
-    /// its entry of the table of left recursion. The frames that started here are the newest,
-    /// so the search ends at the first that started earlier.
+    /// The frame of `rule` that started at this position in this context, if there is one: its
+    /// entry of the table of left recursion. The frames that started here are the newest, so
+    /// the search ends at the first that started earlier.
     fn active(&mut self, rule: u32) -> Option<u32> {
         let mut index = self.newest_recursion;
+        let context = self.context();
         while let Some(frame) = self.frames.get(index as usize) {
             if frame.key.pos != self.pos {
                 break;
             }
-            if frame.key.rule == rule && frame.key.flags == self.flags {
+            if frame.key.rule == rule
+                && frame.key.flags == self.flags
+                && frame.key.context == context
+            {
                 return Some(index);
             }
             self.steps += 1;
@@ -1443,6 +1562,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.flags = saved;
                     None
                 }
+                Entry::Column { column } => {
+                    self.column = column;
+                    None
+                }
                 Entry::Loop => {
                     self.drop_loop();
                     None
@@ -1480,7 +1603,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                 | Entry::Sub { .. }
                 | Entry::Open { .. }
                 | Entry::Mark { .. }
-                | Entry::Flags { .. } => passed += 1,
+                | Entry::Flags { .. }
+                | Entry::Column { .. } => passed += 1,
             }
         }
         self.steps += passed;
@@ -1526,6 +1650,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.profile_left(false);
                 }
                 Entry::Flags { saved } => self.flags = saved,
+                Entry::Column { column } => self.column = column,
                 Entry::Loop => self.drop_loop(),
                 // The skip routine, which a `Skip` before its return called, ends here too.
                 Entry::Sub { ret } => {

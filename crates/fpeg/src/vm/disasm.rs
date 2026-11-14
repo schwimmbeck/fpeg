@@ -198,6 +198,9 @@ impl Program {
                 flag,
                 negated: true,
             } => format!("FlagTest !{flag}"),
+            Inst::Indent { skip } => format!("Indent{}", if skip { " skip" } else { "" }),
+            Inst::IndentEnd => "IndentEnd".to_owned(),
+            Inst::Same { skip } => format!("Same{}", if skip { " skip" } else { "" }),
         }
     }
 }

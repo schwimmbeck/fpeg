@@ -193,6 +193,13 @@ pub(crate) fn compile(
         kinds: grammar.kinds(),
         single_item: grammar.single_item.clone(),
         passes: options.passes,
+        tab_width: grammar.tab_width,
+        // A skip that checks a column depends on the reference column.
+        skip_context: (grammar.skip.as_ref()).is_some_and(|skip| {
+            analysis::reaches(grammar, skip, |expr| {
+                matches!(expr, ir::Expr::Indent { .. } | ir::Expr::Same { .. })
+            })
+        }),
     })
 }
 
@@ -218,7 +225,6 @@ fn flag_bit(flag: ir::FlagId) -> Option<u8> {
 /// The core forms of a rule body that the machine does not run yet.
 #[derive(Default)]
 struct Uses {
-    columns: bool,
     captures: bool,
 }
 
@@ -227,12 +233,7 @@ impl Uses {
     fn scan(&mut self, expr: &ir::Expr, seen: &mut HashSet<*const ir::Expr>) {
         use ir::Expr as E;
         match expr {
-            E::Same { .. } => self.columns = true,
             E::Ref { .. } => self.captures = true,
-            E::Indent { expr, .. } => {
-                self.columns = true;
-                self.scan(expr, seen);
-            }
             E::Def { expr, .. } => {
                 self.captures = true;
                 self.scan(expr, seen);
@@ -252,6 +253,7 @@ impl Uses {
             | E::Unreserved(expr)
             | E::FlagOn { expr, .. }
             | E::FlagOff { expr, .. }
+            | E::Indent { expr, .. }
             | E::Label { expr, .. } => self.scan(expr, seen),
             E::Shared(expr) => {
                 if seen.insert(Arc::as_ptr(expr)) {
@@ -267,6 +269,7 @@ impl Uses {
             | E::Skip
             | E::WordEnd
             | E::FlagTest { .. }
+            | E::Same { .. }
             | E::ErrorAlternative => {}
         }
     }
@@ -274,22 +277,16 @@ impl Uses {
     /// The messages for what `who` uses, with the milestone that brings it.
     fn messages(&self, who: &str) -> Vec<String> {
         let mut messages = Vec::new();
-        for (used, what, milestone) in [
-            (self.columns, "%indent or %same", "M6"),
-            (self.captures, "%def or %ref", "M6"),
-        ] {
-            if used {
-                messages.push(format!(
-                    "{who} uses {what}, which the parser does not run yet, see the roadmap \
-                     ({milestone})"
-                ));
-            }
+        if self.captures {
+            messages.push(format!(
+                "{who} uses %def or %ref, which the parser does not run yet, see the roadmap (M6)"
+            ));
         }
         messages
     }
 }
 
-/// Report what the machine does not run yet: columns and captures, the first hundred at most.
+/// Report what the machine does not run yet: captures, the first hundred at most.
 fn unsupported(grammar: &ir::Grammar) -> Vec<Diagnostic> {
     let mut errors: Vec<Diagnostic> = Vec::new();
     let mut add = |message: String, span: Span| {
@@ -788,11 +785,33 @@ impl<'f> Compiler<'f> {
                 let at = self.emit(Inst::Sub(0));
                 self.subs.push((at, index));
             }
+            E::Indent { expr, skip } => {
+                let skip = self.skip_before(*skip);
+                self.emit(Inst::Indent { skip });
+                self.expr(expr);
+                self.emit(Inst::IndentEnd);
+            }
+            E::Same { skip } => {
+                let skip = self.skip_before(*skip);
+                self.emit(Inst::Same { skip });
+            }
             // Rejected before compiling, see `unsupported`.
-            E::Indent { .. } | E::Same { .. } | E::Def { .. } | E::Ref { .. } => {
+            E::Def { .. } | E::Ref { .. } => {
                 self.emit(Inst::Fail);
             }
         }
+    }
+
+    /// Where a column check looks past ignored text first, the `Mark` and the skip before it,
+    /// and whether it has them: the check is made where the skip ends, and what follows starts
+    /// where it started, with the same skip, which the skip cache answers.
+    fn skip_before(&mut self, skip: bool) -> bool {
+        let skip = skip && self.has_skip;
+        if skip {
+            self.emit(Inst::Mark);
+            self.emit(Inst::Skip);
+        }
+        skip
     }
 
     /// Compile `expr` where a cut can mark an entry of the routine, or cannot.
