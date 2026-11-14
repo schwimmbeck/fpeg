@@ -98,39 +98,8 @@ struct Scope<'g> {
     levels: Option<&'g [Level]>,
 }
 
-/// Which forms generated grammars may use besides the plain ones.
-#[derive(Clone, Copy)]
-pub struct Features {
-    pub cut: bool,
-    /// Operators of a precedence block whose left operand is their own level.
-    pub left_recursion: bool,
-    /// `%indent` and `%same`.
-    pub columns: bool,
-    /// `%def` and `%ref`.
-    pub captures: bool,
-}
-
-impl Features {
-    /// Every form, for the reference interpreter.
-    pub const ALL: Features = Features {
-        cut: true,
-        left_recursion: true,
-        columns: true,
-        captures: true,
-    };
-
-    /// The forms the parsing machine runs.
-    pub const MACHINE: Features = Features {
-        cut: true,
-        left_recursion: true,
-        columns: true,
-        captures: true,
-    };
-}
-
 struct Generator {
     rng: Rng,
-    features: Features,
     rules: Vec<String>,
     terminals: Vec<String>,
     /// Whether the grammar has the template `t<p>`.
@@ -160,7 +129,7 @@ impl Generator {
             5 => any(),
             6 => empty(),
             7 => lit_i("ab"),
-            8 if self.features.captures => capture_ref("c"),
+            8 => capture_ref("c"),
             9 if !self.params.is_empty() => r(self.rng.pick(&self.params)),
             10 if !self.levels.is_empty() => r(self.rng.pick(&self.levels)),
             // Mostly closed arguments, which keep the number of template instances small. One
@@ -192,8 +161,8 @@ impl Generator {
             6 => sep_many(p, lit("b")),
             7 => flat(vec![and(lit("a")), p], false),
             8 => flat(vec![not(lit("b")), p], false),
-            9 if self.features.columns => indent(p),
-            10 if self.features.captures => def("c", p),
+            9 => indent(p),
+            10 => def("c", p),
             _ => r_args("t", [p]),
         }
     }
@@ -235,13 +204,13 @@ impl Generator {
                 true => and(self.expr(depth + 1, terminal)),
                 false => not(self.expr(depth + 1, terminal)),
             },
-            7 if self.features.captures => def("c", self.expr(depth + 1, terminal)),
+            7 => def("c", self.expr(depth + 1, terminal)),
             8 => label_message(self.expr(depth + 1, terminal), "oops"),
             9 | 10 => {
                 let name = if self.rng.chance(50) { "x" } else { "y" };
                 field(name, self.expr(depth + 1, false))
             }
-            11 if self.features.cut => {
+            11 => {
                 let (first, second) = (self.expr(depth + 1, false), self.expr(depth + 1, false));
                 flat(vec![first, cut(), second], false)
             }
@@ -250,7 +219,7 @@ impl Generator {
                 1 => off("f", self.expr(depth + 1, false)),
                 _ => flat(vec![if_flag("f"), self.expr(depth + 1, false)], false),
             },
-            13 if self.features.columns => match self.rng.chance(50) {
+            13 => match self.rng.chance(50) {
                 true => indent(self.expr(depth + 1, false)),
                 false => flat(vec![same(), self.expr(depth + 1, false)], false),
             },
@@ -287,7 +256,7 @@ impl Generator {
                         let right =
                             seq([field("left", r(next)), lit("b"), field("right", r(name))]);
                         alternatives.push(match self.rng.below(4) {
-                            0 if self.features.left_recursion => alt(left).alias("binary"),
+                            0 => alt(left).alias("binary"),
                             1 => alt(right).alias("binary"),
                             2 => alt(seq([lit("b"), field("operand", r(name))])).alias("unary"),
                             _ => alt(self.expr(1, false)).alias("other"),
@@ -316,13 +285,11 @@ impl Generator {
             g.ignore(match self.rng.below(5) {
                 0 => some(class([ch(' ')])),
                 1 => choice([some(class([ch(' ')])), seq([if_flag("f"), lit("\n")])]),
-                2 if self.features.columns => choice([
+                2 => choice([
                     some(class([ch(' ')])),
                     seq([lit("\n"), many(class([ch(' '), ch('\t')])), indent(empty())]),
                 ]),
-                3 if self.features.captures => {
-                    choice([lit(" "), seq([lit("\n"), capture_ref("c")])])
-                }
+                3 => choice([lit(" "), seq([lit("\n"), capture_ref("c")])]),
                 _ => choice([lit(" "), lit("\u{e9}\u{e9}")]),
             });
         }
@@ -569,13 +536,8 @@ pub fn reference_limits() -> Limits {
     }
 }
 
-/// The grammar and inputs of one seed, with every form.
+/// The grammar and inputs of one seed.
 pub fn generate(seed: u64) -> (Grammar, Vec<String>) {
-    generate_with(seed, Features::ALL)
-}
-
-/// The grammar and inputs of one seed, with the forms of `features`.
-pub fn generate_with(seed: u64, features: Features) -> (Grammar, Vec<String>) {
     let mut rng = Rng(seed);
     let mut rules: Vec<String> = (0..1 + rng.below(4))
         .map(|i| match (i, rng.below(6)) {
@@ -596,7 +558,6 @@ pub fn generate_with(seed: u64, features: Features) -> (Grammar, Vec<String>) {
         .collect();
     let mut generator = Generator {
         rng,
-        features,
         rules,
         terminals,
         template,
