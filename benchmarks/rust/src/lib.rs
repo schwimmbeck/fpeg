@@ -8,11 +8,18 @@ pub use generated::{JsonParser, Rule};
 /// The JSON grammar of fpeg's acceptance grammars.
 pub const FPEG_JSON_GRAMMAR: &str = include_str!("../../../crates/fpeg/grammars/json.fpeg");
 
+/// The expression grammar of fpeg's acceptance grammars.
+pub const FPEG_EXPRESSIONS_GRAMMAR: &str =
+    include_str!("../../../crates/fpeg/grammars/expressions.fpeg");
+
 /// The text of the pest JSON grammar, for the runtime interpreter pest_vm.
 pub const JSON_GRAMMAR: &str = include_str!("json.pest");
 
 /// The input shared with the Python benchmarks, written by `benchmarks/corpus.py`.
 pub const RECORDS_JSON_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../corpora/records.json");
+
+/// The expression of a C-like language, written by `benchmarks/corpus.py`.
+pub const EXPRESSIONS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../corpora/expressions.c");
 
 #[allow(
     missing_docs,

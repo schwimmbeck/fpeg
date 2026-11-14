@@ -108,7 +108,7 @@ The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for ligh
 
 ## Benchmarks
 
-The Rust suite measures fpeg's parsing machine beside other Rust parsers. The `json` suite measures fpeg's Python package beside other Python parsers, and the `binding` suite measures what the binding adds to a parse: transforms with and without methods, tokens made from views, and many small parses. The `python` and `ord` suites measure the parsers fpeg will be compared with on Python source. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
+The Rust suite measures fpeg's parsing machine beside other Rust parsers on JSON, and on an expression of twelve operator levels by what the machine remembers. The `json` suite measures fpeg's Python package beside other Python parsers, and the `binding` suite measures what the binding adds to a parse: transforms with and without methods, tokens made from views, and many small parses. The `python` and `ord` suites measure the parsers fpeg will be compared with on Python source. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
 
 ```sh
 uv run --group bench python benchmarks/run.py

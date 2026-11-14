@@ -49,6 +49,8 @@ CRITERION_MODE_ARGS = {"default": [], "fast": ["--quick"], "rigorous": [], "smok
 
 PYTHON_PACKAGES = ("lark", "pe", "libcst", "tree-sitter", "tree-sitter-python", "pyperf")
 RUST_CRATES = ("pest", "pest_derive", "pest_meta", "pest_vm", "serde_json", "criterion")
+# The criterion suites, each with the input of the benchmarks that report a throughput.
+RUST_BENCHES = {"json": corpus.RECORDS_JSON, "expressions": corpus.EXPRESSIONS}
 PLATFORM_NAMES = {"win32": "windows", "linux": "linux", "darwin": "macos"}
 NS_PER_S = 1e9
 BYTES_PER_MB = 1e6
@@ -144,7 +146,8 @@ def run_rust_suite(mode: str) -> list[Row]:
     # Pin where criterion writes, and run in the package so rustup picks its pinned toolchain.
     env = {k: v for k, v in os.environ.items() if k != "CRITERION_HOME"}
     env["CARGO_TARGET_DIR"] = str(RUST_TARGET)
-    command = ["cargo", "bench", "--bench", "json", "--", *CRITERION_MODE_ARGS[mode]]
+    benches = [arg for name in RUST_BENCHES for arg in ("--bench", name)]
+    command = ["cargo", "bench", *benches, "--", *CRITERION_MODE_ARGS[mode]]
     subprocess.run(command, cwd=RUST, env=env, check=True)
     rows = []
     for meta_path in sorted(CRITERION.rglob("new/benchmark.json")):
@@ -157,7 +160,7 @@ def run_rust_suite(mode: str) -> list[Row]:
             Row(
                 suite="rust",
                 name=meta["full_id"],
-                input=corpus.RECORDS_JSON.name if meta["throughput"] else None,
+                input=RUST_BENCHES[meta["group_id"]].name if meta["throughput"] else None,
                 mean_s=estimates["mean"]["point_estimate"] / NS_PER_S,
                 stdev_s=estimates["std_dev"]["point_estimate"] / NS_PER_S,
                 median_s=estimates["median"]["point_estimate"] / NS_PER_S,

@@ -31,6 +31,10 @@ criterion = { version = "0.8.2", default-features = false, features = ["cargo_be
 name = "json"
 harness = false
 
+[[bench]]
+name = "expressions"
+harness = false
+
 [lints.rust]
 missing_docs = "warn"
 unsafe_op_in_unsafe_fn = "warn"

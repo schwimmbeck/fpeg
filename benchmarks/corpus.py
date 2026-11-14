@@ -36,6 +36,11 @@ DOWNLOAD_TIMEOUT_S = 60
 # bytes of records.json, and its pinned hash with them.
 JSON_RECORDS = 9000
 JSON_SEED = 20261112
+# The size of the generated expression, and the seed of its content, pinned alike.
+EXPRESSION_BYTES = 100_000
+EXPRESSION_SEED = 4
+# How deep the terms of the expression nest at most.
+EXPRESSION_DEPTH = 6
 
 
 @dataclass(frozen=True)
@@ -64,7 +69,12 @@ PYTHON_FILE = Input(
     ORD_PACKAGE / "python_transformer.py",
     ORDEC_PACKAGE_SHA256["python_transformer.py"],
 )
-INPUTS = (RECORDS_JSON, PYTHON_FILE)
+EXPRESSIONS = Input(
+    "expressions.c",
+    CORPORA / "expressions.c",
+    "9186ae97b00659573f1e161e833ee0a08520218567fb839a2012714f7f326b67",
+)
+INPUTS = (RECORDS_JSON, PYTHON_FILE, EXPRESSIONS)
 
 
 def sha256(path: Path) -> str:
@@ -102,8 +112,44 @@ def write_records_json(path: Path) -> None:
             "note": 'line one\\nline "two" with a tab\t and unicode äöü',
         }
 
-    text = json.dumps([record(i) for i in range(JSON_RECORDS)], indent=1)
-    # Written beside the target and renamed, so an interrupted run leaves no partial file.
+    write_whole(path, json.dumps([record(i) for i in range(JSON_RECORDS)], indent=1))
+
+
+def write_expressions(path: Path) -> None:
+    """Write one expression of a C-like language, a sum of random terms, the same on every run."""
+    rng = random.Random(EXPRESSION_SEED)
+    binary = ["+", "-", "*", "/", "%", "<<", ">>", "<", "<=", "==", "!=", "&", "^", "|", "&&", "||"]
+
+    def expression(depth: int) -> str:
+        if depth == 0 or rng.random() < 0.25:
+            return rng.choice(["1", "42", "x", "name", "3.5", '"s"'])
+
+        def inner() -> str:
+            return expression(depth - 1)
+
+        kind = rng.random()
+        if kind < 0.55:
+            return f"{inner()} {rng.choice(binary)} {inner()}"
+        if kind < 0.65:
+            return f"({inner()})"
+        if kind < 0.75:
+            return f"{rng.choice(['-', '!', '~'])}{inner()}"
+        if kind < 0.85:
+            return f"f({inner()}, {inner()})"
+        if kind < 0.92:
+            return f"a[{inner()}].m"
+        return f"{inner()} ? {inner()} : {inner()}"
+
+    terms: list[str] = []
+    size = 0
+    while size < EXPRESSION_BYTES:
+        terms.append(expression(EXPRESSION_DEPTH))
+        size += len(terms[-1]) + 3
+    write_whole(path, " +\n".join(terms) + "\n")
+
+
+def write_whole(path: Path, text: str) -> None:
+    """Write a file beside its target and rename it, so an interrupted run leaves no part of it."""
     partial = path.with_suffix(".partial")
     partial.write_text(text, encoding="utf-8", newline="\n")
     partial.replace(path)
@@ -145,6 +191,9 @@ def prepare() -> None:
         # Python's random module could change its output, which this check would catch.
         write_records_json(RECORDS_JSON.path)
         check(RECORDS_JSON.path, RECORDS_JSON.sha256)
+    if not matches(EXPRESSIONS.path, EXPRESSIONS.sha256):
+        write_expressions(EXPRESSIONS.path)
+        check(EXPRESSIONS.path, EXPRESSIONS.sha256)
     if not all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items()):
         shutil.rmtree(ORD_PACKAGE, ignore_errors=True)
         fetch_ord_package(ORD_PACKAGE)
