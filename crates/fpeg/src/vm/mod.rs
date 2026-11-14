@@ -45,6 +45,9 @@ pub struct Passes {
     pub hasher: bool,
     /// Match a repetition of a class with one instruction, not one code point a step.
     pub span: bool,
+    /// Answer a skip from where the last skip started, with its flags, at once, and take a
+    /// skip expression that repeats a class as one run, without its routine.
+    pub skip: bool,
 }
 
 impl Passes {
@@ -52,11 +55,13 @@ impl Passes {
     pub const ALL: Passes = Passes {
         hasher: true,
         span: true,
+        skip: true,
     };
     /// No pass: the plain machine.
     pub const NONE: Passes = Passes {
         hasher: false,
         span: false,
+        skip: false,
     };
 }
 

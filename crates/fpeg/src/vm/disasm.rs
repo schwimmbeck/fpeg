@@ -38,6 +38,10 @@ impl Display for Program {
             }
             writeln!(f, "{pc:>6}  {}", self.inst_text(inst, &routines))?;
         }
+        if let Some(class) = self.skip_class {
+            let run = self.inst_text(&Inst::Span { class, min: 0 }, &routines);
+            writeln!(f, "skip:\n{:>6}  {run}", "")?;
+        }
         Ok(())
     }
 }

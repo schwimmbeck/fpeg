@@ -324,6 +324,38 @@ fn repetitions_of_a_class_compile_to_one_span() {
 }
 
 #[test]
+fn a_skip_expression_that_repeats_a_class_is_taken_as_one_run() {
+    let text = "start: \"x\"\n%ignore [ \\t]+\n";
+    let program = parser(text).program;
+    assert_eq!(program.skip, None);
+    let shown = program.to_string();
+    assert!(
+        shown.ends_with("skip:\n        Span [ \\t] {0,}\n"),
+        "{shown}"
+    );
+    assert!(plain(text).program.skip.is_some());
+}
+
+#[test]
+fn a_skip_from_where_the_last_one_started_with_its_flags_is_answered_at_once() {
+    // Each alternative skips the same spaces before its token. The skip routine takes four
+    // steps a space, so three runs of it do not fit the limit, one does.
+    let text = "start: \"x\" | \"y\" | \"z\"\n%ignore \" \" | \"#\"\n";
+    let input = format!("{}z", " ".repeat(1_000));
+    let limits = Limits {
+        max_steps: 8_000,
+        ..Limits::default()
+    };
+    let answered = parser(text).parse_with(&input, "start", limits);
+    assert!(answered.is_ok(), "{answered:?}");
+    let plain = plain(text).parse_with(&input, "start", limits);
+    assert_eq!(
+        plain.err().map(|error| error.kind),
+        Some(ParseErrorKind::Limit(Limit::Steps))
+    );
+}
+
+#[test]
 fn a_class_matches_exactly_the_code_points_its_set_contains() {
     let property = |property, negated| ClassItem::Property { property, negated };
     let sets = [

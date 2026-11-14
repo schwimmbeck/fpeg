@@ -212,6 +212,16 @@ pub fn memo_hash(rule: u32, pos: u32, flags: u64, quiet: bool) -> u64 {
     KeyState::Multiply.hash_one(key)
 }
 
+/// A skip that ran the skip routine: where it started, with which flags, and where it ended.
+/// Skipping depends on nothing else, since the skip expression makes no items, records no
+/// failures and calls no rule that skips, so a skip from there with those flags ends there.
+#[derive(Clone, Copy, Debug)]
+struct SkipCache {
+    start: u32,
+    flags: u64,
+    end: u32,
+}
+
 /// A match kept for later: where it ended and the items it left, a range of the items kept.
 #[derive(Clone, Copy, Debug)]
 struct Match {
@@ -331,6 +341,12 @@ pub(crate) struct Machine<'p, 'i> {
     /// Whether a remembered match or an empty seed was given again, so that two parents may
     /// hold one node.
     shared: bool,
+    /// The last skip that ran the skip routine.
+    skip_cache: Option<SkipCache>,
+    /// Where the skip routine in progress started.
+    skip_start: u32,
+    /// Where the skip routine returns, or `u32::MAX`.
+    skip_ret: u32,
     token: Option<OpenToken>,
     flags: u64,
     /// Failures are recorded only while this is 0: outside lookahead and the skip routine.
@@ -377,6 +393,9 @@ impl<'p, 'i> Machine<'p, 'i> {
             memo_items: Vec::new(),
             protected: 0,
             shared: false,
+            skip_cache: None,
+            skip_start: 0,
+            skip_ret: program.skip_return().unwrap_or(u32::MAX),
             token: None,
             flags: 0,
             quiet: 0,
@@ -626,15 +645,28 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.stack.push(Entry::Sub { ret: self.pc + 1 });
                     self.pc = target;
                 }
-                Inst::Skip => match self.program.skip {
-                    Some(skip) => {
+                Inst::Skip => match (self.program.skip_class, self.program.skip) {
+                    (Some(class), _) => {
+                        let (len, _) = self.run_of(class);
+                        self.advance(Some(len))?;
+                    }
+                    (None, Some(_))
+                        if self.program.passes.skip
+                            && let Some(last) = self.skip_cache
+                            && (last.start, last.flags) == (self.pos, self.flags) =>
+                    {
+                        self.pos = last.end;
+                        self.pc += 1;
+                    }
+                    (None, Some(skip)) => {
                         if let Some(profiler) = self.profiler.as_deref_mut() {
                             profiler.skip(self.steps);
                         }
+                        self.skip_start = self.pos;
                         self.stack.push(Entry::Sub { ret: self.pc + 1 });
                         self.pc = skip;
                     }
-                    None => self.pc += 1,
+                    (None, None) => self.pc += 1,
                 },
                 Inst::Ret => match self.stack.pop() {
                     Some(Entry::Call { ret }) => {
@@ -645,6 +677,13 @@ impl<'p, 'i> Machine<'p, 'i> {
                     Some(Entry::Sub { ret }) => {
                         if let Some(profiler) = self.profiler.as_deref_mut() {
                             profiler.returned_from(self.pc, self.steps);
+                        }
+                        if self.pc == self.skip_ret {
+                            self.skip_cache = Some(SkipCache {
+                                start: self.skip_start,
+                                flags: self.flags,
+                                end: self.pos,
+                            });
                         }
                         self.pc = ret;
                     }

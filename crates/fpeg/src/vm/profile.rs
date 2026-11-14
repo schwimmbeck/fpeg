@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::program::{Inst, Program};
+use super::program::Program;
 
 /// The name of the row for the skip routine.
 const IGNORE_ROW: &str = "%ignore";
@@ -117,12 +117,7 @@ impl Profiler {
             .map(|rule| named(&rule.name, rule.memo))
             .collect();
         rows.extend([named(IGNORE_ROW, false), named(PARSE_ROW, false)]);
-        // A routine ends at its first return.
-        let skip_ret = program.skip.map_or(u32::MAX, |skip| {
-            let rest = program.code.get(skip as usize..).unwrap_or_default();
-            let ret = rest.iter().position(|inst| matches!(inst, Inst::Ret));
-            skip + ret.unwrap_or(0) as u32
-        });
+        let skip_ret = program.skip_return().unwrap_or(u32::MAX);
         let parse = (rows.len() - 1) as u32;
         let mut first: HashMap<&str, u32> = HashMap::new();
         let name_of = (rows.iter().zip(0..))

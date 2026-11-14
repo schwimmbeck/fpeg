@@ -91,7 +91,7 @@ pub(crate) enum Inst {
     Sub(u32),
     /// Return from the routine.
     Ret,
-    /// Skip ignored text by calling the skip routine.
+    /// Skip ignored text: take the run of the skip class, or call the skip routine.
     Skip,
     /// End the parse: success at the end of the input, otherwise a failure there that
     /// expects the end.
@@ -212,6 +212,14 @@ pub(crate) struct RuleInfo {
 }
 
 impl Program {
+    /// Where the skip routine returns, at its first return.
+    pub fn skip_return(&self) -> Option<u32> {
+        let skip = self.skip?;
+        let rest = self.code.get(skip as usize..)?;
+        let ret = rest.iter().position(|inst| matches!(inst, Inst::Ret))?;
+        Some(skip + ret as u32)
+    }
+
     /// The index of the rule whose routine starts at `pc`. Routines lie in the order of
     /// their rules.
     pub fn rule_at(&self, pc: u32) -> u32 {
@@ -234,8 +242,11 @@ pub(crate) struct Program {
     pub rules: Vec<RuleInfo>,
     /// Where the routine of each shared part starts.
     pub shared: Vec<u32>,
-    /// Where the skip routine starts, if the grammar ignores text.
+    /// Where the skip routine starts, if the grammar ignores text and has no skip class.
     pub skip: Option<u32>,
+    /// The class of `Span` whose longest run `Skip` takes without a routine, where the skip
+    /// expression repeats a class.
+    pub skip_class: Option<u32>,
     /// Where the entry routine of each rule that can start a parse starts.
     pub entries: HashMap<String, u32>,
     /// The word characters of `WordEnd`.

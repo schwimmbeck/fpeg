@@ -181,9 +181,13 @@ impl Tables<'_> {
                 true => vec![(next, shape)],
                 false => return Err("calls no shared part".into()),
             },
-            Inst::Skip => match p.skip {
-                Some(_) => vec![(next, shape)],
-                None => return Err("skips in a grammar that ignores nothing".into()),
+            Inst::Skip => match (p.skip, p.skip_class) {
+                (None, None) => return Err("skips in a grammar that ignores nothing".into()),
+                (_, Some(class)) => {
+                    index(class, p.classes.len(), "class")?;
+                    vec![(next, shape)]
+                }
+                (Some(_), None) => vec![(next, shape)],
             },
             Inst::Ret | Inst::End => match shape == Shape::default() {
                 true => Vec::new(),

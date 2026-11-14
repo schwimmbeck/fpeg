@@ -308,7 +308,13 @@ impl Generator {
         let mut g = GrammarBuilder::new();
         g.flag("f");
         if self.rng.chance(50) {
-            g.ignore(some(class([ch(' ')])));
+            // A class repeated, which the machine takes as one run, or a choice for its skip
+            // routine, one of which tests the flag.
+            g.ignore(match self.rng.below(3) {
+                0 => some(class([ch(' ')])),
+                1 => choice([some(class([ch(' ')])), seq([if_flag("f"), lit("\n")])]),
+                _ => choice([lit(" "), lit("\u{e9}\u{e9}")]),
+            });
         }
         let word = self.rng.chance(30);
         if word {
@@ -601,6 +607,7 @@ pub fn sampled_passes(sample: u64) -> Passes {
     Passes {
         hasher: !rng.chance(PASS_OFF_PERCENT),
         span: !rng.chance(PASS_OFF_PERCENT),
+        skip: !rng.chance(PASS_OFF_PERCENT),
     }
 }
 

@@ -64,22 +64,34 @@ pub(crate) fn compile(
         c.expr(&rule.body);
         c.emit(Inst::Ret);
     }
-    let skip = grammar.skip.as_ref().map(|skip| {
-        // The skip expression in plain mode, as often as it consumes input, recording nothing.
-        let pc = c.here();
-        c.emit(Inst::QuietOn);
-        let choice = c.emit(Inst::Choice(0));
-        let step = c.here();
-        c.cuttable = true;
-        // A failure after a cut ends the skipping as any other does, so it must not pass the
-        // entry of the loop.
-        c.cut_scope(skip);
-        c.emit(Inst::LoopCommit(step));
-        c.patch(choice);
-        c.emit(Inst::QuietOff);
-        c.emit(Inst::Ret);
-        pc
-    });
+    // Skipping is `e*` of the skip expression `e`, a span where `e` repeats a class.
+    let skip_class = match &grammar.skip {
+        Some(skip) if options.passes.skip => span(skip, 0).map(|(set, _)| {
+            c.classes.push(Class::new(&set));
+            (c.classes.len() - 1) as u32
+        }),
+        _ => None,
+    };
+    let skip = grammar
+        .skip
+        .as_ref()
+        .filter(|_| skip_class.is_none())
+        .map(|skip| {
+            // The skip expression in plain mode, as often as it consumes input, recording nothing.
+            let pc = c.here();
+            c.emit(Inst::QuietOn);
+            let choice = c.emit(Inst::Choice(0));
+            let step = c.here();
+            c.cuttable = true;
+            // A failure after a cut ends the skipping as any other does, so it must not pass the
+            // entry of the loop.
+            c.cut_scope(skip);
+            c.emit(Inst::LoopCommit(step));
+            c.patch(choice);
+            c.emit(Inst::QuietOff);
+            c.emit(Inst::Ret);
+            pc
+        });
     let mut names: Vec<&String> = grammar.entry.keys().collect();
     names.sort();
     let mut entries = HashMap::new();
@@ -133,6 +145,7 @@ pub(crate) fn compile(
         rules,
         shared: c.shared_pcs,
         skip,
+        skip_class,
         entries,
         word: Class::new(&grammar.word),
         reserved: ir::Reserved {
