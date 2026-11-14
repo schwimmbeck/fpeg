@@ -24,65 +24,68 @@ impl Grammar {
             .get_or_init(|| Parser::new(&meta::grammar()))
             .as_ref()
             .map_err(Clone::clone)?;
-        let tree = meta.parse(text, "start").map_err(|error| {
-            let (code, message) = match error.kind {
-                ParseErrorKind::NoMatch { expected } => (
-                    DiagnosticCode::Syntax,
-                    format!("expected {}", expected.join(", ")),
-                ),
-                // The grammar of grammars labels what must follow, such as a separator.
-                ParseErrorKind::Label(what) => (DiagnosticCode::Syntax, format!("expected {what}")),
-                ParseErrorKind::Limit(Limit::Depth) => (
-                    DiagnosticCode::TooDeep,
-                    "the grammar text nests too deeply to read".to_owned(),
-                ),
-                ParseErrorKind::Limit(limit) => {
-                    let what = match limit {
-                        Limit::InputSize => "is too large",
-                        _ => "takes too long",
-                    };
-                    let message = format!("the grammar text {what} to read");
-                    (DiagnosticCode::TooLarge, message)
-                }
-                other => (DiagnosticCode::Internal, format!("{other:?}")),
-            };
-            let at = error.position as u32;
-            vec![Diagnostic {
-                code,
-                message,
-                span: Span { start: at, end: at },
-            }]
-        })?;
-        let mut converter = Converter {
-            text,
-            depth: 0,
-            errors: Vec::new(),
+        read(meta, text)
+    }
+}
+
+/// Read a grammar from its text with `meta`, a parser of the grammar of grammars.
+pub(super) fn read(meta: &Parser, text: &str) -> Result<Grammar, Vec<Diagnostic>> {
+    let tree = meta.parse(text, "start").map_err(|error| {
+        let (code, message) = match error.kind {
+            ParseErrorKind::NoMatch { expected } => (
+                DiagnosticCode::Syntax,
+                format!("expected {}", expected.join(", ")),
+            ),
+            // The grammar of grammars labels what must follow, such as a separator.
+            ParseErrorKind::Label(what) => (DiagnosticCode::Syntax, format!("expected {what}")),
+            ParseErrorKind::Limit(Limit::Depth) => (
+                DiagnosticCode::TooDeep,
+                "the grammar text nests too deeply to read".to_owned(),
+            ),
+            ParseErrorKind::Limit(limit) => {
+                let what = match limit {
+                    Limit::InputSize => "is too large",
+                    _ => "takes too long",
+                };
+                let message = format!("the grammar text {what} to read");
+                (DiagnosticCode::TooLarge, message)
+            }
+            other => (DiagnosticCode::Internal, format!("{other:?}")),
         };
-        let mut grammar = Grammar::default();
-        for root in tree.roots() {
-            for item in visible(&root) {
-                converter.item(&mut grammar, &item);
-            }
+        let at = error.position as u32;
+        vec![Diagnostic {
+            code,
+            message,
+            span: Span { start: at, end: at },
+        }]
+    })?;
+    let mut converter = Converter {
+        text,
+        depth: 0,
+        errors: Vec::new(),
+    };
+    let mut grammar = Grammar::default();
+    for root in tree.roots() {
+        for item in visible(&root) {
+            converter.item(&mut grammar, &item);
         }
-        for rule in &grammar.rules {
-            let exprs: Vec<&Expr> = match &rule.body {
-                RuleBody::Alternatives(alternatives) => {
-                    alternatives.iter().map(|a| &a.expr).collect()
-                }
-                RuleBody::Precedence(levels) => levels
-                    .iter()
-                    .flat_map(|l| l.alternatives.iter().map(|a| &a.expr))
-                    .collect(),
-            };
-            if exprs.iter().any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH) {
-                converter.too_deep(rule.span);
-            }
+    }
+    for rule in &grammar.rules {
+        let exprs: Vec<&Expr> = match &rule.body {
+            RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
+            RuleBody::Precedence(levels) => levels
+                .iter()
+                .flat_map(|l| l.alternatives.iter().map(|a| &a.expr))
+                .collect(),
+        };
+        if exprs.iter().any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH) {
+            converter.too_deep(rule.span);
         }
-        if converter.errors.is_empty() {
-            Ok(grammar)
-        } else {
-            Err(converter.errors)
-        }
+    }
+    if converter.errors.is_empty() {
+        Ok(grammar)
+    } else {
+        Err(converter.errors)
     }
 }
 

@@ -435,7 +435,8 @@ pub(crate) fn grammar() -> Grammar {
 #[cfg(test)]
 mod tests {
     use super::grammar;
-    use crate::grammar::Grammar;
+    use crate::Parser;
+    use crate::grammar::{Grammar, text};
 
     fn repository_file(path: &str) -> String {
         let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../");
@@ -447,6 +448,15 @@ mod tests {
         let text = repository_file("crates/fpeg/grammars/fpeg.fpeg");
         let parsed = Grammar::from_text(&text).unwrap_or_else(|e| panic!("{e:?}"));
         assert_eq!(parsed.to_string(), grammar().to_string());
+    }
+
+    #[test]
+    fn the_parser_that_the_grammar_file_describes_reads_the_file_as_the_bootstrap_does() {
+        let text = repository_file("crates/fpeg/grammars/fpeg.fpeg");
+        let read = Grammar::from_text(&text).unwrap_or_else(|e| panic!("{e:?}"));
+        let described = Parser::new(&read).unwrap_or_else(|e| panic!("{e:?}"));
+        let again = text::read(&described, &text).unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(read, again);
     }
 
     #[test]
