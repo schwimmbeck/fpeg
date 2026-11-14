@@ -59,13 +59,59 @@ print(ToPython().transform(tree))
 
 Each method is named after a rule and gets what its signature asks for: `*members` the children of the node, `key` and `value` its fields. `=> unquote`, `=> float` and the constants are value builders, which make the values of tokens and nodes in the grammar itself, without a Python call.
 
+Operators, with the precedence and the grouping of Python:
+
+```python
+import operator
+
+calculator = fpeg.Grammar(r"""
+    ?start: expr
+
+    expr: %precedence {
+        sum: left=sum op=("+" | "-") right=product -> binary
+        product: left=product op=("*" | "/") right=unary -> binary
+        unary: "-" operand=unary -> negate
+        power: left=atom op="**" right=unary -> binary
+        atom: NUMBER | "(" expr ")"
+    }
+
+    NUMBER: [0-9]+ ("." [0-9]+)? => float
+    %ignore " "+
+""")
+
+OPERATORS = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": operator.truediv,
+    "**": operator.pow,
+}
+
+
+class Calculate(fpeg.Transformer):
+    def binary(self, left, op, right):
+        return OPERATORS[op](left, right)
+
+    def negate(self, operand):
+        return -operand
+
+
+print(Calculate().transform(calculator.parse("1 + 2 * 3 - 2 ** 3 ** 2 / -4")))
+```
+
+```output
+135.0
+```
+
+A precedence block lists the operator levels from loosest to tightest. A level that calls itself on the left groups to the left, one that calls itself or a looser level on the right groups to the right, and every operation becomes a node with its operands in fields.
+
 ## Install
 
 fpeg is not on PyPI yet. To build it from a checkout, follow [Development](docs/development.md).
 
 ## Documentation
 
-The [documentation](docs/index.md) has two tutorials, one that writes a first grammar and one that builds your own objects with a `Transformer`, and the reference of the grammar language and the Python API.
+The [documentation](docs/index.md) has two tutorials, one that writes a first grammar and one that builds your own objects with a `Transformer`, guides on operator precedence, on building a syntax tree of your own and on performance, and the reference of the grammar language and the Python API.
 
 ## What is planned
 
