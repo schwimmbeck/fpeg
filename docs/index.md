@@ -58,6 +58,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 ## Guides
 
 - [Operator precedence](guide/operator-precedence.md): expressions with a precedence block, and a calculator that agrees with Python.
+- [Building an AST](guide/building-an-ast.md): your own classes from a parse, by methods or by builders in the grammar, and running the result.
 - [Performance](guide/performance.md): seeing where a parse spends its work, and what to change in a grammar.
 
 ## Reference
@@ -76,6 +77,7 @@ roadmap
 tutorial/first-grammar
 tutorial/transformer
 guide/operator-precedence
+guide/building-an-ast
 guide/performance
 reference/grammar
 reference/semantics
