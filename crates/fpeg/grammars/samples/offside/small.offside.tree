@@ -1,0 +1,1 @@
+(start decls=(decl name=NAME"main" ~"=" body=(let ~"let" decls=(block items=(decl name=NAME"x" ~"=" body=NUMBER"1") ~_BREAK"\n           " items=(decl name=NAME"y" ~"=" body=NUMBER"2")) ~"in" body=(binary left=NAME"x" op="+" right=NAME"y"))) ~_BREAK"\n")

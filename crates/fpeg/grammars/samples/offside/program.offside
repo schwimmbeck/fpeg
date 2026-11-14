@@ -1,0 +1,17 @@
+-- Declarations at column 0, items of a block aligned with their first token.
+main = let x = 1
+           y = 2 +
+             3       -- continues the item above
+       in x + y
+
+total xs = go xs 0
+  where go list acc = case list of 0 -> acc
+                                   n -> go (n - 1)
+                                           (acc + n)
+        unused = 1
+
+pair = let { a = 1; b = 2 } in a * b
+
+nested = let { a = let x = 1
+                       y = 2
+                   in x + y; b = 3 } in a

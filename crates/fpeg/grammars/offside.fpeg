@@ -1,0 +1,43 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// A small language under the offside rule. The items of a block align with the first token
+// after `let`, `where` or `of`, which need not start its line. A line that starts right of the
+// column of the block it stands in continues the item before it, and a line at that column
+// starts the next item. Braces and semicolons write a block without layout.
+
+%flag braces
+%word [a-zA-Z0-9_']
+%ignore " "+ | COMMENT | %if(braces) _BREAK | _BREAK %indent(())
+
+start: _BREAK? decls=((%same decl) ++ _BREAK) _BREAK?
+
+decl: name=NAME params=NAME* "=" body=expr wheres=where?
+where: "where" decls=block<decl>
+
+// A block with layout turns braces off, so that it lays out its own lines inside braces.
+block<item>: "{" %on(braces, items=(item ** ";") ";"? "}")
+           | %indent(%off(braces, items=((%same item) ++ _BREAK)))
+
+expr: %precedence {
+    or: left=or op="||" right=and -> binary
+    and: left=and op="&&" right=compare -> binary
+    compare: left=sum op=("==" | "<" | ">") right=sum -> binary
+    sum: left=sum op=("+" | "-") right=product -> binary
+    product: left=product op=("*" | "/") right=apply -> binary
+    apply: func=apply arg=atom -> apply
+    atom: "let" decls=block<decl> _BREAK? "in" body=expr -> let
+        | "if" test=expr _BREAK? "then" yes=expr _BREAK? "else" no=expr -> if
+        | "case" subject=expr "of" alternatives=block<alternative> -> case
+        | "\\" params=NAME+ "->" body=expr -> lambda
+        | NUMBER | NAME
+        | "(" %on(braces, expr ")")
+}
+
+alternative: pattern=(NUMBER | NAME) "->" body=expr
+
+@reserved
+NAME: [a-z_] [a-zA-Z0-9_']*
+NUMBER: [0-9]+
+COMMENT: "--" [^\n]*
+_BREAK: ("\n" " "* COMMENT?)+

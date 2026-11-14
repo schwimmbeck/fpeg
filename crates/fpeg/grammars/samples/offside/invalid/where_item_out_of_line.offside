@@ -1,0 +1,3 @@
+total = go 1
+  where go n = n
+       other = 2
