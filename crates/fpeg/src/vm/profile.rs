@@ -50,7 +50,8 @@ pub struct ProfileRow {
     /// Steps spent in the rule's own code, not in the rules it called.
     pub steps: u64,
     /// Steps from the calls that ran the rule to their ends, the rules it called included.
-    /// Where a rule calls itself, the outermost call counts.
+    /// Where a rule calls itself, or a template another instance of itself, the outermost call
+    /// counts.
     pub steps_with_callees: u64,
     /// Bytes that failed calls had matched and gave back.
     pub backtracked_bytes: u64,
@@ -68,14 +69,26 @@ pub struct ProfileRow {
 /// A call as the profiler tells calls apart for [`ProfileRow::repeats`].
 type Seen = (u32, u32, u64, bool);
 
+/// A call whose routine is running.
+struct Active {
+    rule: u32,
+    /// Where the call started, and the steps of the parse then.
+    start: u32,
+    entered: u64,
+    /// The row that the steps went to before the call, and go to again after it: the rule
+    /// that called, or the skip routine, which calls terminals.
+    caller: u32,
+}
+
 /// The counting state of a profiling parse.
 pub(super) struct Profiler {
     /// A row per rule of the program, then the skip routine's, then the parse's own.
     rows: Vec<ProfileRow>,
-    /// The rules being matched, innermost last, each with where its call started and the
-    /// steps of the parse then.
-    active: Vec<(u32, u32, u64)>,
-    /// How many calls of each rule are in progress.
+    /// The rules being matched, innermost last.
+    active: Vec<Active>,
+    /// For each row, the first row of its name, which the instances of a template share.
+    name_of: Vec<u32>,
+    /// How many calls of the rules of each name are in progress, by the first row of the name.
     nesting: Vec<u32>,
     /// The row that the steps since `mark` belong to, and the steps of the parse at the last
     /// change of that row.
@@ -108,8 +121,13 @@ impl Profiler {
             skip + ret.unwrap_or(0) as u32
         });
         let parse = (rows.len() - 1) as u32;
+        let mut first: HashMap<&str, u32> = HashMap::new();
+        let name_of = (rows.iter().zip(0..))
+            .map(|(row, index)| *first.entry(row.name.as_str()).or_insert(index))
+            .collect();
         Profiler {
             nesting: vec![0; rows.len()],
+            name_of,
             rows,
             active: Vec::new(),
             current: parse,
@@ -136,10 +154,10 @@ impl Profiler {
         self.current = row;
     }
 
-    /// The row of the rule around the newest call, or of the parse itself.
-    fn outer(&self) -> u32 {
-        let parse = (self.rows.len() - 1) as u32;
-        self.active.last().map_or(parse, |&(rule, ..)| rule)
+    /// How many calls of rules with the name of `rule` are in progress.
+    fn nesting(&mut self, rule: u32) -> Option<&mut u32> {
+        let name = *self.name_of.get(rule as usize)?;
+        self.nesting.get_mut(name as usize)
     }
 
     /// A rule is called: count the call, and whether it repeats one. The left-recursive use of
@@ -154,9 +172,15 @@ impl Profiler {
 
     /// The call just counted runs the rule's routine.
     pub fn entered(&mut self, rule: u32, pos: u32, steps: u64, stack: usize, nodes: usize) {
+        let caller = self.current;
         self.switch(steps, rule);
-        self.active.push((rule, pos, steps));
-        if let Some(nesting) = self.nesting.get_mut(rule as usize) {
+        self.active.push(Active {
+            rule,
+            start: pos,
+            entered: steps,
+            caller,
+        });
+        if let Some(nesting) = self.nesting(rule) {
             *nesting += 1;
         }
         self.peak_stack = self.peak_stack.max(stack as u64);
@@ -166,25 +190,24 @@ impl Profiler {
     /// The routine of the newest call is over: it returned, or with `failed_at` it failed
     /// there, or an error passed it.
     pub fn left(&mut self, steps: u64, failed_at: Option<u32>) {
-        let Some((rule, start, entered)) = self.active.pop() else {
+        let Some(call) = self.active.pop() else {
             return;
         };
-        let outermost = match self.nesting.get_mut(rule as usize) {
+        let outermost = match self.nesting(call.rule) {
             Some(nesting) => {
                 *nesting = nesting.saturating_sub(1);
                 *nesting == 0
             }
             None => false,
         };
-        if let Some(row) = self.row(rule) {
-            row.steps_with_callees += if outermost { steps - entered } else { 0 };
+        if let Some(row) = self.row(call.rule) {
+            row.steps_with_callees += if outermost { steps - call.entered } else { 0 };
             if let Some(pos) = failed_at {
                 row.failures += 1;
-                row.backtracked_bytes += u64::from(pos.saturating_sub(start));
+                row.backtracked_bytes += u64::from(pos.saturating_sub(call.start));
             }
         }
-        let outer = self.outer();
-        self.switch(steps, outer);
+        self.switch(steps, call.caller);
     }
 
     /// The skip routine starts.

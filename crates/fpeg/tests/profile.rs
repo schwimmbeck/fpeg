@@ -84,6 +84,21 @@ fn a_profile_counts_failed_calls_and_the_bytes_they_give_back() {
 }
 
 #[test]
+fn a_profile_counts_the_steps_of_a_template_that_calls_itself_once() {
+    let text = "start: t<\"a\">\nt<p>: p | \"(\" t<\"b\"> \")\" | \"[\" t<p> \"]\"\n";
+    for input in ["(b)", "[(b)]"] {
+        let profile = profile(text, input);
+        let (start, t) = (row(&profile, "start"), row(&profile, "t"));
+        // The instances of t share a row, and the outermost call holds the inner ones.
+        assert_eq!(
+            start.steps_with_callees,
+            start.steps + t.steps_with_callees,
+            "{input}"
+        );
+    }
+}
+
+#[test]
 fn a_profile_counts_the_passes_that_grow_a_left_recursion() {
     let profile = profile("start: chain\nchain: chain \"-\" \"1\" | \"1\"\n", "1-1-1");
     let chain = row(&profile, "chain");
@@ -97,12 +112,21 @@ fn a_profile_counts_the_passes_that_grow_a_left_recursion() {
 
 #[test]
 fn a_profile_gives_the_ignored_text_a_row_of_its_own() {
-    let text = "start: \"a\"+\n%ignore \" \"+\n";
-    let spaced = profile(text, "a          a          a");
-    let tight = profile(text, "aaa");
-    assert!(row(&spaced, "%ignore").steps > row(&tight, "%ignore").steps);
-    assert_eq!(row(&spaced, "start").steps, row(&tight, "start").steps);
-    // The steps after a skip are the rule's again.
-    let longer = profile(text, "aaaaaa");
-    assert!(row(&longer, "start").steps > row(&tight, "start").steps);
+    // Also where the skip routine calls a terminal, which returns to the routine.
+    for text in [
+        "start: \"a\"+\n%ignore \" \"+\n",
+        "start: \"a\"+\n%ignore WS\nWS: \" \"\n",
+    ] {
+        let spaced = profile(text, "a          a          a");
+        let tight = profile(text, "aaa");
+        assert!(row(&spaced, "%ignore").steps > row(&tight, "%ignore").steps);
+        assert_eq!(
+            row(&spaced, "start").steps,
+            row(&tight, "start").steps,
+            "{text}"
+        );
+        // The steps after a skip are the rule's again.
+        let longer = profile(text, "aaaaaa");
+        assert!(row(&longer, "start").steps > row(&tight, "start").steps);
+    }
 }
