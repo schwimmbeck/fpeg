@@ -1,15 +1,21 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Python source baseline: CPython, tree-sitter, LibCST and Lark on one real source file.
+"""Python source: fpeg beside CPython, tree-sitter, LibCST and Lark on one real source file.
 
 Run through ``run.py``, or directly with pyperf options.
 """
 
 import _symtable
 import ast
+import inspect
+import sys
+from collections.abc import Callable
 from functools import partial
+from pathlib import Path
+from typing import Any
 
+import fpeg
 import harness
 import libcst
 import pyperf
@@ -19,8 +25,92 @@ from lark import Lark
 from lark.indenter import PythonIndenter
 from tree_sitter import Language, Parser, Tree
 
+# The transformer to ast lives with the tests, whose oracle it is.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
+
+import python_ast
+
 # Lark's Python grammar expects the file to end with a newline token.
 LARK_FINAL_NEWLINE = "\n"
+
+
+def positioned(value: Any, line: int, column: int, end_line: int, end_column: int) -> Any:
+    """Give an `ast` node without a position the one of its node or token, columns from 1."""
+    if isinstance(value, ast.AST) and not hasattr(value, "lineno"):
+        value.lineno, value.col_offset = line, column - 1
+        value.end_lineno, value.end_col_offset = end_line, end_column - 1
+    return value
+
+
+def from_meta(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap the method of a node to position what it returns from the node's meta."""
+    signature = inspect.signature(function)
+    extra = inspect.Parameter("meta", inspect.Parameter.KEYWORD_ONLY)
+
+    def method(self: Any, *args: Any, meta: Any, **kwargs: Any) -> Any:
+        value = function(self, *args, **kwargs)
+        return positioned(value, meta.line, meta.column, meta.end_line, meta.end_column)
+
+    # The Transformer reads the signature to know what to pass.
+    method.__signature__ = signature.replace(parameters=[*signature.parameters.values(), extra])
+    return method
+
+
+def from_token(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap the method of a terminal to position what it returns from the token."""
+
+    def method(self: Any, token: fpeg.Token) -> Any:
+        value = function(self, token)
+        return positioned(value, token.line, token.column, token.end_line, token.end_column)
+
+    return method
+
+
+class ToAstFromMeta(python_ast.ToAstBase):
+    """The transformer to `ast` with positions set in Python, as without native stamping.
+
+    Columns count code points, which are the bytes `ast` counts on the ASCII benchmark file.
+    """
+
+
+for name, function in vars(python_ast.ToAstBase).items():
+    if inspect.isfunction(function) and not name.startswith("_"):
+        wrap = from_token if name.isupper() else from_meta
+        setattr(ToAstFromMeta, name, wrap(function))
+
+
+def add_fpeg(runner: pyperf.Runner, text: str) -> None:
+    """Register the benchmarks of fpeg's Python grammar."""
+    expected = ast.dump(ast.parse(text), include_attributes=True)
+
+    def checked(transformer: fpeg.Transformer) -> Callable[[], object]:
+        def to_ast() -> object:
+            return transformer.transform(python_ast.GRAMMAR.parse(text))
+
+        if ast.dump(to_ast(), include_attributes=True) != expected:
+            raise RuntimeError("the transformer does not give the tree of ast.parse")
+        return to_ast
+
+    harness.add(
+        runner,
+        "fpeg Python grammar load",
+        lambda: partial(fpeg.Grammar.open, python_ast.GRAMMAR_PATH),
+    )
+    harness.add(
+        runner, "fpeg parse, tree", lambda: partial(python_ast.GRAMMAR.parse, text), PYTHON_FILE
+    )
+    harness.add(
+        runner,
+        "fpeg parse and transform to ast, positions stamped natively",
+        lambda: checked(python_ast.ToAst()),
+        PYTHON_FILE,
+    )
+    harness.add(
+        runner,
+        "fpeg parse and transform to ast, positions set in Python",
+        lambda: checked(ToAstFromMeta()),
+        PYTHON_FILE,
+    )
 
 
 def walk(tree: Tree, touch: int) -> int:
@@ -86,6 +176,7 @@ def main() -> None:
     source = text.encode("utf-8")
 
     harness.add(runner, "ast.parse", lambda: partial(ast.parse, text), PYTHON_FILE)
+    add_fpeg(runner, text)
     harness.add(
         runner,
         "CPython parser and symbol table, no AST objects",

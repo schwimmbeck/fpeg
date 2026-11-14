@@ -21,6 +21,12 @@ pub const RECORDS_JSON_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../cor
 /// The expression of a C-like language, written by `benchmarks/corpus.py`.
 pub const EXPRESSIONS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../corpora/expressions.c");
 
+/// The Python source of the Python suite, downloaded by `benchmarks/corpus.py`.
+pub const PYTHON_FILE_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../corpora/ordpkg/python_transformer.py"
+);
+
 #[allow(
     missing_docs,
     reason = "pest_derive generates the rule enum and its methods without docs"

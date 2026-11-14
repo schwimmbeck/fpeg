@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! The passes of fpeg's optimizer in Rust: each workload parsed with every pass, and with each
-//! pass left out, so that every pass shows what it brings. JSON and the expressions take the
-//! inputs of the other suites, the rest the samples of their grammars, repeated to about
-//! 100 KB. A grammar that repeats work its memo does not save shows the restart.
+//! pass left out, so that every pass shows what it brings. JSON, the expressions and Python
+//! take the inputs of the other suites, the rest the samples of their grammars, repeated to
+//! about 100 KB. A grammar that repeats work its memo does not save shows the restart.
 
 use std::path::Path;
 use std::time::Duration;
 
 use criterion::{Criterion, SamplingMode, Throughput, criterion_group, criterion_main};
 use fpeg::{Options, Passes};
-use fpeg_benchmarks::{EXPRESSIONS_PATH, RECORDS_JSON_PATH};
+use fpeg_benchmarks::{EXPRESSIONS_PATH, PYTHON_FILE_PATH, RECORDS_JSON_PATH};
 
 /// Samples per setting of a workload.
 const SAMPLES: usize = 10;
@@ -112,6 +112,22 @@ fn workloads() -> Vec<(&'static str, String, String)> {
             "CSV",
             grammar("csv"),
             repeated(&files(&samples.join("csv"), "csv")),
+        ),
+        (
+            "Python",
+            grammar("python"),
+            read(Path::new(PYTHON_FILE_PATH)),
+        ),
+        // The program alone, since the other sample ends in a return, which ends a chunk.
+        (
+            "Lua",
+            grammar("lua"),
+            repeated(&[read(&samples.join("lua").join("program.lua"))]),
+        ),
+        (
+            "the outline language",
+            grammar("outline"),
+            repeated(&files(&samples.join("outline"), "outline")),
         ),
     ]
 }

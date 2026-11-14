@@ -19,9 +19,8 @@ import fpeg
 # not know whole.
 ast: Any = python_ast
 
-GRAMMAR = fpeg.Grammar.open(
-    Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "python.fpeg"
-)
+GRAMMAR_PATH = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "python.fpeg"
+GRAMMAR = fpeg.Grammar.open(GRAMMAR_PATH)
 
 BINARY = {
     "+": ast.Add,
@@ -274,8 +273,9 @@ def interpolation(value: Any) -> Any:
     return ast.copy_location(out, value)
 
 
-class ToAst(fpeg.Transformer, positions="ast"):
-    """The tree of the Python grammar as Python's `ast`."""
+class ToAstBase(fpeg.Transformer):
+    """The methods that turn the tree of the Python grammar into Python's `ast`. They read the
+    positions of the values they get, which a subclass gives them."""
 
     # Statements
 
@@ -728,6 +728,10 @@ class ToAst(fpeg.Transformer, positions="ast"):
 
     def format_spec(self, parts: Any) -> Any:
         return ast.JoinedStr(parts)
+
+
+class ToAst(ToAstBase, positions="ast"):
+    """The tree of the Python grammar as Python's `ast`, with positions stamped natively."""
 
 
 def parse(source: str) -> Any:

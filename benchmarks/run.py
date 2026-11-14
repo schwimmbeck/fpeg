@@ -61,6 +61,7 @@ RUST_INPUTS = {
     "expressions": corpus.EXPRESSIONS,
     "passes on JSON": corpus.RECORDS_JSON,
     "passes on expressions": corpus.EXPRESSIONS,
+    "passes on Python": corpus.PYTHON_FILE,
 }
 PLATFORM_NAMES = {"win32": "windows", "linux": "linux", "darwin": "macos"}
 NS_PER_S = 1e9
