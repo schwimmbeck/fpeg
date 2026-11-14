@@ -68,9 +68,11 @@ fn a_failed_alternative_gives_back_the_nodes_it_made() {
 }
 
 #[test]
-fn a_remembered_rule_keeps_few_nodes_of_failed_alternatives() {
+fn a_failure_cuts_the_arena_back_as_far_as_the_newest_remembered_node() {
     // As above, with a remembered rule matched after every closing bracket. Each of its first
-    // matches keeps the arena as long as it is then, and there is one for each position.
+    // matches keeps the arena as long as it is then, since the memo points at its node, and
+    // there is one for each position. Here that leaves few of the failed attempts. A grammar
+    // can place the remembered nodes so that most of them stay, bounded by the steps alone.
     let parser =
         parser("start: s\ns: \"(\" s \")\" t \"x\" | \"(\" s \")\" t | \"a\"\n@memo\nt: ()\n");
     let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
