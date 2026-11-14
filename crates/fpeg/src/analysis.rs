@@ -95,6 +95,9 @@ pub(crate) struct Facts {
     skips: Vec<bool>,
     /// The cycle of left children each node lies on, as the number of one of its nodes.
     left_component: Vec<u32>,
+    /// The nodes, each after its left children, but for those on a cycle with it, so that a
+    /// fact that passes from child to parent passes along an edge once in this order.
+    left_order: Vec<u32>,
 }
 
 /// A set of bytes, one bit each.
@@ -315,9 +318,9 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
     let nullable = graph.nullable(&parents);
     let skips = graph.skips(&parents, &nullable);
     drop(parents);
-    let (left, left_component) = graph.cyclic(&graph.left_counts(&nullable));
+    let (left, left_component, left_order) = graph.cyclic(&graph.left_counts(&nullable));
     let all: Vec<u32> = graph.nodes.iter().map(|node| node.len).collect();
-    let (anywhere, _) = graph.cyclic(&all);
+    let (anywhere, _, _) = graph.cyclic(&all);
     Facts {
         left_recursive: graph.bodies.iter().map(|&b| left[b as usize]).collect(),
         recursive: graph.bodies.iter().map(|&b| anywhere[b as usize]).collect(),
@@ -325,6 +328,7 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
         nullable,
         skips,
         left_component,
+        left_order,
     }
 }
 
@@ -381,7 +385,8 @@ impl Facts {
     /// What every expression can start with. A node's start is what it adds itself, joined
     /// with what each child it starts with adds through its role. Starts only grow, each a
     /// bounded number of times, by a byte or a fact, and each growth is passed once along
-    /// every edge to a parent, so the time stays linear.
+    /// every edge to a parent, so the time stays linear. Children come first, so that outside
+    /// a cycle a node passes its start on once, when it is complete.
     ///
     /// Where the skip expression tests a flag, a skip under a flag turned on or off may end
     /// elsewhere than a skip before the flag changed, so the expression under the flag, and
@@ -400,7 +405,7 @@ impl Facts {
         let own = |node: &Node| node.own_start(growing);
         let mut values: Vec<Start> = graph.nodes.iter().map(own).collect();
         let mut queued = vec![true; graph.nodes.len()];
-        let mut todo: Vec<u32> = (0..graph.nodes.len() as u32).collect();
+        let mut todo: Vec<u32> = self.left_order.iter().rev().copied().collect();
         while let Some(child) = todo.pop() {
             queued[child as usize] = false;
             let start = values[child as usize];
@@ -426,9 +431,9 @@ impl Facts {
         }
     }
 
-    /// The kinds of the head tokens of every node, found as the starts are: each node adds
-    /// its own, a token the kind of its own unless it can match nothing, and joins those of
-    /// the children it tries at its start before it fails there.
+    /// The kinds of the head tokens of every node, found as the starts are, children first:
+    /// each node adds its own, a token the kind of its own unless it can match nothing, and
+    /// joins those of the children it tries at its start before it fails there.
     fn heads(&self) -> Vec<Option<Vec<KindId>>> {
         let graph = &self.graph;
         let mut parents: Vec<Vec<u32>> = vec![Vec::new(); graph.nodes.len()];
@@ -449,7 +454,7 @@ impl Facts {
             })
             .collect();
         let mut queued = vec![true; graph.nodes.len()];
-        let mut todo: Vec<u32> = (0..graph.nodes.len() as u32).collect();
+        let mut todo: Vec<u32> = self.left_order.iter().rev().copied().collect();
         while let Some(child) = todo.pop() {
             queued[child as usize] = false;
             for &parent in &parents[child as usize] {
@@ -978,10 +983,11 @@ impl Graph {
             .collect()
     }
 
-    /// Which nodes lie on a cycle through the first `counts` children of each node, and the
-    /// strongly connected part of each, found with Tarjan's algorithm on an explicit stack,
+    /// Which nodes lie on a cycle through the first `counts` children of each node, the
+    /// strongly connected part of each, and the nodes in the order their parts are complete,
+    /// each part after those it reaches, found with Tarjan's algorithm on an explicit stack,
     /// since chains of rules can be as long as the grammar.
-    fn cyclic(&self, counts: &[u32]) -> (Vec<bool>, Vec<u32>) {
+    fn cyclic(&self, counts: &[u32]) -> (Vec<bool>, Vec<u32>, Vec<u32>) {
         const UNSEEN: u32 = u32::MAX;
         let count = self.nodes.len();
         let mut index = vec![UNSEEN; count];
@@ -990,6 +996,7 @@ impl Graph {
         let mut stack: Vec<u32> = Vec::new();
         let mut cyclic = vec![false; count];
         let mut component = vec![0; count];
+        let mut order = Vec::with_capacity(count);
         let mut next_index = 0;
         // Each node being visited with the position of its next child.
         let mut visiting: Vec<(u32, usize)> = Vec::new();
@@ -1026,23 +1033,23 @@ impl Graph {
                     low[parent as usize] = low[parent as usize].min(low[node as usize]);
                 }
                 if low[node as usize] == index[node as usize] {
-                    let mut members = Vec::new();
+                    let first = order.len();
                     while let Some(member) = stack.pop() {
                         on_stack[member as usize] = false;
                         component[member as usize] = index[node as usize];
-                        members.push(member);
+                        order.push(member);
                         if member == node {
                             break;
                         }
                     }
-                    if members.len() > 1 {
-                        for member in members {
+                    if order.len() - first > 1 {
+                        for &member in &order[first..] {
                             cyclic[member as usize] = true;
                         }
                     }
                 }
             }
         }
-        (cyclic, component)
+        (cyclic, component, order)
     }
 }

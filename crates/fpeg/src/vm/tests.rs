@@ -959,6 +959,40 @@ const TWICE_CALLS: usize = 50_000;
 const TWICE_SECONDS: f64 = 1.0;
 
 #[test]
+fn the_starts_of_a_chain_of_rules_are_found_with_each_rule_after_those_it_calls() {
+    // Each rule is defined after the one it calls. Taken before them, a rule passed on every
+    // kind of token that the choice at the bottom added, up the whole chain again.
+    let mut g = GrammarBuilder::new();
+    for i in 0..CHAIN_KINDS {
+        g.rule(&format!("K{i}"), lit(&format!("k{i}")));
+    }
+    let tokens = (0..CHAIN_KINDS).map(|i| r(&format!("K{i}")));
+    g.rule("c0", Expr::new(ExprKind::Choice(tokens.collect())));
+    for i in 1..=CHAIN_RULES {
+        g.rule(&format!("c{i}"), r(&format!("c{}", i - 1)));
+    }
+    g.rule("start", r(&format!("c{CHAIN_RULES}")));
+    let grammar = crate::resolve::resolve(&g.build()).expect("it resolves");
+    let facts = crate::analysis::analyze(&grammar);
+    let started = std::time::Instant::now();
+    let starts = facts.starts(&grammar, &vec![false; grammar.rules.len()]);
+    let seconds = started.elapsed().as_secs_f64();
+    assert!(seconds < CHAIN_SECONDS, "{seconds:.1} s");
+    let start = grammar.rules.iter().find(|rule| rule.name == "start");
+    let heads = start.and_then(|rule| starts.heads(&rule.body));
+    assert_eq!(heads.map(<[_]>::len), Some(CHAIN_KINDS));
+}
+
+/// The rules of the chain above, and the kinds of tokens of the choice at its bottom, as many
+/// as are kept.
+const CHAIN_RULES: usize = 10_000;
+const CHAIN_KINDS: usize = 64;
+
+/// Time finding the starts may take in a debug build: about a tenth of a second children first,
+/// several seconds parents first.
+const CHAIN_SECONDS: f64 = 1.0;
+
+#[test]
 fn the_deepest_grammars_compile_on_a_small_stack() {
     // The resolver and the compiler recurse once per level of an expression, which the resolver
     // bounds: 100 levels in a rule, and twice that in a template instance whose argument nests
