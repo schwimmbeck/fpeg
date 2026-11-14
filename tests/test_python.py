@@ -9,6 +9,7 @@ with those of `ast.parse` by `ast.dump`, then node by node by their positions.
 
 import ast
 import sys
+import sysconfig
 import warnings
 from pathlib import Path
 
@@ -153,7 +154,30 @@ finally:
 """
 
 SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "python"
-FILES = [pytest.param(path, id=path.name) for path in sorted(SAMPLES.glob("*.py"))]
+LIBRARY = Path(sysconfig.get_path("stdlib"))
+# Small files of the library that hold between them nearly every kind of node it has.
+LIBRARY_FILES = [
+    "_pyrepl/base_eventqueue.py",
+    "_pyrepl/pager.py",
+    "_pyrepl/types.py",
+    "_pyrepl/utils.py",
+    "asyncio/staggered.py",
+    "asyncio/threads.py",
+    "asyncio/trsock.py",
+    "base64.py",
+    "concurrent/interpreters/_crossinterp.py",
+    "contextlib.py",
+    "operator.py",
+    "profiling/sampling/_format_utils.py",
+    "reprlib.py",
+    "string/templatelib.py",
+    "turtledemo/paint.py",
+    "xml/utils.py",
+]
+FILES = [
+    *(pytest.param(path, id=path.name) for path in sorted(SAMPLES.glob("*.py"))),
+    *(pytest.param(LIBRARY / name, id=name) for name in LIBRARY_FILES),
+]
 
 
 def compare(source: str) -> None:
@@ -187,3 +211,26 @@ def test_statements_give_the_tree_of_cpython() -> None:
 @pytest.mark.parametrize("path", FILES)
 def test_a_file_gives_the_tree_of_cpython(path: Path) -> None:
     compare(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.corpus
+def test_every_file_of_the_library_gives_the_tree_of_cpython() -> None:
+    compared = 0
+    differ: list[str] = []
+    for path in sorted(LIBRARY.rglob("*.py")):
+        if "site-packages" in path.parts:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", SyntaxWarning)
+                ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError):
+            continue  # test data that Python rejects
+        compared += 1
+        try:
+            compare(source)
+        except Exception as error:  # every file that differs joins the report
+            differ.append(f"{path.relative_to(LIBRARY)}: {str(error).splitlines()[0]}")
+    assert compared, f"no file to compare in {LIBRARY}"
+    assert not differ, f"{len(differ)} of {compared} files differ:\n" + "\n".join(differ)

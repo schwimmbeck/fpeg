@@ -95,5 +95,6 @@ venv = ".venv"
 
 [tool.pytest]
 testpaths = ["tests"]
-addopts = ["--strict-markers"]
+addopts = ["--strict-markers", "-m", "not corpus"]
+markers = ["corpus: compares over a whole corpus, slow, run with -m corpus"]
 filterwarnings = ["error"]

@@ -54,7 +54,7 @@ scripts/              development helpers, among them the licence header check
 
 Setup needs rustup and uv. `uv sync` builds the native module and installs the package and the development tools into `.venv`. `uv run` rebuilds the module when a Rust source has changed. Development uses the Python version in `.python-version`.
 
-These checks are the bar, and CI treats warnings as errors. CI runs the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, all other checks and the Python tests with the development version on Linux, and a benchmark smoke run on Linux, weekly on Windows too.
+These checks are the bar, and CI treats warnings as errors. CI runs the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, all other checks and the Python tests with the development version on Linux, and a benchmark smoke run on Linux. Once a week it runs the smoke run on Windows and the corpus tests.
 
 ```sh
 cargo fmt --check
@@ -81,6 +81,7 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 - The licence check holds project files to the project's licence and holder. `reuse lint` checks that the repository follows the REUSE specification: `REUSE.toml` gives copyright and licence to the files that cannot carry a header, and `LICENSES/` holds the text of every licence used.
 - The dependency group `oracles` holds what a test compares fpeg with beyond the standard library, today `llvmlite`. A test skips without its oracle, so `uv run pytest` alone works too, and the test jobs of CI run it that way.
 - pyright checks `python/`, `tests/` and `scripts/`, and mypy's stubtest holds the stubs of the native module to the module as built. The benchmarks and the docs import their own dependency groups, and ruff lints them.
+- Tests over a whole corpus carry the marker `corpus` and stay out of the default run. `uv run pytest -m corpus` runs them.
 - Benchmarks: `uv run --group bench python benchmarks/run.py`. `--mode smoke` checks that every suite runs, `--record` writes a run to commit. `docs/development.md` lists the options.
 
 Run the checks for everything you touched before calling work done. The Rust version is pinned in `rust-toolchain.toml`. Bump it on purpose and fix new lints in the same change.
