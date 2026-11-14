@@ -84,8 +84,19 @@ The tests of the core crate run on the reference interpreter, and the differenti
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
 | `tests/profile.rs` | the counts of a profile: calls, repeats, failures, growths, the row of the ignored text, and that the rows sum to the steps of the parse |
 | `src/vm/tests.rs` | the code the compiler makes for small grammars, exact character classes, the verifier against broken programs, and what the machine does not run yet |
+| `src/grammar/bootstrap.rs` | the bootstrap of the front end, below: `meta.rs` is what the grammar file prints and builds the grammar the file describes, the parser of that grammar reads the file as the bootstrap does, and the reference page shows the file |
 
-`FPEG_BLESS=1 cargo test` rewrites the expected results of the case files, the `.tree` files and the messages on the diagnostics pages, which are then reviewed before a commit. `FPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FPEG_MUTANTS` and `FPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
+`FPEG_BLESS=1 cargo test` rewrites the expected results of the case files, the `.tree` files, the messages on the diagnostics pages and the bootstrap of the front end, which are then reviewed before a commit. `FPEG_GENERATED_CASES` sets how many generated grammars to try instead of 400, and `FPEG_GENERATED_SEED` the first seed, which replays a reported failure. `FPEG_MUTANTS` and `FPEG_MUTANT_SEED` do the same for the edited grammars. Long runs are faster with `cargo test --release`.
+
+## The grammar of grammars
+
+The text front end reads a grammar with a parser of `crates/fpeg/grammars/fpeg.fpeg`, the grammar of grammars in its own notation. That file is the source. The front end cannot read it before it can read grammars, so it starts from a copy as builder code, `crates/fpeg/src/grammar/meta.rs`, which the tests print from the file and which is never edited by hand. To change the language:
+
+1. Change `fpeg.fpeg`, and the same block on the reference page of the grammar language.
+2. Run `FPEG_BLESS=1 cargo test -p fpeg --lib bootstrap`, which rewrites `meta.rs`, and review its diff.
+3. Run the tests, which now read every grammar with the new front end.
+
+A form that the front end at hand cannot read takes two rounds: add it to the grammar in the notation that exists and bless, then use it. A blessed `meta.rs` that cannot read the grammar file any more leaves no front end to bless with. Restore it with `git checkout` and correct the text.
 
 ## Documentation
 

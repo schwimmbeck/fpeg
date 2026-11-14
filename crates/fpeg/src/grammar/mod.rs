@@ -6,7 +6,11 @@
 //! The text front end and the programmatic [`builder`] both produce this model. Resolving it
 //! checks the names and translates it into the core language that engines run.
 
+#[cfg(test)]
+mod bootstrap;
 pub mod builder;
+// Printed from the grammar file by `bootstrap`, which lays it out.
+#[rustfmt::skip]
 mod meta;
 pub(crate) mod print;
 mod text;

@@ -1,32 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! The grammar of grammars, built in code. It mirrors the text in `crates/fpeg/grammars/fpeg.fpeg` and in
-//! the language reference rule for rule, and a test holds the two together.
+//! The grammar of grammars as builder code, which the front end reads grammars with.
+//!
+//! Generated. The tests print this file from `crates/fpeg/grammars/fpeg.fpeg` and hold it
+//! to that, and `FPEG_BLESS=1 cargo test` rewrites it. Change the text, never this file.
 
 use super::Grammar;
 use super::builder::*;
-
-/// Characters of names after the first.
-fn name_rest() -> crate::grammar::Expr {
-    class([range('A', 'Z'), range('a', 'z'), range('0', '9'), ch('_')])
-}
-
-/// A list of `item` separated by commas, with line breaks ignored inside the brackets.
-fn bracketed(
-    open: &str,
-    field_name: &str,
-    item: crate::grammar::Expr,
-    close: &str,
-) -> crate::grammar::Expr {
-    seq([
-        lit(open),
-        on(
-            "nested",
-            seq([field(field_name, sep_some(item, lit(","))), lit(close)]),
-        ),
-    ])
-}
 
 /// The grammar of fpeg grammars.
 pub(crate) fn grammar() -> Grammar {
@@ -37,8 +18,6 @@ pub(crate) fn grammar() -> Grammar {
         r("COMMENT"),
         seq([if_flag("nested"), r("_NL")]),
     ]));
-    let nl_bar = || seq([opt(r("_NL")), lit("|")]);
-
     g.rule(
         "start",
         seq([
@@ -47,9 +26,7 @@ pub(crate) fn grammar() -> Grammar {
             opt(r("_NL")),
         ]),
     );
-    g.rule("item", choice([r("rule"), r("directive")]))
-        .transparent();
-
+    g.rule("item", choice([r("rule"), r("directive")])).transparent();
     g.rule(
         "rule",
         seq([
@@ -62,14 +39,15 @@ pub(crate) fn grammar() -> Grammar {
             field("body", r("rule_body")),
         ]),
     );
+    g.rule("attribute", seq([lit("@"), field("name", r("NAME")), r("_NL")]));
     g.rule(
-        "attribute",
-        seq([lit("@"), field("name", r("NAME")), r("_NL")]),
+        "params",
+        seq([
+            lit("<"),
+            on("nested", seq([field("names", sep_some(r("NAME"), lit(","))), lit(">")])),
+        ]),
     );
-    g.rule("params", bracketed("<", "names", r("NAME"), ">"));
-    g.rule("rule_body", choice([r("precedence"), r("alternatives")]))
-        .transparent();
-
+    g.rule("rule_body", choice([r("precedence"), r("alternatives")])).transparent();
     g.rule(
         "precedence",
         seq([
@@ -80,20 +58,12 @@ pub(crate) fn grammar() -> Grammar {
             lit("}"),
         ]),
     );
-    g.rule(
-        "level",
-        seq([
-            field("name", r("NAME")),
-            lit(":"),
-            field("body", r("alternatives")),
-        ]),
-    );
-
+    g.rule("level", seq([field("name", r("NAME")), lit(":"), field("body", r("alternatives"))]));
     g.rule(
         "alternatives",
         seq([
-            opt(nl_bar()),
-            field("items", sep_some(r("alternative"), nl_bar())),
+            opt(seq([opt(r("_NL")), lit("|")])),
+            field("items", sep_some(r("alternative"), seq([opt(r("_NL")), lit("|")]))),
         ]),
     );
     g.rule(
@@ -105,68 +75,30 @@ pub(crate) fn grammar() -> Grammar {
         ]),
     );
     g.rule("alias", seq([lit("->"), field("name", r("NAME"))]));
-    g.rule(
-        "builder",
-        seq([lit("=>"), field("value", r("builder_value"))]),
-    );
-
-    g.rule("choice", field("items", sep_some(r("sequence"), nl_bar())));
+    g.rule("builder", seq([lit("=>"), field("value", r("builder_value"))]));
+    g.rule("choice", field("items", sep_some(r("sequence"), seq([opt(r("_NL")), lit("|")]))));
     g.rule("sequence", field("items", some(r("element"))));
-    g.rule(
-        "element",
-        seq([
-            field("expr", r("prefix")),
-            field("label", opt(r("error_label"))),
-        ]),
-    );
-    g.rule(
-        "error_label",
-        seq([lit("^"), field("value", choice([r("STRING"), r("NAME")]))]),
-    );
-    g.rule("prefix", choice([r("lookahead"), r("field"), r("suffix")]))
-        .transparent();
+    g.rule("element", seq([field("expr", r("prefix")), field("label", opt(r("error_label")))]));
+    g.rule("error_label", seq([lit("^"), field("value", choice([r("STRING"), r("NAME")]))]));
+    g.rule("prefix", choice([r("lookahead"), r("field"), r("suffix")])).transparent();
     g.rule(
         "lookahead",
-        seq([
-            field("op", choice([lit("&"), lit("!")])),
-            field("expr", r("prefix")),
-        ]),
+        seq([field("op", choice([lit("&"), lit("!")])), field("expr", r("prefix"))]),
     );
     g.rule(
         "field",
-        seq([
-            field("name", r("NAME")),
-            lit("="),
-            not(lit(">")),
-            field("expr", r("suffix")),
-        ]),
+        seq([field("name", r("NAME")), lit("="), not(lit(">")), field("expr", r("suffix"))]),
     );
-    g.rule(
-        "suffix",
-        seq([
-            field("base", r("primary")),
-            field("ops", many(r("suffix_op"))),
-        ]),
-    );
+    g.rule("suffix", seq([field("base", r("primary")), field("ops", many(r("suffix_op")))]));
     g.rule(
         "suffix_op",
-        choice([
-            r("separated"),
-            r("optional"),
-            r("many"),
-            r("some"),
-            r("bounds"),
-        ]),
-    )
-    .transparent();
+        choice([r("separated"), r("optional"), r("many"), r("some"), r("bounds")]),
+    ).transparent();
     g.rule(
         "separated",
         seq([
             field("op", choice([lit("**"), lit("++")])),
-            label_message(
-                field("separator", r("primary")),
-                "a separator after ** or ++",
-            ),
+            label_message(field("separator", r("primary")), "a separator after ** or ++"),
         ]),
     );
     g.rule("optional", lit("?"));
@@ -182,7 +114,6 @@ pub(crate) fn grammar() -> Grammar {
             lit("}"),
         ]),
     );
-
     g.rule(
         "primary",
         choice([
@@ -196,24 +127,22 @@ pub(crate) fn grammar() -> Grammar {
             r("special"),
             r("reference"),
         ]),
-    )
-    .transparent();
+    ).transparent();
     g.rule(
         "group",
-        seq([
-            lit("("),
-            on("nested", seq([field("expr", opt(r("choice"))), lit(")")])),
-        ]),
+        seq([lit("("), on("nested", seq([field("expr", opt(r("choice"))), lit(")")]))]),
     );
     g.rule("inherited", lit("..."));
     g.rule("any", lit("."));
     g.rule("cut", lit("~"));
+    g.rule("reference", seq([field("name", r("NAME")), field("args", opt(r("args")))]));
     g.rule(
-        "reference",
-        seq([field("name", r("NAME")), field("args", opt(r("args")))]),
+        "args",
+        seq([
+            lit("<"),
+            on("nested", seq([field("items", sep_some(r("choice"), lit(","))), lit(">")])),
+        ]),
     );
-    g.rule("args", bracketed("<", "items", r("choice"), ">"));
-
     g.rule(
         "special",
         choice([
@@ -226,25 +155,29 @@ pub(crate) fn grammar() -> Grammar {
             r("ref"),
             r("error_alternative"),
         ]),
-    )
-    .transparent();
-    let named_with_expr = |keyword: &str, name_field: &str| {
+    ).transparent();
+    g.rule(
+        "flag_on",
         seq([
-            lit(keyword),
+            lit("%on"),
             lit("("),
             on(
                 "nested",
-                seq([
-                    field(name_field, r("NAME")),
-                    lit(","),
-                    field("expr", r("choice")),
-                    lit(")"),
-                ]),
+                seq([field("flag", r("NAME")), lit(","), field("expr", r("choice")), lit(")")]),
             ),
-        ])
-    };
-    g.rule("flag_on", named_with_expr("%on", "flag"));
-    g.rule("flag_off", named_with_expr("%off", "flag"));
+        ]),
+    );
+    g.rule(
+        "flag_off",
+        seq([
+            lit("%off"),
+            lit("("),
+            on(
+                "nested",
+                seq([field("flag", r("NAME")), lit(","), field("expr", r("choice")), lit(")")]),
+            ),
+        ]),
+    );
     g.rule(
         "flag_test",
         seq([
@@ -257,28 +190,25 @@ pub(crate) fn grammar() -> Grammar {
     );
     g.rule(
         "indent",
-        seq([
-            lit("%indent"),
-            lit("("),
-            on("nested", seq([field("expr", r("choice")), lit(")")])),
-        ]),
+        seq([lit("%indent"), lit("("), on("nested", seq([field("expr", r("choice")), lit(")")]))]),
     );
     g.rule("same", lit("%same"));
-    g.rule("def", named_with_expr("%def", "name"));
     g.rule(
-        "ref",
-        seq([lit("%ref"), lit("("), field("name", r("NAME")), lit(")")]),
-    );
-    g.rule(
-        "error_alternative",
+        "def",
         seq([
-            lit("%error"),
+            lit("%def"),
             lit("("),
-            field("message", r("STRING")),
-            lit(")"),
+            on(
+                "nested",
+                seq([field("name", r("NAME")), lit(","), field("expr", r("choice")), lit(")")]),
+            ),
         ]),
     );
-
+    g.rule("ref", seq([lit("%ref"), lit("("), field("name", r("NAME")), lit(")")]));
+    g.rule(
+        "error_alternative",
+        seq([lit("%error"), lit("("), field("message", r("STRING")), lit(")")]),
+    );
     g.rule(
         "directive",
         choice([
@@ -291,23 +221,12 @@ pub(crate) fn grammar() -> Grammar {
             r("extends"),
             r("recover"),
         ]),
-    )
-    .transparent();
+    ).transparent();
     g.rule("ignore", seq([lit("%ignore"), field("expr", r("choice"))]));
     g.rule("word", seq([lit("%word"), field("expr", r("choice"))]));
-    g.rule(
-        "flags",
-        seq([lit("%flag"), field("names", some(r("NAME")))]),
-    );
+    g.rule("flags", seq([lit("%flag"), field("names", some(r("NAME")))]));
     g.rule("tabs", seq([lit("%tabs"), field("width", r("INTEGER"))]));
-    g.rule(
-        "keywords",
-        seq([
-            lit("%keywords"),
-            lit("soft"),
-            field("words", some(r("STRING"))),
-        ]),
-    );
+    g.rule("keywords", seq([lit("%keywords"), lit("soft"), field("words", some(r("STRING")))]));
     g.rule(
         "import",
         seq([
@@ -317,38 +236,26 @@ pub(crate) fn grammar() -> Grammar {
             field("prefix", opt(r("import_prefix"))),
         ]),
     );
-    g.rule("import_names", bracketed("(", "items", r("NAME"), ")"));
-    g.rule("import_prefix", seq([lit("as"), field("name", r("NAME"))]));
     g.rule(
-        "extends",
-        seq([lit("%extends"), field("module", r("STRING"))]),
-    );
-    g.rule(
-        "recover",
+        "import_names",
         seq([
-            lit("%recover"),
-            field("label", r("NAME")),
-            lit(":"),
-            field("expr", r("choice")),
+            lit("("),
+            on("nested", seq([field("items", sep_some(r("NAME"), lit(","))), lit(")")])),
         ]),
     );
-
+    g.rule("import_prefix", seq([lit("as"), field("name", r("NAME"))]));
+    g.rule("extends", seq([lit("%extends"), field("module", r("STRING"))]));
     g.rule(
-        "builder_value",
-        choice([r("call"), r("constant"), r("NAME")]),
+        "recover",
+        seq([lit("%recover"), field("label", r("NAME")), lit(":"), field("expr", r("choice"))]),
     );
+    g.rule("builder_value", choice([r("call"), r("constant"), r("NAME")]));
     g.rule(
         "call",
         seq([
             field("name", r("NAME")),
             lit("("),
-            on(
-                "nested",
-                seq([
-                    field("args", sep_many(r("builder_arg"), lit(","))),
-                    lit(")"),
-                ]),
-            ),
+            on("nested", seq([field("args", sep_many(r("builder_arg"), lit(","))), lit(")")])),
         ]),
     );
     g.rule(
@@ -358,16 +265,12 @@ pub(crate) fn grammar() -> Grammar {
             field("value", choice([r("STAR"), r("constant"), r("NAME")])),
         ]),
     );
-    g.rule(
-        "constant",
-        field("value", choice([r("STRING"), r("NUMBER")])),
-    );
-
+    g.rule("constant", field("value", choice([r("STRING"), r("NUMBER")])));
     g.rule(
         "NAME",
         seq([
             class([range('A', 'Z'), range('a', 'z'), ch('_')]),
-            many(name_rest()),
+            many(class([range('A', 'Z'), range('a', 'z'), range('0', '9'), ch('_')])),
         ]),
     );
     g.rule("INTEGER", some(class([range('0', '9')])));
@@ -380,21 +283,36 @@ pub(crate) fn grammar() -> Grammar {
         ]),
     );
     g.rule("STAR", lit("*"));
-    let quoted = |quote: char| {
-        let q = quote.to_string();
-        seq([
-            lit(&q),
-            many(choice([
-                seq([lit("\\"), any()]),
-                not_class([ch(quote), ch('\\'), ch('\r'), ch('\n')]),
-            ])),
-            lit(&q),
-        ])
-    };
-    g.rule("STRING", choice([quoted('"'), quoted('\'')]));
+    g.rule(
+        "STRING",
+        choice([
+            seq([
+                lit("\""),
+                many(choice([
+                    seq([lit("\\"), any()]),
+                    not_class([ch('"'), ch('\\'), ch('\r'), ch('\n')]),
+                ])),
+                lit("\""),
+            ]),
+            seq([
+                lit("'"),
+                many(choice([
+                    seq([lit("\\"), any()]),
+                    not_class([ch('\''), ch('\\'), ch('\r'), ch('\n')]),
+                ])),
+                lit("'"),
+            ]),
+        ]),
+    );
     g.rule(
         "LITERAL",
-        seq([r("STRING"), opt(seq([lit("i"), not(name_rest())]))]),
+        seq([
+            r("STRING"),
+            opt(seq([
+                lit("i"),
+                not(class([range('A', 'Z'), range('a', 'z'), range('0', '9'), ch('_')])),
+            ])),
+        ]),
     );
     g.rule(
         "CLASS",
@@ -417,10 +335,7 @@ pub(crate) fn grammar() -> Grammar {
             lit("}"),
         ]),
     );
-    g.rule(
-        "COMMENT",
-        seq([lit("//"), many(not_class([ch('\r'), ch('\n')]))]),
-    );
+    g.rule("COMMENT", seq([lit("//"), many(not_class([ch('\r'), ch('\n')]))]));
     g.rule(
         "_NL",
         some(seq([
@@ -430,47 +345,4 @@ pub(crate) fn grammar() -> Grammar {
         ])),
     );
     g.build()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::grammar;
-    use crate::Parser;
-    use crate::grammar::{Grammar, text};
-
-    fn repository_file(path: &str) -> String {
-        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../");
-        std::fs::read_to_string(format!("{root}{path}")).expect("the file exists")
-    }
-
-    #[test]
-    fn grammar_text_and_builder_print_the_same() {
-        let text = repository_file("crates/fpeg/grammars/fpeg.fpeg");
-        let parsed = Grammar::from_text(&text).unwrap_or_else(|e| panic!("{e:?}"));
-        assert_eq!(parsed.to_string(), grammar().to_string());
-    }
-
-    #[test]
-    fn the_parser_that_the_grammar_file_describes_reads_the_file_as_the_bootstrap_does() {
-        let text = repository_file("crates/fpeg/grammars/fpeg.fpeg");
-        let read = Grammar::from_text(&text).unwrap_or_else(|e| panic!("{e:?}"));
-        let described = Parser::new(&read).unwrap_or_else(|e| panic!("{e:?}"));
-        let again = text::read(&described, &text).unwrap_or_else(|e| panic!("{e:?}"));
-        assert_eq!(read, again);
-    }
-
-    #[test]
-    fn reference_page_shows_the_grammar_file() {
-        let file = repository_file("crates/fpeg/grammars/fpeg.fpeg");
-        let body = file
-            .split_once("\n\n%flag")
-            .map(|(_, rest)| format!("%flag{rest}"));
-        let page = repository_file("docs/reference/grammar.md");
-        let block = page
-            .split_once("## The grammar of grammars")
-            .and_then(|(_, rest)| rest.split_once("```fpeg\n"))
-            .and_then(|(_, rest)| rest.split_once("```"))
-            .map(|(block, _)| block.to_owned());
-        assert!(body.is_some() && body == block);
-    }
 }

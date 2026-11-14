@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-// The grammar of fpeg grammars, written in its own notation. It must stay identical to the
-// grammar in docs/reference/grammar.md and to the one built in crates/fpeg/src/grammar/meta.rs.
+// The grammar of fpeg grammars, written in its own notation. The front end is built from it:
+// the tests print crates/fpeg/src/grammar/meta.rs from this file. The grammar in
+// docs/reference/grammar.md must stay identical to it.
 
 %flag nested
 %ignore [ \t]+ | COMMENT | %if(nested) _NL
