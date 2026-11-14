@@ -59,6 +59,8 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 
 - [Operator precedence](guide/operator-precedence.md): expressions with a precedence block, and a calculator in Python's order of operators.
 - [Building an AST](guide/building-an-ast.md): your own classes from a parse, by methods or by builders in the grammar, and running the result.
+- [Indentation](guide/indentation.md): blocks by columns, brackets that turn layout off, continuation lines and tabs.
+- [Interpolated strings](guide/interpolated-strings.md): expressions inside strings, quotes as parameters, and delimiters that the input chooses.
 - [Performance](guide/performance.md): seeing where a parse spends its work, and what to change in a grammar.
 
 ## Reference
@@ -79,6 +81,8 @@ tutorial/first-grammar
 tutorial/transformer
 guide/operator-precedence
 guide/building-an-ast
+guide/indentation
+guide/interpolated-strings
 guide/performance
 reference/grammar
 reference/semantics

@@ -120,6 +120,15 @@ line 1, column 5: expected NAME
 
 A cut saves the tries that would follow a failure, so it shortens the parse of an input that is wrong. An input that parses takes about the same steps, a couple more for each cut it passes. And it changes what the grammar accepts wherever a later alternative could have matched, as above. Write a cut where the text before it leaves no other reading, mostly right after a keyword.
 
+## Columns, captures and remembered results
+
+A remembered result holds for the position it was made at and for what the rule could see there: the flags, the reference column of [indentation](indentation.md) and the visible [captures](interpolated-strings.md#delimiters-the-input-chooses). The parser keeps the reference column and the captures together as one context, and a call at the same position in another context parses again.
+
+- Most grammars call a rule at a position in one context only. A statement of Python is parsed inside one block, so the context costs nothing but its place in the key.
+- A grammar that tries the same text inside a block and outside of it, as in `%indent(item) | item`, parses it twice, remembered or not. Say it once, as for any repeated try.
+- A capture made in a terminal ends with the token, and the rules around it keep the context they had. A capture made in a syntactic rule holds for every rule it calls, which remember their results under it.
+- Alternatives skip once at a position, as below, and a skip expression that checks a column or matches a capture skips once for each context there, since another reference column may end the skip elsewhere.
+
 ## Limits
 
 A grammar can make a parse take time that grows fast with the input, as the first grammar of this guide does, and input may come from anywhere. So every parse has a limit on its steps, one on how deep rule calls nest and one on the memory it holds, and stops with a `LimitError` at any of them. A rule that calls itself counts at every level of the nesting, while a small rule that does not may be compiled into the rules that call it and count not at all. The defaults are high enough for real input, and `parse` takes lower ones:
