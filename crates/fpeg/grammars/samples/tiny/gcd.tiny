@@ -1,0 +1,12 @@
+// result: 21
+// The greatest common divisor by Euclid's algorithm.
+fn gcd(a, b) {
+    while b != 0 {
+        let rest = a % b;
+        a = b;
+        b = rest;
+    }
+    return a;
+}
+
+return gcd(1071, 462);

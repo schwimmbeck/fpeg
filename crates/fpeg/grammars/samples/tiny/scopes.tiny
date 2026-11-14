@@ -1,0 +1,18 @@
+// result: 121
+// A block has variables of its own, and a function sees its parameters and what it declares.
+fn shadow(x) {
+    let total = x;
+    if x > 0 {
+        let x = 10;   // hides the parameter inside the block
+        total = total + x;
+    }
+    return total + x;   // the parameter again
+}
+
+let x = 1;
+let seen = shadow(5);   // 5 + 10 + 5
+if seen == 20 {
+    let x = 100;
+    seen = seen + x;
+}
+return seen + x;

@@ -1,0 +1,21 @@
+// result: 6765
+// A Fibonacci number twice, by recursion and by a loop, which must agree.
+fn fib(n) {
+    if n < 2 { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fn fib_loop(n) {
+    let a = 0;
+    let b = 1;
+    while n > 0 {
+        let next = a + b;
+        a = b;
+        b = next;
+        n = n - 1;
+    }
+    return a;
+}
+
+if fib(20) != fib_loop(20) { return -1; }
+return fib(20);

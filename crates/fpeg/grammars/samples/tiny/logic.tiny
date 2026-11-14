@@ -1,0 +1,13 @@
+// result: 101111
+// A comparison and a logical operator give 1 or 0, and anything but 0 counts as true.
+fn sign(n) {
+    if n < 0 { return -1; } else if n == 0 { return 0; } else { return 1; }
+}
+
+let score = 0;
+if 1 < 2 and not (2 < 1) { score = score + 1; }
+if false or 3 >= 3 { score = score + 10; }
+if not (true and false) { score = score + 100; }
+score = score + (1 == 1) * 1000;
+score = score + (5 and 0) * 10000 + (0 or 7) * 100000;
+return score + sign(-5) + sign(0) + sign(9);

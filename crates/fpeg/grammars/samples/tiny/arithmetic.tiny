@@ -1,0 +1,13 @@
+// result: 963467
+// Integers have 64 bits and wrap around. Division rounds towards zero, and a remainder has
+// the sign of its dividend.
+fn factorial(n) {
+    if n < 2 { return 1; }
+    return n * factorial(n - 1);
+}
+
+let wrapped = factorial(25);   // 7034535277573963776, what 64 bits keep of 25!
+let quotient = -7 / 2;         // -3
+let rest = -7 % 2;             // -1
+let other = 7 % -2;            // 1
+return wrapped % 1000000 + quotient * 100 + rest * 10 + other;
