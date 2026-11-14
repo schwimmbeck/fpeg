@@ -88,6 +88,8 @@ convention = "pep257"
 include = ["python", "tests", "scripts"]
 strict = ["python"]
 pythonVersion = "3.11"
+# The tests import helper modules of their own folder, as pytest lets them.
+extraPaths = ["tests"]
 venvPath = "."
 venv = ".venv"
 
