@@ -33,7 +33,9 @@ create_exception!(
 const TEXT_PATH: &str = "<grammar>";
 
 /// An error or a warning about a grammar: its stable code, what exactly is wrong, and where.
-#[pyclass(frozen, module = "fpeg", get_all)]
+/// Diagnostics with the same parts are equal.
+#[pyclass(frozen, eq, hash, module = "fpeg", get_all)]
+#[derive(PartialEq, Eq, Hash)]
 pub struct Diagnostic {
     /// The stable code, such as `E201`, whose page in the documentation explains it.
     code: String,

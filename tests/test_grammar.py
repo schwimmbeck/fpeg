@@ -44,6 +44,11 @@ def test_a_grammar_error_pickles_with_its_diagnostics() -> None:
     assert repr(diagnostic) == repr(raised.value.diagnostics[0])
     made = fpeg.Diagnostic("E201", "unknown rule x", 2, 3, 2, 4, "g.fpeg")
     assert str(pickle.loads(pickle.dumps(made))) == "g.fpeg:2:3: error[E201]: unknown rule x"
+    # Equal by their parts, as a copy is.
+    assert again.diagnostics == raised.value.diagnostics
+    assert pickle.loads(pickle.dumps(made)) == made
+    assert made != fpeg.Diagnostic("E201", "unknown rule x", 2, 3, 2, 4, None)
+    assert len({made, pickle.loads(pickle.dumps(made))}) == 1
 
 
 def test_check_returns_the_errors_of_a_grammar_instead_of_raising() -> None:
