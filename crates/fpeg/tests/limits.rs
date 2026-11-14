@@ -3,7 +3,9 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
-use fpeg::builder::{GrammarBuilder, any, choice, def, empty, field, lit, many, on, r, r_args};
+use fpeg::builder::{
+    GrammarBuilder, any, choice, def, empty, field, lit, many, on, opt, r, r_args,
+};
 use fpeg::{
     Class, ClassItem, DiagnosticCode, Expr, ExprKind, Grammar, Limit, Limits, MAX_EXPRESSION_DEPTH,
     Memo, Options, ParseErrorKind, Parser, Reference,
@@ -189,6 +191,26 @@ fn grammars_that_nest_too_deeply_are_errors_not_stack_overflows() {
             "{shown}: {errors:?}"
         );
     }
+}
+
+#[test]
+fn a_template_that_nothing_uses_is_measured_as_every_rule_is() {
+    // Built in code, where no front end bounds the nesting. `check` walks every rule.
+    let mut body = lit("a");
+    for _ in 0..100_000 {
+        body = opt(body);
+    }
+    let mut builder = GrammarBuilder::new();
+    builder.rule("start", lit("a"));
+    builder.rule("t", body).params(["x"]);
+    let grammar = builder.build();
+    let errors = Parser::new(&grammar).expect_err("too deep");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].code, DiagnosticCode::TooDeep);
+    let found = fpeg::check(&grammar);
+    assert_eq!(found, errors);
+    // Dropping an expression this deep recurses once a level.
+    std::mem::forget(grammar);
 }
 
 #[test]

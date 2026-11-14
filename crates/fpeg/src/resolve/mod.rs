@@ -201,6 +201,10 @@ pub(crate) fn resolve_counted(
                 rule.name.span,
             );
         }
+        // Every rule, also a template that nothing uses and nothing lowers, which `check`
+        // walks all the same.
+        let what = format!("the rule {}", rule.name.text);
+        r.too_deep(&expressions(rule), &what, rule.name.span);
     }
     // Level names belong to the whole grammar, so their rules exist before any rule calls one.
     // A block with parameters is an error, reported here so that an unused one is reported too,
@@ -328,6 +332,16 @@ pub(crate) fn resolve_counted(
         labels: r.labels,
     };
     Ok((resolved, counts))
+}
+
+/// The alternatives of a rule, those of its levels for a precedence block.
+fn expressions(rule: &Rule) -> Vec<&Expr> {
+    match &rule.body {
+        RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
+        RuleBody::Precedence(levels) => (levels.iter())
+            .flat_map(|level| level.alternatives.iter().map(|a| &a.expr))
+            .collect(),
+    }
 }
 
 fn choice(mut items: Vec<ir::Expr>) -> ir::Expr {
@@ -846,18 +860,9 @@ impl<'g> Resolver<'g> {
 
     fn lower_rule(&mut self, pending: Pending<'g>) {
         let Pending { id, rule, args } = pending;
-        let exprs: Vec<&Expr> = match &rule.body {
-            RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
-            RuleBody::Precedence(levels) => levels
-                .iter()
-                .flat_map(|l| l.alternatives.iter().map(|a| &a.expr))
-                .collect(),
-        };
-        if self.too_deep(
-            &exprs,
-            &format!("the rule {}", rule.name.text),
-            rule.name.span,
-        ) {
+        // A rule too deep to lower is reported where the rules are first read.
+        let deep = (expressions(rule).iter()).any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH);
+        if deep {
             self.rules[id.0 as usize] = Some(ir::Rule {
                 name: rule.name.text.clone(),
                 span: rule.name.span,
