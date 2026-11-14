@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 to M4 are done. Work continues with M5.
+M0 to M5 are done. Work continues with M6.
 
 ## M0 Foundations
 
@@ -39,8 +39,10 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## M5 Optimizer
 
-- Optimization passes, each with a switch and a benchmark that shows its effect.
-- Guards that bound the time and the memory a parse can take on any input.
+- Optimization passes, each with a switch and a benchmark that shows its effect: runs of a class in one step, one skip for the alternatives of a choice at a position, a look at the next byte before an alternative, small rules inside their callers, and left recursion as a loop.
+- A default of what a parse remembers, the results that a choice can try twice, and a restart with every rule remembered for a parse that repeats work all the same.
+- Guards that bound the time and the memory a parse can take on any input, the memory also from Python with `max_memory`.
+- A page of benchmarks made from the recorded runs, with the Rust suite also built with profile-guided optimization.
 
 ## M6 Context-sensitive syntax
 
