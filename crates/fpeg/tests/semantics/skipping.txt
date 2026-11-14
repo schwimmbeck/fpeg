@@ -55,3 +55,39 @@ start: "a" "b"
 SPACES<x>: x+
 --- "a   b"
 (start ~"a" ~"b")
+
+=== what follows a rule that skips and matches nothing starts after the skip
+start: m
+@lexical
+m: "x" (s "b")? "z"
+s: T
+T: ()
+%ignore " "+
+--- "x bz"
+(start (m ~"x" (s T"") ~"b" ~"z"))
+--- "x z"
+error at 2: expected "b"
+
+=== a skip under a flag in a part that matches nothing moves what follows the part
+%flag f
+start: "c" | %on(f, T) "b" | "d"
+T: ()
+%ignore " "+ | %if(f) "\n"
+--- "\nb"
+(start T"" ~"b")
+--- "\nd"
+error at 1: expected "b"
+
+=== a left recursion goes on after a rule that skips and matches nothing
+start: m
+@lexical
+m: "y" e
+@lexical
+e: e s "b" | "x"
+s: T
+T: ()
+%ignore " "+
+--- "yx b"
+(start (m ~"y" (e (e ~"x") (s T"") ~"b")))
+--- "yx c"
+error at 3: expected "b", end of input

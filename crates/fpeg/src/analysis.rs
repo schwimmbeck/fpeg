@@ -91,6 +91,8 @@ pub(crate) struct Facts {
     pub recursive: Vec<bool>,
     graph: Graph,
     nullable: Vec<bool>,
+    /// Which nodes can succeed without consuming input past a skip, see [`Start::skips`].
+    skips: Vec<bool>,
     /// The cycle of left children each node lies on, as the number of one of its nodes.
     left_component: Vec<u32>,
 }
@@ -155,6 +157,9 @@ pub(crate) struct Start {
     pub bytes: Bytes,
     /// Whether it can succeed without consuming input.
     pub nullable: bool,
+    /// Whether it can succeed without consuming input past a skip, which may have moved past
+    /// ignored text all the same, so that what follows it may start after a skip.
+    pub skips: bool,
     /// Whether some first byte is consumed after a skip that comes before it.
     pub after_skip: bool,
     /// Whether some first byte is consumed with no skip before it.
@@ -177,6 +182,7 @@ impl Start {
     const NOTHING: Start = Start {
         bytes: Bytes([0; 4]),
         nullable: false,
+        skips: false,
         after_skip: false,
         at_once: false,
         plain: true,
@@ -189,6 +195,7 @@ impl Start {
     const UNKNOWN: Start = Start {
         bytes: Bytes::ALL,
         nullable: true,
+        skips: true,
         after_skip: true,
         at_once: true,
         plain: false,
@@ -201,6 +208,7 @@ impl Start {
         Start {
             bytes: self.bytes.union(other.bytes),
             nullable: self.nullable || other.nullable,
+            skips: self.skips || other.skips,
             after_skip: self.after_skip || other.after_skip,
             at_once: self.at_once || other.at_once,
             plain: self.plain && other.plain,
@@ -240,30 +248,36 @@ impl Starts<'_> {
     }
 
     /// What the parts, matched in turn, start with, and the kinds of their head tokens, as
-    /// for a sequence of them.
+    /// for a sequence of them, with the roles of [`Graph::roles`].
     pub fn sequence(&self, parts: &[ir::Expr]) -> (Start, Option<Vec<KindId>>) {
         let mut start = Start::NOTHING;
         let mut heads = Some(Vec::new());
-        let mut after_skip = false;
+        let mut role = Role::Join;
+        let mut skipped = false;
         start.nullable = true;
         for part in parts {
             if matches!(part, ir::Expr::Skip) {
-                after_skip = true;
+                role = Role::AfterSkip;
+                skipped = true;
                 continue;
             }
             let found = self.of(part);
             start = start.merge(Start {
-                after_skip: found.after_skip || (after_skip && found.at_once),
-                at_once: found.at_once && !after_skip,
                 nullable: true,
-                ..found
+                skips: false,
+                ..role.added(found, false)
             });
             heads = joined(heads, self.heads(part));
             if !found.nullable {
                 start.nullable = false;
                 break;
             }
+            if found.skips {
+                skipped = true;
+                role = role.past_skip();
+            }
         }
+        start.skips = start.nullable && skipped;
         (start, heads)
     }
 }
@@ -297,7 +311,10 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
             }
         }
     }
-    let nullable = graph.nullable();
+    let parents = graph.parents();
+    let nullable = graph.nullable(&parents);
+    let skips = graph.skips(&parents, &nullable);
+    drop(parents);
     let (left, left_component) = graph.cyclic(&graph.left_counts(&nullable));
     let all: Vec<u32> = graph.nodes.iter().map(|node| node.len).collect();
     let (anywhere, _) = graph.cyclic(&all);
@@ -306,6 +323,7 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
         recursive: graph.bodies.iter().map(|&b| anywhere[b as usize]).collect(),
         graph,
         nullable,
+        skips,
         left_component,
     }
 }
@@ -364,8 +382,8 @@ impl Facts {
     /// every edge to a parent, so the time stays linear.
     ///
     /// Where the skip expression tests a flag, a skip under a flag turned on or off may end
-    /// elsewhere than the skip before the flag changed, so what follows it may start with any
-    /// byte.
+    /// elsewhere than a skip before the flag changed, so the expression under the flag, and
+    /// what follows a skip in it, may start with any byte.
     ///
     /// `growing` says which rules keep the growing loop.
     pub fn starts(&self, grammar: &ir::Grammar, growing: &[bool]) -> Starts<'_> {
@@ -373,7 +391,7 @@ impl Facts {
         let skip_reads_flags = (grammar.skip.as_ref()).is_some_and(|s| reads_flags(grammar, s));
         let mut parents: Vec<Vec<(u32, Role)>> = vec![Vec::new(); graph.nodes.len()];
         for node in 0..graph.nodes.len() as u32 {
-            for (child, role) in graph.roles(node, &self.nullable) {
+            for (child, role) in graph.roles(node, &self.nullable, &self.skips) {
                 parents[child as usize].push((node, role));
             }
         }
@@ -384,25 +402,9 @@ impl Facts {
         while let Some(child) = todo.pop() {
             queued[child as usize] = false;
             let start = values[child as usize];
+            let moved = skip_reads_flags && (start.after_skip || self.skips[child as usize]);
             for &(parent, role) in &parents[child as usize] {
-                let added = match role {
-                    Role::Join => start,
-                    Role::AfterSkip => Start {
-                        after_skip: start.after_skip || start.at_once,
-                        at_once: false,
-                        ..start
-                    },
-                    Role::Flags if skip_reads_flags && start.after_skip => Start {
-                        bytes: Bytes::ALL,
-                        ..start
-                    },
-                    Role::Flags => start,
-                    Role::Token => Start {
-                        clean: true,
-                        ..start
-                    },
-                };
-                let joined = values[parent as usize].merge(added);
+                let joined = values[parent as usize].merge(role.added(start, moved));
                 if joined != values[parent as usize] {
                     values[parent as usize] = joined;
                     if !std::mem::replace(&mut queued[parent as usize], true) {
@@ -411,8 +413,9 @@ impl Facts {
                 }
             }
         }
-        for (start, &nullable) in values.iter_mut().zip(&self.nullable) {
+        for ((start, &nullable), &skips) in values.iter_mut().zip(&self.nullable).zip(&self.skips) {
             start.nullable = nullable;
+            start.skips = skips;
         }
         Starts {
             node_of: &graph.node_of,
@@ -469,10 +472,51 @@ enum Role {
     Join,
     /// After a skip, so that its first bytes are all consumed after one.
     AfterSkip,
+    /// After a part that may have skipped or not, so that its first bytes may be consumed
+    /// after a skip or with none.
+    MaybeAfterSkip,
     /// Under a flag turned on or off.
     Flags,
     /// Inside a token that cannot match nothing.
     Token,
+}
+
+impl Role {
+    /// What a child with this start adds to the start of its parent, `moved` where a skip in
+    /// the child may end elsewhere than one before it, since the child changes a flag that the
+    /// skip expression tests.
+    fn added(self, start: Start, moved: bool) -> Start {
+        match self {
+            Role::Join => start,
+            Role::AfterSkip => Start {
+                after_skip: start.after_skip || start.at_once,
+                at_once: false,
+                ..start
+            },
+            Role::MaybeAfterSkip => Start {
+                after_skip: start.after_skip || start.at_once,
+                ..start
+            },
+            Role::Flags if moved => Start {
+                bytes: Bytes::ALL,
+                ..start
+            },
+            Role::Flags => start,
+            Role::Token => Start {
+                clean: true,
+                ..start
+            },
+        }
+    }
+
+    /// The role of the parts of a sequence after a part in this role that may end past a skip.
+    /// After a skip a second one ends where the first did, since it skips with the same flags.
+    fn past_skip(self) -> Role {
+        match self {
+            Role::Join => Role::MaybeAfterSkip,
+            role => role,
+        }
+    }
 }
 
 impl Node {
@@ -768,29 +812,26 @@ impl Graph {
 
     /// The children a node starts with, with the role in which each adds to its start: the
     /// parts of a sequence up to the first that cannot succeed without consuming input, those
-    /// after a skip as such, and the child of a form that tries it at its own start. What a
-    /// lookahead tests is looked at quietly, so it adds nothing.
-    fn roles(&self, node: u32, nullable: &[bool]) -> Vec<(u32, Role)> {
+    /// after a skip or after a part that may end past one as such, and the child of a form
+    /// that tries it at its own start. What a lookahead tests is looked at quietly, so it adds
+    /// nothing.
+    fn roles(&self, node: u32, nullable: &[bool], skips: &[bool]) -> Vec<(u32, Role)> {
         let children = self.children(node);
         match self.nodes[node as usize].form {
             Form::Sequence => {
                 let mut roles = Vec::new();
-                let mut after_skip = false;
+                let mut role = Role::Join;
                 for &part in children {
                     if self.nodes[part as usize].form == Form::Skip {
-                        after_skip = true;
+                        role = Role::AfterSkip;
                         continue;
                     }
-                    roles.push((
-                        part,
-                        if after_skip {
-                            Role::AfterSkip
-                        } else {
-                            Role::Join
-                        },
-                    ));
+                    roles.push((part, role));
                     if !nullable[part as usize] {
                         break;
+                    }
+                    if skips[part as usize] {
+                        role = role.past_skip();
                     }
                 }
                 roles
@@ -842,15 +883,20 @@ impl Graph {
         &self.edges[n.first as usize..(n.first + n.len) as usize]
     }
 
-    /// Which nodes can succeed without consuming input: a node can once as many of its
-    /// children can as it needs, so each node is counted down once per child that can.
-    fn nullable(&self) -> Vec<bool> {
+    /// The nodes that have each node as a child.
+    fn parents(&self) -> Vec<Vec<u32>> {
         let mut parents: Vec<Vec<u32>> = vec![Vec::new(); self.nodes.len()];
         for node in 0..self.nodes.len() as u32 {
             for &child in self.children(node) {
                 parents[child as usize].push(node);
             }
         }
+        parents
+    }
+
+    /// Which nodes can succeed without consuming input: a node can once as many of its
+    /// children can as it needs, so each node is counted down once per child that can.
+    fn nullable(&self, parents: &[Vec<u32>]) -> Vec<bool> {
         let mut need: Vec<u32> = self.nodes.iter().map(|n| n.need).collect();
         let mut ready: Vec<u32> = (0..need.len() as u32)
             .filter(|&n| need[n as usize] == 0)
@@ -867,6 +913,30 @@ impl Graph {
             }
         }
         need.into_iter().map(|n| n == 0).collect()
+    }
+
+    /// Which nodes can succeed without consuming input past a skip: a skip, an unknown form that
+    /// can succeed without consuming input, and a node that can and has a child that can, since
+    /// it may end through that child, but for a lookahead, which ends where it started. Each
+    /// node is marked once.
+    fn skips(&self, parents: &[Vec<u32>], nullable: &[bool]) -> Vec<bool> {
+        let unknown = |node: &Node, nullable| node.form == Form::Unknown && nullable;
+        let mut skips: Vec<bool> = (self.nodes.iter().zip(nullable))
+            .map(|(node, &nullable)| node.form == Form::Skip || unknown(node, nullable))
+            .collect();
+        let mut todo: Vec<u32> = (0..skips.len() as u32)
+            .filter(|&node| skips[node as usize])
+            .collect();
+        while let Some(node) = todo.pop() {
+            for &parent in &parents[node as usize] {
+                let form = self.nodes[parent as usize].form;
+                if nullable[parent as usize] && form != Form::Test && !skips[parent as usize] {
+                    skips[parent as usize] = true;
+                    todo.push(parent);
+                }
+            }
+        }
+        skips
     }
 
     /// How many children each node starts at its own start: all of them, or for a sequence
