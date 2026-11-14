@@ -11,7 +11,6 @@ every node and does not recurse.
 
 from __future__ import annotations
 
-import weakref
 from typing import Any, ClassVar, Final
 
 from fpeg import _fpeg
@@ -37,10 +36,23 @@ _NO_METHOD: Final = object()
 
 _NO_VALUE = _fpeg.NO_VALUE
 
-# By class, weakly, so that a class made for one task goes when it is no longer used: how the
-# methods of trees built in Python are called, which have no grammar, and those of terminals.
-_owned: weakref.WeakKeyDictionary[type, dict[str, _Convention | None]] = weakref.WeakKeyDictionary()
-_tokens: weakref.WeakKeyDictionary[type, dict[str, int | None]] = weakref.WeakKeyDictionary()
+# The attributes under which a class keeps how its methods are called: those of trees built in
+# Python, which have no grammar, and those of terminals.
+_OWNED: Final = "_fpeg_owned"
+_TOKENS: Final = "_fpeg_tokens"
+
+
+def _kept(cls: type, attribute: str) -> dict[str, Any]:
+    """Return the dict a class keeps under an attribute of its own, which goes with the class.
+
+    A weak dictionary by class costs a weak reference at every look, which is a fifth of a walk
+    over tokens.
+    """
+    kept: dict[str, Any] | None = cls.__dict__.get(attribute)
+    if kept is None:
+        kept = {}
+        setattr(cls, attribute, kept)
+    return kept
 
 
 def _convention(cls: type, name: str, fields: dict[str, bool] | None) -> _Convention:
@@ -79,7 +91,7 @@ def _owned_convention(cls: type, name: Any) -> _Convention | None:
     """Say how the method for a tree built in Python is called, if the class has one."""
     if not isinstance(name, str):
         return None
-    by_name = _owned.setdefault(cls, {})
+    by_name = _kept(cls, _OWNED)
     if name not in by_name:
         by_name[name] = _convention(cls, name, None) if is_handler(cls, name) else None
     return by_name[name]
@@ -89,7 +101,7 @@ def _token_mode(cls: type, name: Any) -> int | None:
     """Say how the method of a terminal is called, if the class has one."""
     if not isinstance(name, str):
         return None
-    by_name = _tokens.setdefault(cls, {})
+    by_name = _kept(cls, _TOKENS)
     if name not in by_name:
         by_name[name] = token_convention(cls, name) if is_handler(cls, name) else None
     return by_name[name]

@@ -125,6 +125,25 @@ def test_a_token_gives_its_method_else_its_builder_else_itself() -> None:
     assert fpeg.Interpreter().visit(name) is name
 
 
+def test_a_subclass_is_called_by_its_own_methods_after_its_base_was_used() -> None:
+    class Base(fpeg.Interpreter):
+        pass
+
+    name = parse("x = 1;").children[0].children[0]
+    assert Base().visit(name) is name
+    assert Base().visit(fpeg.Tree("made", [name])) == [name]
+
+    class Sub(Base):
+        def NAME(self) -> str:
+            return "name"
+
+        def made(self) -> str:
+            return "made"
+
+    assert Sub().visit(name) == "name"
+    assert Sub().visit(fpeg.Tree("made", [name])) == "made"
+
+
 def test_the_builder_of_a_rule_is_not_applied() -> None:
     built = fpeg.Grammar('start: pair\npair: NAME NAME => tuple\nNAME: [a-z]+\n%ignore " "+')
     assert fpeg.Interpreter().visit(built.parse("a b")) == [["a", "b"]]
