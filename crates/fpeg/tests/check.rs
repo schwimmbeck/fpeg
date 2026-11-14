@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use fpeg::builder::{GrammarBuilder, lit, many, opt, r, seq};
+use fpeg::builder::{GrammarBuilder, ch, class, lit, many, opt, r, seq};
 use fpeg::{Expr, ExprKind, Grammar, Severity};
 
 /// The codes `check` gives for a grammar text, in the order of their places.
@@ -164,18 +164,25 @@ fn an_alternative_is_shadowed_by_an_earlier_one_it_starts_with() {
 }
 
 /// Time the check of a choice between thousands of alternatives may take in a debug build.
-/// Each is compared with the 256 before it, by a hash of each part first, which takes a few
-/// seconds. All pairs take a minute, and pairs compared down to the bottom of a deep first
-/// part they share half a minute.
-const LONG_CHOICE_SECONDS: f64 = 20.0;
+/// Each is compared with the 256 before it, by a hash of each part first, which takes a second
+/// or two. All pairs take a minute, and pairs compared down to the bottom of a deep first part
+/// they share a quarter of a minute.
+const LONG_CHOICE_SECONDS: f64 = 10.0;
 
 #[test]
 fn a_choice_between_thousands_of_alternatives_is_checked_in_time() {
     let distinct = (0..30_000).map(|i| seq([lit(&format!("k{i:05}")), r("X")]));
     // A first part ninety levels deep that all alternatives share, then one of their own.
-    let deep = || (0..90).fold(r("X"), |part, _| opt(part));
-    let shared = (0..8_000).map(|i| seq([deep(), lit(&format!("k{i:05}"))]));
-    for alternatives in [distinct.collect::<Vec<_>>(), shared.collect()] {
+    let deep = |bottom: Expr| (0..90).fold(bottom, |part, _| opt(part));
+    let shared = (0..4_000).map(|i| seq([deep(r("X")), lit(&format!("k{i:05}"))]));
+    // A first part as deep, whose class at the bottom is the only difference.
+    let symbol = |i: u32| char::from_u32(0x4E00 + i).expect("a code point");
+    let classes = (0..4_000).map(|i| seq([deep(class([ch(symbol(i))])), r("X")]));
+    for alternatives in [
+        distinct.collect::<Vec<_>>(),
+        shared.collect(),
+        classes.collect(),
+    ] {
         let mut g = GrammarBuilder::new();
         g.rule("start", Expr::new(ExprKind::Choice(alternatives)));
         g.rule("X", lit("x"));

@@ -11,7 +11,9 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::diag::{Diagnostic, DiagnosticCode};
-use crate::grammar::{ErrorLabel, Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span};
+use crate::grammar::{
+    ClassItem, ErrorLabel, Expr, ExprKind, Grammar, Name, RuleBody, RuleKind, Span,
+};
 use crate::ir::{self, CharSet};
 use crate::items::Counts;
 use crate::vm::{Options, compile};
@@ -491,6 +493,18 @@ fn hash_written(expr: &Expr, hasher: &mut DefaultHasher) {
         K::FlagTest { flag, negated } => (&flag.text, negated).hash(hasher),
         K::Label { label, .. } => label_text(label).hash(hasher),
         K::Error { message } => message.value.hash(hasher),
+        K::Class(class) => {
+            class.negated.hash(hasher);
+            for item in &class.items {
+                std::mem::discriminant(item).hash(hasher);
+                match item {
+                    ClassItem::Range(first, last) => (first, last).hash(hasher),
+                    ClassItem::Property { property, negated } => {
+                        (std::mem::discriminant(property), negated).hash(hasher);
+                    }
+                }
+            }
+        }
         _ => {}
     }
     let children = expr.children();
