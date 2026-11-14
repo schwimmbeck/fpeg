@@ -208,8 +208,8 @@ fn check_reports_each_problem_with_its_place_and_code() {
     assert_eq!(
         text(&out.stdout),
         format!(
-            "{bad}:2:1: error[E204]: the rule start is defined twice\n\
-             {bad}:1:8: error[E201]: unknown rule x\n"
+            "{bad}:1:8: error[E201]: unknown rule x\n\
+             {bad}:2:1: error[E204]: the rule start is defined twice\n"
         )
     );
 }

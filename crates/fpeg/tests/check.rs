@@ -44,6 +44,11 @@ fn the_acceptance_grammars_give_no_warning() {
 #[test]
 fn a_grammar_that_does_not_resolve_gives_its_errors_alone() {
     assert_eq!(codes("start: missing | \"a\"? | \"b\"\n"), ["E201"]);
+    // In the order of the text, as all that `check` gives.
+    assert_eq!(
+        codes("start: b a\nstart: \"x\"\nc: zz\n"),
+        ["E201", "E201", "E204", "E201"]
+    );
 }
 
 #[test]
