@@ -928,6 +928,37 @@ fn a_long_sequence_of_parts_that_may_be_empty_compiles_in_linear_time() {
 const LINEAR_COMPILE_SECONDS: f64 = 10.0;
 
 #[test]
+fn the_rules_a_choice_point_can_call_twice_are_found_in_linear_time() {
+    // Gathering the rules that a part or alternative calls afresh after each one took time
+    // quadratic in their number.
+    let calls = || (0..TWICE_CALLS).map(|i| r(&format!("r{i}")));
+    let sequence = Expr::new(ExprKind::Sequence(calls().map(opt).collect()));
+    let choice = Expr::new(ExprKind::Choice(calls().collect()));
+    for start in [sequence, choice] {
+        let mut g = GrammarBuilder::new();
+        g.rule("start", start);
+        for i in 0..TWICE_CALLS {
+            g.rule(&format!("r{i}"), lit("a"));
+        }
+        let grammar = crate::resolve::resolve(&g.build()).expect("it resolves");
+        let facts = crate::analysis::analyze(&grammar);
+        let started = std::time::Instant::now();
+        let twice = facts.tried_twice(&grammar);
+        let seconds = started.elapsed().as_secs_f64();
+        assert!(seconds < TWICE_SECONDS, "{seconds:.1} s");
+        assert!(!twice.contains(&true));
+    }
+}
+
+/// The parts of the sequence and the alternatives of the choice above, each a call of a rule of
+/// its own.
+const TWICE_CALLS: usize = 50_000;
+
+/// Time the search may take in a debug build. Linear, it takes a few hundredths of a second,
+/// quadratic several seconds.
+const TWICE_SECONDS: f64 = 1.0;
+
+#[test]
 fn the_deepest_grammars_compile_on_a_small_stack() {
     // The resolver and the compiler recurse once per level of an expression, which the resolver
     // bounds: 100 levels in a rule, and twice that in a template instance whose argument nests

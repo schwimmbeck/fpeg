@@ -342,6 +342,8 @@ impl Facts {
             twice: vec![false; grammar.rules.len()],
             shared: HashMap::new(),
             rule: RuleId(0),
+            sets: vec![0; grammar.rules.len()],
+            newest: 0,
         };
         for (i, rule) in grammar.rules.iter().enumerate() {
             walk.rule = RuleId(i as u32);
@@ -561,15 +563,45 @@ struct Twice<'f> {
     shared: HashMap<*const ir::Expr, Vec<u32>>,
     /// The rule whose body is walked.
     rule: RuleId,
+    /// For each rule, the newest set of calls it was put in, so that finding the rules that
+    /// two lists share takes time linear in their lengths.
+    sets: Vec<u64>,
+    /// The number of the newest set.
+    newest: u64,
 }
 
 impl Twice<'_> {
-    fn mark(&mut self, calls: &[u32]) {
+    fn mark(&mut self, called: u32) {
+        if called != self.rule.0
+            && let Some(twice) = self.twice.get_mut(called as usize)
+        {
+            *twice = true;
+        }
+    }
+
+    /// A new set of calls, which holds none.
+    fn new_set(&mut self) -> u64 {
+        self.newest += 1;
+        self.newest
+    }
+
+    /// Mark the rules of `calls` that `set` holds.
+    fn mark_held(&mut self, set: u64, calls: &[u32]) {
         for &called in calls {
-            if called != self.rule.0
-                && let Some(twice) = self.twice.get_mut(called as usize)
+            if self.sets.get(called as usize) == Some(&set) {
+                self.mark(called);
+            }
+        }
+    }
+
+    /// Put the rules of `calls` in `set`, and append those it did not hold to `list`.
+    fn put(&mut self, set: u64, calls: &[u32], list: &mut Vec<u32>) {
+        for &called in calls {
+            if let Some(stamp) = self.sets.get_mut(called as usize)
+                && *stamp != set
             {
-                *twice = true;
+                *stamp = set;
+                list.push(called);
             }
         }
     }
@@ -583,7 +615,7 @@ impl Twice<'_> {
         }
     }
 
-    /// The rules `expr` calls at its start, sorted, marking those its choice points call
+    /// The rules `expr` calls at its start, each once, marking those its choice points call
     /// twice. It recurses as deeply as the expression nests, which the resolver bounds.
     fn calls(&mut self, expr: &ir::Expr) -> Vec<u32> {
         use ir::Expr as E;
@@ -592,26 +624,29 @@ impl Twice<'_> {
             E::Seq(parts) => {
                 let starts: Vec<Vec<u32>> = parts.iter().map(|part| self.calls(part)).collect();
                 // What the sequence goes on with after each part, from the last part back.
+                let mut set = self.new_set();
                 let mut after: Vec<u32> = Vec::new();
                 for (part, calls) in parts.iter().zip(&starts).rev() {
                     if self.goes_on_after_failing(part) {
-                        let both = common(calls, &after);
-                        self.mark(&both);
+                        self.mark_held(set, calls);
                     }
-                    after = match self.facts.nullable_expr(part) {
-                        true => union(calls, &after),
-                        false => calls.clone(),
-                    };
+                    if !self.facts.nullable_expr(part) {
+                        set = self.new_set();
+                        after.clear();
+                    }
+                    self.put(set, calls, &mut after);
                 }
                 after
             }
             E::Choice(alternatives) => {
+                let starts: Vec<Vec<u32>> = (alternatives.iter())
+                    .map(|alternative| self.calls(alternative))
+                    .collect();
+                let set = self.new_set();
                 let mut seen = Vec::new();
-                for alternative in alternatives {
-                    let calls = self.calls(alternative);
-                    let both = common(&calls, &seen);
-                    self.mark(&both);
-                    seen = union(&seen, &calls);
+                for calls in &starts {
+                    self.mark_held(set, calls);
+                    self.put(set, calls, &mut seen);
                 }
                 seen
             }
@@ -648,21 +683,6 @@ impl Twice<'_> {
             | E::ErrorAlternative => Vec::new(),
         }
     }
-}
-
-/// The rules in both sorted lists.
-fn common(a: &[u32], b: &[u32]) -> Vec<u32> {
-    (a.iter().copied())
-        .filter(|rule| b.binary_search(rule).is_ok())
-        .collect()
-}
-
-/// The rules in either sorted list, sorted.
-fn union(a: &[u32], b: &[u32]) -> Vec<u32> {
-    let mut all = [a, b].concat();
-    all.sort_unstable();
-    all.dedup();
-    all
 }
 
 /// The kinds of head tokens of both, sorted, or none where there are too many to keep.
