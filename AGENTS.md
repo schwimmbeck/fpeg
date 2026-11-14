@@ -40,7 +40,7 @@ crates/fpeg/          core: grammar front end, analysis, compiler, parsing machi
   grammars/           grammars shipped with the library and the acceptance grammars, samples in samples/
 crates/fpeg-cli/      the fpeg command: check, parse, profile
 crates/fpeg-py/       PyO3 binding, built with maturin
-python/fpeg/          Python package: Transformer, tree and token views, type stubs
+python/fpeg/          Python package: Transformer, Interpreter, tree and token views, type stubs
 benchmarks/           benchmark harness, corpus fetchers, recorded results
 benchmarks/rust/      fpeg's Rust benchmarks and baselines, a package outside the workspace
 docs/                 user documentation, one Markdown file per page

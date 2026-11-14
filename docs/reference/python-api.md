@@ -197,6 +197,67 @@ assert "        key holds one item." in template
 .. autofunction:: fpeg.v_args
 ```
 
+## Interpreter
+
+An `Interpreter` walks a tree from the top. `visit(node)` calls the method named like the node, and the method decides what to visit of it and when, so a branch that is not taken is never looked at. That is what running a program needs, where a `Transformer` has computed every child before a method sees it.
+
+A method gets the parts of its node as parsed, not yet visited, and visits one with `self.visit(part)`. Its signature says what it gets, as for a `Transformer`:
+
+| Method | Gets |
+|---|---|
+| `def if_(self, test, then)`, every parameter a field | the fields by name: the node or token, or `None` when absent, for a field of at most one item, a list for a field that can hold several |
+| `def block(self, *children)` | the visible children as arguments |
+| `def block(self, node)`, a parameter that is no field | the node |
+| `def block(self)` | nothing |
+| `def NUMBER(self, token)` | the token |
+| `meta`, `node` or `children` as keyword-only parameters | beside the rest: where the node spans, the node, the list of its children |
+
+```python
+program = fpeg.Grammar(r"""
+start: statement*
+?statement: assign | if_
+assign: target=NAME "=" value=expr ";"
+if_: "if" test=expr "{" then=statement* "}"
+?expr: name=NAME -> load | NUMBER
+NAME: [a-z]+
+NUMBER: [0-9]+ => int
+%ignore " "+
+%word [a-z]
+""")
+
+
+class Run(fpeg.Interpreter):
+    def __init__(self):
+        self.variables = {}
+
+    def assign(self, target, value):
+        self.variables[str(target)] = self.visit(value)
+
+    def if_(self, test, then):
+        if self.visit(test):
+            for statement in then:
+                self.visit(statement)
+
+    def load(self, name):
+        return self.variables[str(name)]
+
+
+run = Run()
+run.visit(program.parse("x = 1; if x { y = 2; } if 0 { y = missing; }"))
+assert run.variables == {"x": 1, "y": 2}
+```
+
+A node without a method gives `visit_children(node)`, the list of its visited children, which `start` does above. Override `__default__(self, node)` to give something else. Visiting a token gives what the method named like its terminal returns, else the value of the terminal's builder, as `int` for `NUMBER` above, else the token. The builders of rules are not applied, since a method decides when the children are visited.
+
+`v_args` is not for an `Interpreter`.
+
+The walk recurses in Python, a few calls deep for every level of the tree. A tree nested deeper than Python's recursion limit allows ends it with `RecursionError`, where a `Transformer` does not recurse and takes a tree of any depth.
+
+```{eval-rst}
+.. autoclass:: fpeg.Interpreter
+   :members: visit, visit_children, __default__
+```
+
 ## Value builders
 
 A grammar can say itself what its nodes and tokens are worth: `=> builder` after an alternative, as the [grammar reference](grammar.md#values) describes. A transformer without a method for a node uses its builder, so a bare `fpeg.Transformer()` turns a tree into values with no Python method called, and a method still overrides a builder.

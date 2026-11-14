@@ -1,0 +1,159 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+from typing import Any
+
+import fpeg
+import pytest
+
+# A small language: assignments, and an `if` that must not run the branch it does not take.
+PROGRAMS = fpeg.Grammar(r"""
+start: statement*
+?statement: assign | if_ | block
+assign: target=NAME "=" value=expr ";"
+if_: "if" test=expr then=block ("else" otherwise=block)?
+block: "{" statement* "}"
+?expr: name=NAME -> load | NUMBER | "[" items=(expr ** ",") "]" -> list_
+NAME: [a-z]+
+NUMBER: [0-9]+ => int
+%ignore [ \n]+
+%word [a-z]
+""")
+
+
+def parse(text: str) -> fpeg.Tree:
+    tree = PROGRAMS.parse(text)
+    assert isinstance(tree, fpeg.Tree)
+    return tree
+
+
+class Run(fpeg.Interpreter):
+    """Runs a program and returns its variables."""
+
+    def __init__(self) -> None:
+        self.variables: dict[str, Any] = {}
+
+    def start(self, *statements: fpeg.Tree) -> dict[str, Any]:
+        for statement in statements:
+            self.visit(statement)
+        return self.variables
+
+    def assign(self, target: fpeg.Token, value: Any) -> None:
+        self.variables[str(target)] = self.visit(value)
+
+    def if_(self, test: Any, then: fpeg.Tree, otherwise: fpeg.Tree | None) -> None:
+        if self.visit(test):
+            self.visit(then)
+        elif otherwise is not None:
+            self.visit(otherwise)
+
+    def load(self, name: fpeg.Token) -> Any:
+        return self.variables[str(name)]
+
+    def list_(self, items: list[Any]) -> list[Any]:
+        return [self.visit(item) for item in items]
+
+
+def test_a_method_visits_what_it_asks_for_and_nothing_else() -> None:
+    variables = Run().visit(parse("x = 1; if x { y = 2; } else { y = z; } if 0 { y = z; }"))
+    # The branches not taken read `z`, which no statement sets.
+    assert variables == {"x": 1, "y": 2}
+
+
+def test_parameters_named_like_fields_get_the_fields_as_parsed() -> None:
+    seen: list[Any] = []
+
+    class Fields(fpeg.Interpreter):
+        def if_(self, test: Any, then: Any, otherwise: Any) -> None:
+            seen.append((test, then.data, otherwise))
+
+        def list_(self, items: Any) -> None:
+            seen.append([str(item) for item in items])
+
+    Fields().visit(parse("if 7 { } x = [1, 2];"))
+    token, then, otherwise = seen[0]
+    # One item, as a view or a token, `None` for an absent field, a list for a field of several.
+    assert (token, token.type, then, otherwise) == ("7", "NUMBER", "block", None)
+    assert seen[1] == ["1", "2"]
+
+
+def test_one_parameter_that_names_no_field_gets_the_node() -> None:
+    class Nodes(fpeg.Interpreter):
+        def assign(self, node: fpeg.Tree) -> tuple[str, str]:
+            return (node.data, str(node.field("target")))
+
+    assert Nodes().visit(parse("x = 1;")) == [("assign", "x")]
+
+
+def test_a_starred_parameter_gets_the_children_as_parsed_and_none_nothing() -> None:
+    class Children(fpeg.Interpreter):
+        def assign(self, *children: Any) -> list[str]:
+            return [str(child) for child in children]
+
+        def block(self) -> str:
+            return "block"
+
+    assert Children().visit(parse("x = 1; { y = 2; }")) == [["x", "1"], "block"]
+
+
+def test_keyword_only_parameters_give_the_node_its_place_and_its_children() -> None:
+    class Extras(fpeg.Interpreter):
+        def assign(self, target: Any, *, meta: fpeg.Meta, node: fpeg.Tree, children: Any) -> Any:
+            return (str(target), meta.column, node.data, len(children))
+
+    assert Extras().visit(parse("  x = 1;")) == [("x", 3, "assign", 2)]
+
+
+def test_a_node_without_a_method_gives_the_list_of_its_visited_children() -> None:
+    class Names(fpeg.Interpreter):
+        def NAME(self, token: fpeg.Token) -> str:
+            return token.upper()
+
+    assert Names().visit(parse("x = [y, 1];")) == [["X", [["Y"], 1]]]
+
+
+def test_a_token_gives_its_method_else_its_builder_else_itself() -> None:
+    class Words(fpeg.Interpreter):
+        def NAME(self) -> str:
+            return "name"
+
+    tree = parse("x = 1;")
+    name, number = tree.children[0].children
+    assert Words().visit(name) == "name"
+    # The builder of NUMBER is `int`. NAME has none.
+    assert fpeg.Interpreter().visit(number) == 1
+    assert fpeg.Interpreter().visit(name) is name
+
+
+def test_the_builder_of_a_rule_is_not_applied() -> None:
+    built = fpeg.Grammar('start: pair\npair: NAME NAME => tuple\nNAME: [a-z]+\n%ignore " "+')
+    assert fpeg.Interpreter().visit(built.parse("a b")) == [["a", "b"]]
+
+
+def test_a_signature_that_fits_no_convention_fails_with_the_fields_of_the_node() -> None:
+    class Wrong(fpeg.Interpreter):
+        def assign(self, target: Any, expr: Any) -> None:
+            pass
+
+    with pytest.raises(TypeError, match="the fields of assign are target, value"):
+        Wrong().visit(parse("x = 1;"))
+
+    class Decorated(fpeg.Interpreter):
+        @fpeg.v_args(inline=True)
+        def assign(self, target: Any, value: Any) -> None:
+            pass
+
+    with pytest.raises(TypeError, match=r"Decorated\.assign has v_args"):
+        Decorated().visit(parse("x = 1;"))
+
+
+def test_a_rule_named_like_a_method_of_the_base_class_is_no_handler() -> None:
+    visits = fpeg.Grammar("start: visit\nvisit: NAME\nNAME: [a-z]+")
+    assert fpeg.Interpreter().visit(visits.parse("a")) == [["a"]]
+
+
+def test_a_tree_nested_deeper_than_the_recursion_limit_ends_the_walk() -> None:
+    deep = fpeg.Grammar('start: item\n?item: NAME | "(" item ")" -> group\nNAME: [a-z]+')
+    tree = deep.parse("(" * 5_000 + "a" + ")" * 5_000, max_depth=20_000)
+    with pytest.raises(RecursionError):
+        fpeg.Interpreter().visit(tree)

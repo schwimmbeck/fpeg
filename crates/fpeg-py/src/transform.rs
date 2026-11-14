@@ -84,25 +84,30 @@ pub struct Plan {
     default_token: bool,
 }
 
-/// The plans of a grammar, one per transformer class. The classes are held weakly, so that a
-/// class made for one task goes when it is no longer used, and its plan with the next insert.
-#[derive(Default)]
-pub struct Plans(Mutex<Vec<(Py<PyWeakrefReference>, Arc<Plan>)>>);
+/// The plans of a grammar, one per class. The classes are held weakly, so that a class made
+/// for one task goes when it is no longer used, and its plan with the next insert.
+pub struct Plans<P>(Mutex<Vec<(Py<PyWeakrefReference>, Arc<P>)>>);
+
+impl<P> Default for Plans<P> {
+    fn default() -> Plans<P> {
+        Plans(Mutex::new(Vec::new()))
+    }
+}
 
 /// Whether a weak reference still points at `class`.
 fn points_at(known: &Py<PyWeakrefReference>, class: &Bound<'_, PyType>) -> bool {
     (known.bind(class.py()).upgrade()).is_some_and(|known| known.is(class))
 }
 
-impl Plans {
-    fn find(&self, class: &Bound<'_, PyType>) -> Option<Arc<Plan>> {
+impl<P> Plans<P> {
+    fn find(&self, class: &Bound<'_, PyType>) -> Option<Arc<P>> {
         let plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         (plans.iter())
             .find(|(known, _)| points_at(known, class))
             .map(|(_, plan)| Arc::clone(plan))
     }
 
-    fn insert(&self, class: &Bound<'_, PyType>, plan: Arc<Plan>) -> PyResult<Arc<Plan>> {
+    fn insert(&self, class: &Bound<'_, PyType>, plan: Arc<P>) -> PyResult<Arc<P>> {
         let weak = PyWeakrefReference::new(class)?.unbind();
         let mut plans = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         // Another thread may have made the same plan meanwhile, and then its plan is kept.
@@ -677,6 +682,29 @@ pub fn scan<'py>(
         return Ok(PyList::new(py, objects)?.into_any());
     }
     Ok(PyTuple::new(py, objects)?.into_any())
+}
+
+/// The plan of an Interpreter class for the grammar of a view: what `make_plan` gave for the
+/// class and the kinds of the grammar when the two first met. The walk is in Python, so the
+/// plan is whatever its plan maker returns. `None` for a tree built in Python, which has no
+/// grammar.
+#[pyfunction]
+pub fn walk_plan<'py>(
+    py: Python<'py>,
+    class: &Bound<'py, PyType>,
+    view: &Bound<'py, Tree>,
+    make_plan: &Bound<'py, PyAny>,
+) -> PyResult<Option<Py<PyAny>>> {
+    let Some((parsed, _)) = view.get().parse_entry() else {
+        return Ok(None);
+    };
+    let core = &parsed.grammar;
+    if let Some(plan) = core.walk_plans.find(class) {
+        return Ok(Some(plan.clone_ref(py)));
+    }
+    let made = make_plan.call1((class, kind_table(py, core)?))?.unbind();
+    let plan = core.walk_plans.insert(class, Arc::new(made))?;
+    Ok(Some(plan.clone_ref(py)))
 }
 
 /// The value the builder of a token's terminal gives it, or `NO_VALUE` when it has none: a

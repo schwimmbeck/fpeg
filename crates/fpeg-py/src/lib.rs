@@ -22,7 +22,7 @@ mod _fpeg {
     #[pymodule_export]
     use crate::grammar::{Grammar, check};
     #[pymodule_export]
-    use crate::transform::{DiscardType, is_view, scan, token_value};
+    use crate::transform::{DiscardType, is_view, scan, token_value, walk_plan};
     #[pymodule_export]
     use crate::tree::{Meta, Tree, rebuild_tree};
 

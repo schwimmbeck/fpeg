@@ -5,9 +5,11 @@
 
 from collections.abc import Callable, Iterator, Mapping
 from os import PathLike
-from typing import Any, Literal, final
+from typing import Any, Literal, TypeVar, final
 
 from typing_extensions import disjoint_base
+
+_Plan = TypeVar("_Plan")
 
 __version__: str
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     "rebuild_tree",
     "scan",
     "token_value",
+    "walk_plan",
 ]
 
 @final
@@ -216,3 +219,8 @@ def scan(
     ],
 ) -> tuple[Any, ...] | list[Any]: ...
 def token_value(token: Token) -> Any: ...
+def walk_plan(
+    cls: type,
+    view: Tree,
+    make_plan: Callable[[type, list[tuple[str, bool, tuple[tuple[str, bool], ...]]]], _Plan],
+) -> _Plan | None: ...

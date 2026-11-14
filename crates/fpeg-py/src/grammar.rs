@@ -18,7 +18,7 @@ use pyo3::types::{PyString, PyType};
 
 use crate::builders::{self, Builder};
 use crate::errors::{Diagnostic, diagnostics, grammar_error, parse_error};
-use crate::transform::Plans;
+use crate::transform::{Plan, Plans};
 use crate::tree::{Parsed, item};
 
 /// Inputs from this size on are parsed with the thread detached from the interpreter, so that
@@ -54,7 +54,9 @@ pub struct GrammarCore {
     /// is what a node of that name shows by field.
     pub name_fields: Vec<Vec<(FieldId, FieldCount)>>,
     /// The plans of the transformer classes that met the grammar.
-    pub plans: Plans,
+    pub plans: Plans<Plan>,
+    /// The plans of the Interpreter classes that met the grammar, made in Python.
+    pub walk_plans: Plans<Py<PyAny>>,
     /// The value builder of each kind, by kind id.
     pub builders: Vec<Option<Builder>>,
 }
@@ -133,6 +135,7 @@ impl GrammarCore {
             field_ids,
             name_fields,
             plans: Plans::default(),
+            walk_plans: Plans::default(),
             builders: resolved,
         })
     }
