@@ -3,6 +3,8 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
+use std::collections::HashMap;
+
 use fpeg::builder::{
     GrammarBuilder, any, choice, def, empty, field, lit, many, on, opt, r, r_args,
 };
@@ -15,6 +17,15 @@ use fpeg::{
 /// A stack too small for printing that recursed once per level of a deep tree, with room for
 /// the frames of a build without optimizations.
 const PRINT_STACK_BYTES: usize = 128 * 1024;
+
+/// Modules in a chain, each extending the next, beyond the depth that joining allows.
+const MODULE_CHAIN: usize = 70;
+
+/// Modules on each level of a fan of imports, where each imports every module of the next.
+const MODULE_FAN: usize = 10;
+
+/// Levels of that fan: 10, 100 and 1,000 reads, beyond the modules that joining allows.
+const MODULE_FAN_LEVELS: usize = 3;
 
 fn nesting() -> Reference {
     let grammar = Grammar::from_text("start: nest\nnest: \"(\" nest \")\" | \"x\"\n")
@@ -296,6 +307,46 @@ fn grammars_that_nest_too_deeply_are_errors_not_stack_overflows() {
             "{shown}: {errors:?}"
         );
     }
+}
+
+#[test]
+fn modules_that_chain_too_deep_or_multiply_are_errors_not_stack_overflows() {
+    let codes = |text: &str, modules: HashMap<String, String>| {
+        let grammar = Grammar::from_text(text).expect("the grammar reads");
+        let errors = grammar.link(&modules).expect_err("too many modules");
+        errors.iter().map(|e| e.code).collect::<Vec<_>>()
+    };
+    // A chain of modules, each extending the next.
+    let chain = (0..MODULE_CHAIN)
+        .map(|i| {
+            (
+                format!("m{i}"),
+                format!("%extends \"m{}\"\nr{i}: \"x\"", i + 1),
+            )
+        })
+        .collect();
+    assert_eq!(codes("%extends \"m0\"", chain), [DiagnosticCode::TooDeep]);
+    // Each module of a level imports every module of the next, which multiplies the reads.
+    let level = |depth: usize| -> Vec<String> {
+        (0..MODULE_FAN).map(|i| format!("l{depth}x{i}")).collect()
+    };
+    let imports = |depth: usize| -> String {
+        (level(depth).iter())
+            .map(|name| format!("%import {name} (r{name})\n"))
+            .collect()
+    };
+    let mut fan = HashMap::new();
+    for depth in 0..MODULE_FAN_LEVELS {
+        let below = if depth + 1 < MODULE_FAN_LEVELS {
+            imports(depth + 1)
+        } else {
+            String::new()
+        };
+        for name in level(depth) {
+            fan.insert(name.clone(), format!("{below}r{name}: \"x\""));
+        }
+    }
+    assert_eq!(codes(&imports(0), fan), [DiagnosticCode::TooLarge]);
 }
 
 #[test]

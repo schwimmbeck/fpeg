@@ -122,6 +122,8 @@ pub enum DiagnosticCode {
     NotYet,
     /// E601: a grammar extended or imported that no module provides.
     UnknownModule,
+    /// E602: a grammar that takes itself in through the grammars it extends and imports.
+    ModuleCycle,
     /// E603: a rule imported that the grammar defines too.
     ImportClash,
     /// E604: a rule imported that its grammar does not define.
@@ -152,7 +154,7 @@ pub enum DiagnosticCode {
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 39] = [
+    pub const ALL: [DiagnosticCode; 40] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -179,6 +181,7 @@ impl DiagnosticCode {
         DiagnosticCode::TooLarge,
         DiagnosticCode::NotYet,
         DiagnosticCode::UnknownModule,
+        DiagnosticCode::ModuleCycle,
         DiagnosticCode::ImportClash,
         DiagnosticCode::UnknownImport,
         DiagnosticCode::Inherited,
@@ -223,6 +226,7 @@ impl DiagnosticCode {
             DiagnosticCode::TooLarge => "E402",
             DiagnosticCode::NotYet => "E501",
             DiagnosticCode::UnknownModule => "E601",
+            DiagnosticCode::ModuleCycle => "E602",
             DiagnosticCode::ImportClash => "E603",
             DiagnosticCode::UnknownImport => "E604",
             DiagnosticCode::Inherited => "E605",

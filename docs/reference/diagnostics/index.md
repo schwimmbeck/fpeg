@@ -20,7 +20,7 @@ The hundreds of a code tell its area.
 | E301 to E310 | forms that do not fit where they stand |
 | E401, E402 | limits on the size of a grammar |
 | E501 | what a later milestone of the roadmap brings |
-| E601, E603 to E605 | grammars that extend and import others |
+| E601 to E605 | grammars that extend and import others |
 | E901 | a bug of fpeg itself |
 | W101 to W103 | alternatives that a choice never reaches |
 | W201, W202 | repetition and recursion that do not do what they seem to |

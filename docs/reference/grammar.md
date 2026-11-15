@@ -178,7 +178,7 @@ From loosest to tightest:
 - In `e ** s` and `e ++ s` the separator `s` is a primary, so a compound separator needs parentheses. A trailing separator is not matched.
 - `**` and `++` must be followed by their separator. A repetition of a repetition is written `(e*)*` or `e* *`.
 - `()` matches the empty string.
-- Expressions nest at most 100 levels deep, counting every operator and group. A deeper grammar is an error. So are more than 1000 instances of templates, and instances that expand into more than 100,000 expressions together, counting a copy of an argument for every use of its parameter.
+- Expressions nest at most 100 levels deep, counting every operator and group. A deeper grammar is an error. So are more than 1000 instances of templates, and instances that expand into more than 100,000 expressions together, counting a copy of an argument for every use of its parameter. A grammar takes in at most 1000 [modules](#modules) together, counting one again for each directive that takes it in, at most 64 deep in a chain of grammars that extend or import the next, and with at most 64 MiB of text.
 - `~` is a cut: once the sequence it stands in has passed it, a failure later in that sequence makes the innermost choice or repetition fail at once, without trying its remaining alternatives.
 
 ## Shaping the tree
@@ -373,6 +373,7 @@ NAME: [a-z]+
 - A rule that replaces another says its own markers and attributes, `?` and `@memo` included.
 - The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's.
 - A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn.
+- The grammars it extends and imports come from the modules given with it where it is loaded, then from those that come with fpeg. A grammar that takes itself in through them is an error ([E602](diagnostics/E602.md)).
 - An import takes the rules it names under their names, and the rules they need under the grammar's name and a dot, as `common.DIGIT`, which no grammar can write, so they clash with none. Each keeps its kind, so `common.DIGIT` is a terminal as `DIGIT` is, and its nodes and tokens carry that name. The levels of a precedence block taken in come under such names too, also those of a block taken by name. `%import common` without names takes every rule.
 - A rule the grammar defines too cannot be imported ([E603](diagnostics/E603.md)), nor one the other grammar lacks ([E604](diagnostics/E604.md)).
 - The flags of the rules imported join the grammar's under their names, so its skip expression can test one they set. Their grammar's other directives stay behind: the grammar that imports says what it skips and what its words are.

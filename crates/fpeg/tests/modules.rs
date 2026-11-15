@@ -5,7 +5,9 @@
 //! `...` puts the inherited alternatives, the directives they add, the rules an import brings in
 //! and under which names, and the problems of modules with their codes.
 
-use fpeg::{Diagnostic, DiagnosticCode, Grammar, Parser};
+use std::collections::HashMap;
+
+use fpeg::{Diagnostic, DiagnosticCode, Grammar, ModuleFiles, Modules, Parser};
 
 /// The tree of an input from `start`, as the tests print trees.
 fn tree(text: &str, input: &str) -> String {
@@ -179,4 +181,74 @@ fn an_import_of_a_name_defined_twice_or_not_at_all_is_an_error() {
         let found = found(text);
         assert!(found.iter().any(|d| d.code == code), "{text}: {found:?}");
     }
+}
+
+/// A grammar text joined with modules given by name, or what the joining finds.
+fn linked(text: &str, modules: &[(&str, &str)]) -> Result<Grammar, Vec<Diagnostic>> {
+    let modules: HashMap<String, String> = (modules.iter())
+        .map(|(name, text)| ((*name).to_owned(), (*text).to_owned()))
+        .collect();
+    let grammar = Grammar::from_text(text).unwrap_or_else(|errors| panic!("{errors:?}"));
+    grammar.link(&modules)
+}
+
+#[test]
+fn a_grammar_extends_and_imports_the_modules_it_is_given_before_the_library() {
+    let base = "start: item+\nitem: WORD\nWORD: [a-z]+\n%ignore \" \"+";
+    // A module named like one of the library's takes its place.
+    let common = "NUMBER: [0-9]+ \"!\"";
+    let text = "%extends \"base\"\n%import common (NUMBER)\nitem: ... | NUMBER";
+    let joined = linked(text, &[("base", base), ("common", common)]).expect("it joins");
+    let parser = Parser::new(&joined).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let tree = parser
+        .parse("ab 12!", "start")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(
+        tree.to_text("ab 12!", false),
+        "(start (item WORD\"ab\") (item NUMBER\"12!\"))"
+    );
+}
+
+#[test]
+fn a_grammar_that_takes_itself_in_is_an_error() {
+    let modules = [
+        ("a", "%extends \"b\"\nx: \"x\""),
+        ("b", "%import a (x)\ny: x"),
+    ];
+    let errors = linked("%extends \"a\"\nstart: \"s\"", &modules).unwrap_err();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].code, DiagnosticCode::ModuleCycle);
+}
+
+#[test]
+fn a_problem_in_a_module_given_stands_at_the_directive_with_its_place_in_the_module() {
+    let text = "%extends \"base\"\nstart: item";
+    let joined = linked(text, &[("base", "item: \"a\"\nother: missing")]).expect("it joins");
+    let Err(errors) = Parser::new(&joined) else {
+        panic!("an unknown rule");
+    };
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(
+        errors[0].message,
+        "in the grammar base, line 2, column 8: unknown rule missing"
+    );
+    assert_eq!(
+        &text[errors[0].span.start as usize..errors[0].span.end as usize],
+        "\"base\""
+    );
+}
+
+#[test]
+fn module_files_are_the_grammar_files_of_a_folder_by_plain_names() {
+    let folder = std::env::temp_dir().join(format!("fpeg-modules-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("a folder");
+    std::fs::write(folder.join("base.fpeg"), "\u{feff}start: \"a\"").expect("a file");
+    let files = ModuleFiles::new(&folder);
+    assert_eq!(files.text("base").as_deref(), Some("start: \"a\""));
+    assert_eq!(files.text("missing"), None);
+    // A name that is a path would reach out of the folder.
+    let inner = folder.join("inner");
+    std::fs::create_dir_all(&inner).expect("a folder");
+    assert_eq!(ModuleFiles::new(&inner).text("../base"), None);
+    std::fs::remove_dir_all(&folder).expect("the folder goes");
 }

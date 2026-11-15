@@ -145,7 +145,7 @@ struct Resolver<'g> {
 /// Resolve a grammar into the core language, or report the problems found, the first hundred at
 /// most.
 pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>> {
-    let grammar = crate::grammar::link::link(grammar)?;
+    let grammar = crate::grammar::link::link_library(grammar)?;
     resolve_counted(&grammar)
         .map(|(resolved, _)| resolved)
         .map_err(|errors| grammar.locate(errors))

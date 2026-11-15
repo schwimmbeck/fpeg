@@ -33,8 +33,8 @@ pub use diag::{Diagnostic, DiagnosticCode, Severity};
 pub use grammar::builder;
 pub use grammar::{
     Alternative, BUILT_IN_BUILDERS, BuilderArg, BuilderValue, Class, ClassItem, Constant, Count,
-    ErrorLabel, Expr, ExprKind, Grammar, Import, Level, MAX_EXPRESSION_DEPTH, Name, Property,
-    Recover, Rule, RuleBody, RuleKind, Span, Text, ValueBuilder,
+    ErrorLabel, Expr, ExprKind, Grammar, Import, Level, MAX_EXPRESSION_DEPTH, ModuleFiles, Modules,
+    Name, Property, Recover, Rule, RuleBody, RuleKind, Span, Text, ValueBuilder,
 };
 pub use lines::{LineCursor, LineIndex, Position};
 pub use parse::{

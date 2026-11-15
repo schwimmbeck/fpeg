@@ -89,6 +89,8 @@ fn every_code_has_a_page_whose_example_and_fix_hold() {
         let shown = path.display();
         match found.as_slice() {
             [] if code == DiagnosticCode::Internal => continue,
+            // Only modules given with a grammar can take it in again, which one text cannot show.
+            [] if code == DiagnosticCode::ModuleCycle => continue,
             // Only the Python binding is given functions, so its page shows Python, which the
             // docs build runs.
             blocks if code == DiagnosticCode::BuilderFunction => {

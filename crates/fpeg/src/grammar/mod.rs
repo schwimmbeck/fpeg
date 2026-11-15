@@ -10,6 +10,7 @@
 mod bootstrap;
 pub mod builder;
 pub(crate) mod link;
+pub use link::{ModuleFiles, Modules};
 // Printed from the grammar file by `bootstrap`, which lays it out.
 #[rustfmt::skip]
 mod meta;

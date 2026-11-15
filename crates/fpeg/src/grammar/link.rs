@@ -9,6 +9,8 @@
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::hash::BuildHasher;
+use std::path::PathBuf;
 
 use super::{
     Alternative, Expr, ExprKind, Grammar, Import, Level, Name, Rule, RuleBody, Span, Text,
@@ -16,9 +18,21 @@ use super::{
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::lines::LineIndex;
 
+/// Modules that may extend or import each other in a chain, which bounds the recursion of
+/// joining them, since modules given with a grammar can come from anywhere.
+const MAX_MODULE_DEPTH: usize = 64;
+
+/// Modules a grammar may take in together, counting a module again for each directive that
+/// takes it in, so that a lattice of imports cannot multiply them without end.
+const MAX_MODULES: usize = 1_000;
+
+/// Bytes of grammar text, the grammar's own and that of the modules it takes in, counted again
+/// for each directive, that joining may read together.
+const MAX_MODULE_TEXT_BYTES: u32 = 64 << 20;
+
 /// The text of a grammar that comes with the library, by the name a grammar extends or imports
 /// it by.
-pub fn bundled(name: &str) -> Option<&'static str> {
+fn bundled(name: &str) -> Option<&'static str> {
     match name {
         "common" => Some(include_str!("../../grammars/common.fpeg")),
         "json" => Some(include_str!("../../grammars/json.fpeg")),
@@ -27,20 +41,88 @@ pub fn bundled(name: &str) -> Option<&'static str> {
     }
 }
 
+/// Where the grammars that a grammar extends and imports come from, before those that come
+/// with the library.
+pub trait Modules {
+    /// The text of the grammar of this name, if there is one.
+    fn text(&self, name: &str) -> Option<String>;
+}
+
+/// Modules given by name with their texts.
+impl<S: BuildHasher> Modules for HashMap<String, String, S> {
+    fn text(&self, name: &str) -> Option<String> {
+        self.get(name).cloned()
+    }
+}
+
+/// The modules of the first, then those of the second.
+impl<A: Modules, B: Modules> Modules for (A, B) {
+    fn text(&self, name: &str) -> Option<String> {
+        self.0.text(name).or_else(|| self.1.text(name))
+    }
+}
+
+/// The grammar files of a folder: the module `m` is the file `m.fpeg`, UTF-8 with or without a
+/// byte order mark. A name of other characters than letters, digits, `_` and `-` names none,
+/// so that a grammar cannot reach out of the folder.
+#[derive(Clone, Debug)]
+pub struct ModuleFiles {
+    folder: PathBuf,
+}
+
+impl ModuleFiles {
+    /// The grammar files of a folder.
+    pub fn new(folder: impl Into<PathBuf>) -> ModuleFiles {
+        ModuleFiles {
+            folder: folder.into(),
+        }
+    }
+}
+
+impl Modules for ModuleFiles {
+    fn text(&self, name: &str) -> Option<String> {
+        let plain = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+        if name.is_empty() || !name.chars().all(plain) {
+            return None;
+        }
+        let text = std::fs::read_to_string(self.folder.join(format!("{name}.fpeg"))).ok()?;
+        Some(match text.strip_prefix('\u{feff}') {
+            Some(rest) => rest.to_owned(),
+            None => text,
+        })
+    }
+}
+
+/// Only the grammars that come with the library.
+struct Library;
+
+impl Modules for Library {
+    fn text(&self, _name: &str) -> Option<String> {
+        None
+    }
+}
+
 /// The text of a module, where its spans start, and the directive of the grammar that took it
 /// in, directly or through other modules.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Source {
     name: String,
-    text: &'static str,
+    text: String,
     base: u32,
     directive: Span,
 }
 
 impl Grammar {
-    /// The diagnostics, each whose span lies in a module joined in moved to the directive that
-    /// took the module in, with its message saying where in the module.
-    pub(crate) fn locate(&self, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    /// The grammar joined with the grammars it extends and imports, which `modules` gives
+    /// before the library. A grammar is joined by itself where it is compiled or checked, with
+    /// the library's grammars alone.
+    pub fn link(&self, modules: &dyn Modules) -> Result<Grammar, Vec<Diagnostic>> {
+        link(self, modules).map(Cow::into_owned)
+    }
+
+    /// The diagnostics of a joined grammar, each whose span lies in a module moved to the
+    /// directive that took the module in, with its message saying where in the module.
+    pub fn locate(&self, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
         diagnostics
             .into_iter()
             .map(|d| locate(&self.sources, d))
@@ -55,8 +137,8 @@ fn locate(sources: &[Source], diagnostic: Diagnostic) -> Diagnostic {
     else {
         return diagnostic;
     };
-    let lines = LineIndex::new(source.text);
-    let (line, column) = lines.line_column(source.text, (at - source.base) as usize);
+    let lines = LineIndex::new(&source.text);
+    let (line, column) = lines.line_column(&source.text, (at - source.base) as usize);
     Diagnostic {
         message: format!(
             "in the grammar {}, line {line}, column {column}: {}",
@@ -67,14 +149,24 @@ fn locate(sources: &[Source], diagnostic: Diagnostic) -> Diagnostic {
     }
 }
 
+/// Join a grammar with the grammars it extends and imports, from the library alone.
+pub(crate) fn link_library(grammar: &Grammar) -> Result<Cow<'_, Grammar>, Vec<Diagnostic>> {
+    link(grammar, &Library)
+}
+
 /// Join a grammar with the grammars it extends and imports.
-pub(crate) fn link(grammar: &Grammar) -> Result<Cow<'_, Grammar>, Vec<Diagnostic>> {
+fn link<'g>(
+    grammar: &'g Grammar,
+    modules: &dyn Modules,
+) -> Result<Cow<'g, Grammar>, Vec<Diagnostic>> {
     if grammar.extends.is_none() && grammar.imports.is_empty() {
         return Ok(Cow::Borrowed(grammar));
     }
     let mut linker = Linker {
+        modules,
         sources: Vec::new(),
         next_base: extent(grammar) + 1,
+        reading: Vec::new(),
     };
     match linker.linked(grammar.clone(), None) {
         Ok(mut joined) => {
@@ -118,9 +210,12 @@ fn extent(grammar: &Grammar) -> u32 {
     .unwrap_or(0)
 }
 
-struct Linker {
+struct Linker<'m> {
+    modules: &'m dyn Modules,
     sources: Vec<Source>,
     next_base: u32,
+    /// The modules being joined, each with what it extends and imports, outermost first.
+    reading: Vec<String>,
 }
 
 fn problem(code: DiagnosticCode, message: String, span: Span) -> Vec<Diagnostic> {
@@ -131,7 +226,7 @@ fn problem(code: DiagnosticCode, message: String, span: Span) -> Vec<Diagnostic>
     }]
 }
 
-impl Linker {
+impl Linker<'_> {
     /// A grammar joined with what it extends and imports, through any number of grammars.
     /// `directive` is the one of the grammar itself that this grammar came in through.
     fn linked(
@@ -141,41 +236,74 @@ impl Linker {
     ) -> Result<Grammar, Vec<Diagnostic>> {
         if let Some(base) = grammar.extends.take() {
             let through = directive.unwrap_or(base.span);
-            let module = self.read(&base, through)?;
-            let module = self.linked(module, Some(through))?;
+            let module = self.joined(&base, through)?;
             grammar = extend(module, grammar)?;
         }
         for taken in by_module(std::mem::take(&mut grammar.imports))? {
             let through = directive.unwrap_or(taken.module.span);
-            let module = self.read(&taken.module, through)?;
-            let module = self.linked(module, Some(through))?;
+            let module = self.joined(&taken.module, through)?;
             import(&mut grammar, module, &taken.module, taken.names)?;
         }
         Ok(grammar)
     }
 
+    /// A module joined with what it extends and imports in turn.
+    fn joined(&mut self, name: &Text, directive: Span) -> Result<Grammar, Vec<Diagnostic>> {
+        if self.reading.contains(&name.value) {
+            let message = format!(
+                "the grammar {} takes itself in through the grammars it extends and imports",
+                name.value
+            );
+            return Err(problem(DiagnosticCode::ModuleCycle, message, directive));
+        }
+        if self.reading.len() == MAX_MODULE_DEPTH {
+            let message = format!(
+                "the grammars extend and import each other more than {MAX_MODULE_DEPTH} deep"
+            );
+            return Err(problem(DiagnosticCode::TooDeep, message, directive));
+        }
+        if self.sources.len() == MAX_MODULES {
+            let message = format!(
+                "the grammar takes in more than {MAX_MODULES} grammars through those it extends \
+                 and imports"
+            );
+            return Err(problem(DiagnosticCode::TooLarge, message, directive));
+        }
+        let module = self.read(name, directive)?;
+        self.reading.push(name.value.clone());
+        let joined = self.linked(module, Some(directive));
+        self.reading.pop();
+        joined
+    }
+
     /// The grammar model of a module.
     fn read(&mut self, name: &Text, directive: Span) -> Result<Grammar, Vec<Diagnostic>> {
-        let Some(text) = bundled(&name.value) else {
+        let text = self.modules.text(&name.value);
+        let Some(text) = text.or_else(|| bundled(&name.value).map(str::to_owned)) else {
             let message = format!("no grammar is named {}", name.value);
             return Err(problem(DiagnosticCode::UnknownModule, message, name.span));
         };
         let base = self.next_base;
         let too_large = || {
-            let message = "the grammars extended and imported take too much text".to_owned();
+            let message = format!(
+                "the grammars extended and imported take more than {} MiB of text",
+                MAX_MODULE_TEXT_BYTES >> 20
+            );
             problem(DiagnosticCode::TooLarge, message, directive)
         };
         let length = u32::try_from(text.len()).map_err(|_| too_large())?;
         self.next_base = (base.checked_add(length))
             .and_then(|end| end.checked_add(1))
+            .filter(|&end| end <= MAX_MODULE_TEXT_BYTES)
             .ok_or_else(too_large)?;
+        let module = Grammar::read_module(&text, base);
         self.sources.push(Source {
             name: name.value.clone(),
             text,
             base,
             directive,
         });
-        Grammar::read_module(text, base)
+        module
     }
 }
 
