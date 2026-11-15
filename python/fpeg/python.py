@@ -92,15 +92,26 @@ def _with_context(expr: Any, context: Any) -> Any:
     return expr
 
 
-def _block(statements: list[Any]) -> list[Any]:
-    """Return the statements of a block or a module.
+def _flat(statements: list[Any]) -> list[Any]:
+    """Return the statements with each list among them, at any depth, in its place.
 
-    A line of simple statements gives a list of them, and each compound statement ends where
-    its last statement ends.
+    A line of simple statements gives a list of them, and the method of a subclass may give a
+    list for one statement.
     """
     out: list[Any] = []
-    for statement in statements:
-        out.extend(cast(list[Any], statement) if isinstance(statement, list) else [statement])
+    pending = statements[::-1]
+    while pending:
+        statement = pending.pop()
+        if isinstance(statement, list):
+            pending.extend(cast(list[Any], statement)[::-1])
+        else:
+            out.append(statement)
+    return out
+
+
+def _block(statements: list[Any]) -> list[Any]:
+    """Return the statements of a block or a module, each compound one ending with its last."""
+    out = _flat(statements)
     for statement in out:
         _statement_end(statement)
     return out
@@ -315,7 +326,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.Module(body=_block(statements), type_ignores=[])
 
     def simple_statements(self, items: Any) -> Any:
-        return items
+        return _flat(items)
 
     def indented_block(self, statements: Any) -> Any:
         return _block(statements)

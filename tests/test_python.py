@@ -209,6 +209,16 @@ def test_statements_give_the_tree_of_cpython() -> None:
     compare(STATEMENTS)
 
 
+def test_a_method_of_a_subclass_may_give_several_statements_for_one() -> None:
+    class Twice(python.ToAst):
+        def pass_(self) -> list[ast.stmt]:
+            return [ast.Pass(), ast.Pass()]
+
+    module = Twice().transform(python.GRAMMAR.parse("if x: pass; y\nwhile z:\n    pass\n"))
+    assert [type(s).__name__ for s in module.body[0].body] == ["Pass", "Pass", "Expr"]
+    assert [type(s).__name__ for s in module.body[1].body] == ["Pass", "Pass"]
+
+
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
 @pytest.mark.parametrize("path", FILES)
 def test_a_file_gives_the_tree_of_cpython(path: Path, line_break: str) -> None:

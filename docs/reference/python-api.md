@@ -410,7 +410,7 @@ print(ast.dump(module.body[0].value))
 BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=Add(), right=Name(id='rate')))
 ```
 
-`python.GRAMMAR` is the grammar and `python.ToAst` the transformer behind `parse`, with a method for each kind of node and positions stamped as `ast` counts them. A language that adds to Python extends both: a grammar that starts with `%extends "python"`, and a subclass of `ToAst` with methods for its new rules. `python.ToAstBase` holds the same methods without stamping, for a subclass that sets positions its own way.
+`python.GRAMMAR` is the grammar and `python.ToAst` the transformer behind `parse`, with a method for each kind of node and positions stamped as `ast` counts them. A language that adds to Python extends both: a grammar that starts with `%extends "python"`, and a subclass of `ToAst` with methods for its new rules. A method may give a list of statements where one statement stands. `python.ToAstBase` holds the same methods without stamping, for a subclass that sets positions its own way.
 
 ```{eval-rst}
 .. autofunction:: fpeg.python.parse
