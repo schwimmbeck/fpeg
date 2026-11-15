@@ -5,6 +5,7 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 ## Sizes
 
 - A text holds at most 4 GiB less one byte, since positions are 32-bit. A longer text raises `LimitError` with the limit `"input size"`.
+- A parse takes at most 4,294,967,295 steps, however high `max_steps` is set, since every item the parser keeps took a step and its indices are 32-bit too.
 - A grammar declares at most 64 [flags](grammar.md#flags), and its other sizes are bounded as [E402](diagnostics/E402.md) lists them.
 
 ## Parsing

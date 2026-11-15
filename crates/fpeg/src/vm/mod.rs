@@ -34,6 +34,11 @@ const RESTART_MIN_STEPS: u64 = 1_000_000;
 /// remembered, where they come to more than [`RESTART_MIN_STEPS`].
 const RESTART_STEPS_PER_BYTE: u64 = 1_000;
 
+/// Steps a parse takes at most, whatever its limit says. Every item on the machine's stacks
+/// and every entry of a tree took a step, so this keeps their counts within the 32-bit indices
+/// that the machine and the tree store.
+const MAX_STEPS: u64 = u32::MAX as u64;
+
 /// How a grammar is compiled. The default suits every use but tests and measurements, which
 /// turn single parts of the engine off or on. No setting changes what a parse returns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -234,6 +239,10 @@ impl Parser {
         limits: Limits,
         how: Run,
     ) -> (Result<Tree, ParseError>, Option<Profile>) {
+        let limits = Limits {
+            max_steps: limits.max_steps.min(MAX_STEPS),
+            ..limits
+        };
         let program = self.program_for(plain, false);
         let budget = (input.len() as u64)
             .saturating_mul(RESTART_STEPS_PER_BYTE)

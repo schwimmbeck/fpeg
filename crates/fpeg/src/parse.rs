@@ -44,8 +44,9 @@ pub struct Limits {
     /// A fixed cap on nested matches, which keeps the reference interpreter within its own
     /// stack, stops a parse with the same limit whatever this allows.
     pub max_depth: u32,
-    /// The number of steps, counted as for [`DEFAULT_MAX_STEPS`]. The reference interpreter
-    /// counts steps of its own.
+    /// The number of steps, counted as for [`DEFAULT_MAX_STEPS`]. The parsing machine takes at
+    /// most `u32::MAX` steps whatever this allows, since every item it keeps took a step and
+    /// its indices are 32 bits wide. The reference interpreter counts steps of its own.
     pub max_steps: u64,
     /// The memory in bytes a parse may hold: what the parsing machine's stacks and tables
     /// have room for, and the tree it lays out at the end, each counted before it grows.
