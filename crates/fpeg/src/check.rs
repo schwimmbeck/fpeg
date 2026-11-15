@@ -211,9 +211,11 @@ fn unused(grammar: &Grammar, bodies: &[Body<'_>], found: &mut Vec<Diagnostic>) {
             span: flag.span,
         });
     }
+    // A grammar that replaces the rules raising a label of a module it extends leaves that
+    // module's recovery unused, which is no mistake of its own.
     for recover in &grammar.recovers {
         let label = recover.label.text.as_str();
-        if !uses.labels.contains(label) {
+        if !uses.labels.contains(label) && !grammar.in_module(recover.label.span) {
             found.push(Diagnostic {
                 code: DiagnosticCode::UnusedRecovery,
                 message: format!(

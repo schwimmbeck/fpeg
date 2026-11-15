@@ -156,13 +156,22 @@ impl Grammar {
             .map(|d| locate(&self.sources, d))
             .collect()
     }
+
+    /// Whether a span of the joined grammar lies in a grammar it extends or imports.
+    pub(crate) fn in_module(&self, span: Span) -> bool {
+        source_of(&self.sources, span).is_some()
+    }
+}
+
+/// The grammar that a span of a joined grammar lies in, where it is a module.
+fn source_of(sources: &[Source], span: Span) -> Option<&Source> {
+    let at = span.start;
+    (sources.iter()).find(|s| s.base <= at && (at - s.base) as usize <= s.text.len())
 }
 
 fn locate(sources: &[Source], diagnostic: Diagnostic) -> Diagnostic {
     let at = diagnostic.span.start;
-    let Some(source) =
-        (sources.iter()).find(|s| s.base <= at && (at - s.base) as usize <= s.text.len())
-    else {
+    let Some(source) = source_of(sources, diagnostic.span) else {
         return diagnostic;
     };
     let lines = LineIndex::new(&source.text);

@@ -3,8 +3,14 @@
 
 // JSON. The value builders turn a parse into Python objects without a callback, numbers as
 // json.loads gives them: an int without a fraction or an exponent, a float with one.
+//
+// Each label stands where a failure can only be a mistake of the text, so that the labels change
+// nothing the grammar accepts. A parse with recovery skips a member or value that does not parse
+// up to the next comma or closing bracket, parsing the members and values on its way, takes a
+// missing colon as missing, skips to a closing bracket that does not come where it should, and
+// takes text after the value as one error.
 
-?start: value
+?start: value (!. ^ trailing)
 
 ?value: object
       | array
@@ -15,9 +21,9 @@
       | "false" => False
       | "null" => None
 
-object: "{" (member ** ",") "}" => dict
-member: key=STRING ":" value=value => tuple
-array: "[" (value ** ",") "]" => list
+object: "{" (member ("," (member ^ member))*)? ("}" ^ brace) => dict
+member: key=STRING (":" ^ colon) (value=value ^ value) => tuple
+array: "[" (value ("," (value ^ value))*)? ("]" ^ bracket) => list
 
 STRING "string": "\"" (CHAR | ESCAPE)* "\"" => unquote
 CHAR: [^"\\\u{0}-\u{1f}]
@@ -27,3 +33,10 @@ INT "number": "-"? ("0" | [1-9] [0-9]*) => int
 FLOAT "number": "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+ ([eE] [+-]? [0-9]+)? | [eE] [+-]? [0-9]+) => float
 
 %ignore [ \t\r\n]+
+
+%recover member: (member | !("," | "}") .)*
+%recover value: (value | !("," | "}" | "]") .)*
+%recover colon: ()
+%recover brace: (","? member | !("}" | "]") .)* "}"?
+%recover bracket: (","? value | !("]" | "}") .)* "]"?
+%recover trailing: .*

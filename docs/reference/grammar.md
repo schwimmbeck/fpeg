@@ -393,6 +393,8 @@ NAME: [a-z]+
 
 `common` holds terminals that many grammars need: `DIGIT`, `HEXDIGIT`, `INT`, `SIGNED_INT`, `DECIMAL`, `FLOAT`, `SIGNED_FLOAT`, `NUMBER`, `SIGNED_NUMBER`, `ESCAPED_STRING`, `LCASE_LETTER`, `UCASE_LETTER`, `LETTER`, `WORD`, `CNAME`, `WS_INLINE`, `WS`, `CR`, `LF`, `NEWLINE`, `SH_COMMENT`, `CPP_COMMENT`, `C_COMMENT` and `SQL_COMMENT`.
 
+`json` reads JSON, with value builders that give what Python's `json.loads` gives. It names each mistake: `member`, `colon` and `value` for a member or value that does not come, `brace` and `bracket` for one that is not closed, and `trailing` for text after the value, and a parse with recovery goes on past each.
+
 ## The grammar of grammars
 
 The syntax above, written in the language itself. The text front end is built from exactly this grammar.
