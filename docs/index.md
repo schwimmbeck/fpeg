@@ -49,6 +49,7 @@ Complete programs for common tasks, each a grammar and a `Transformer`, to copy 
 
 - [How fpeg works](explanation/how-fpeg-works.md): what happens from the text of a grammar to your values, and what each step costs.
 - [Benchmarks](explanation/benchmarks.md): what fpeg and other parsers take on the same inputs.
+- [Related projects](explanation/related-projects.md): what other parsing tools are for, and how a grammar and its transformer move to fpeg.
 
 ```{toctree}
 :hidden:
@@ -108,6 +109,7 @@ reference/known-limits
 
 explanation/how-fpeg-works
 explanation/benchmarks
+explanation/related-projects
 ```
 
 ```{toctree}

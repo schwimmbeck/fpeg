@@ -1,6 +1,6 @@
 # A language over Python
 
-ORD is a language for designing integrated circuits: Python with a few statements of its own. A cell holds view generators, and inside them a statement places an instance or declares a pin, port, net or path, and sets the attributes and parameters of what it placed. A program of ORD runs as a Python module. This page shows ORD written for fpeg, a grammar that extends the Python grammar and a transformer that extends the one to Python's `ast`, checked against the language's own parser.
+ORD is a language for designing integrated circuits, from the [ordec](https://github.com/tub-msc/ordec) project: Python with a few statements of its own. A cell holds view generators, and inside them a statement places an instance or declares a pin, port, net or path, and sets the attributes and parameters of what it placed. A program of ORD runs as a Python module. This page shows ORD written for fpeg, a grammar that extends the Python grammar and a transformer that extends the one to Python's `ast`, checked against the language's own parser.
 
 ## The language
 
