@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 to M7 are done. Work continues with M8.
+M0 to M8 are done. Work continues with M9.
 
 ## M0 Foundations
 
@@ -60,11 +60,12 @@ The Rust workspace with the core, the command line and the Python binding as emp
 - Two grammar extensions as acceptance tests: JSON with comments, and the first real application over the Python grammar, which gives its own parser's `ast` on all its 76 files, with its benchmark from source text to `ast`.
 - A guide to composing grammars and a case study of a language over Python.
 
-## M8 Errors, complete
+## M8 Errors
 
-- Error messages and labels written in the grammar.
-- Recovery that still returns a tree, with error and missing nodes, for broken input.
-- Rendering of errors with source snippets.
+- Messages written in the grammar: labels that name an error and say what was expected where it stands, labels with messages, and error alternatives that give common mistakes a message of their own.
+- Recovery that still returns a tree for broken input, with error and missing items, from `%recover` in the grammar, in Python and on the command line, and recoveries in the JSON and Python grammars, measured on texts with single edits.
+- Errors shown with the line of the text they stand in, in Python and on the command line, and grammar files read with recovery, so that a check reports each syntax error.
+- A guide to errors and recovery.
 
 ## M9 Known limits, revisited
 
