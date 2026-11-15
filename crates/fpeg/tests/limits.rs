@@ -31,11 +31,15 @@ const MODULE_FAN_LEVELS: usize = 3;
 const MODULE_NAME_BYTES: usize = 3_000;
 const RENAMED_REFERENCES: usize = 25_000;
 
-/// Imports and flags that a quadratic join would take seconds over, and the time a linear one
-/// stays well within, also in a build without optimizations.
+/// Imports and flags of the larger join of a test, which a quadratic join takes seconds over,
+/// the times smaller the join it is compared with, how many times as long the larger may take,
+/// eight where joining takes linear time and sixty-four where quadratic, and the runs whose best
+/// time counts, so that neither the speed of a machine nor the tests beside it decide.
 const MANY_IMPORTS: usize = 40_000;
 const MANY_FLAGS: usize = 20_000;
-const JOIN_SECONDS: f64 = 2.0;
+const SMALLER_JOIN: usize = 8;
+const MAX_JOIN_TIME_FACTOR: f64 = 20.0;
+const JOIN_RUNS: usize = 3;
 
 fn nesting() -> Reference {
     let grammar = Grammar::from_text("start: nest\nnest: \"(\" nest \")\" | \"x\"\n")
@@ -365,27 +369,40 @@ fn modules_that_chain_too_deep_or_multiply_are_errors_not_stack_overflows() {
     assert_eq!(codes(&text, modules), [DiagnosticCode::TooLarge]);
 }
 
-#[test]
-fn joining_takes_linear_time_in_imports_and_flags() {
-    let started = std::time::Instant::now();
-    // Each import names another module, all of which are missing.
-    let imports: String = (0..MANY_IMPORTS)
+/// The best time of [`JOIN_RUNS`] joins of a grammar with `imports` imports of missing modules
+/// and of an extension and its base with `flags` flags each.
+fn join_seconds(imports: usize, flags: usize) -> f64 {
+    let imports: String = (0..imports)
         .map(|i| format!("%import m{i} (x)\n"))
         .collect();
-    let grammar = Grammar::from_text(&imports).expect("the grammar reads");
-    assert!(grammar.link(&HashMap::new()).is_err());
-    // A base and an extension with as many flags each, which joining merges.
     let flags = |prefix: &str| -> String {
-        let names: Vec<String> = (0..MANY_FLAGS).map(|i| format!("{prefix}{i}")).collect();
+        let names: Vec<String> = (0..flags).map(|i| format!("{prefix}{i}")).collect();
         format!("%flag {}\n", names.join(" "))
     };
     let base = format!("{}start: \"a\"", flags("b"));
-    let grammar = Grammar::from_text(&format!("%extends \"base\"\n{}", flags("e")))
-        .expect("the grammar reads");
-    let joined = grammar.link(&HashMap::from([("base".to_owned(), base)]));
-    assert!(joined.is_ok_and(|joined| joined.flags.len() == 2 * MANY_FLAGS));
-    let seconds = started.elapsed().as_secs_f64();
-    assert!(seconds < JOIN_SECONDS, "{seconds:.2} s");
+    let extension = format!("%extends \"base\"\n{}", flags("e"));
+    let mut best = f64::INFINITY;
+    for _ in 0..JOIN_RUNS {
+        let started = std::time::Instant::now();
+        let grammar = Grammar::from_text(&imports).expect("the grammar reads");
+        assert!(grammar.link(&HashMap::new()).is_err());
+        let grammar = Grammar::from_text(&extension).expect("the grammar reads");
+        let joined = grammar.link(&HashMap::from([("base".to_owned(), base.clone())]));
+        assert!(joined.is_ok());
+        best = best.min(started.elapsed().as_secs_f64());
+    }
+    best
+}
+
+#[test]
+fn joining_takes_linear_time_in_imports_and_flags() {
+    let smaller = join_seconds(MANY_IMPORTS / SMALLER_JOIN, MANY_FLAGS / SMALLER_JOIN);
+    let larger = join_seconds(MANY_IMPORTS, MANY_FLAGS);
+    let factor = larger / smaller;
+    assert!(
+        factor < MAX_JOIN_TIME_FACTOR,
+        "{smaller:.3} s, then {larger:.3} s"
+    );
 }
 
 #[test]
