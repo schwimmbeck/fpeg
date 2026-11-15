@@ -186,9 +186,13 @@ fn a_parse_starts_from_a_rule_or_a_level_but_not_from_an_unknown_name() {
     let unknown = ParseErrorKind::UnknownStart("missing".to_owned());
     let error = reference.parse("1", "missing").expect_err("no such rule");
     assert_eq!(error.kind, unknown);
-    // The machine does not run the left-recursive level, but knows which names exist.
-    let flat = Grammar::from_text("start: N\nN: [0-9]\n").expect("the grammar reads");
-    let parser = Parser::new(&flat).expect("the grammar compiles");
+    // The machine starts from the same level, and knows which names exist.
+    let parser = Parser::new(&grammar).expect("the grammar compiles");
+    let tree = parser.parse("1+2", "sum").expect("a level starts a parse");
+    assert_eq!(
+        tree.to_text("1+2", false),
+        "(add left=N\"1\" ~\"+\" right=N\"2\")"
+    );
     let error = parser.parse("1", "missing").expect_err("no such rule");
     assert_eq!(error.message(), "no rule missing to start from");
     assert_eq!(error.kind, unknown);
