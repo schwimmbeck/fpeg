@@ -56,13 +56,29 @@ const MAX_TAB_WIDTH: u64 = 8;
 /// skip, line breaks with and without indentation, and the start of what one form labels.
 const LAYOUT: [&str; 7] = [" ", " ", "\n", "\n  ", "\t\t", "\n\t", "#x"];
 
-/// SplitMix64, enough to spread seeds over the choices below.
-struct Rng(u64);
+/// SplitMix64, enough to spread seeds over the choices below. Given bytes, as a fuzzer gives
+/// them, each choice takes the next byte instead, every choice being below 256, so that a
+/// change to one byte changes one choice, and SplitMix goes on where the bytes end.
+struct Rng {
+    state: u64,
+    /// The bytes still to take, the next one last.
+    bytes: Vec<u8>,
+}
 
 impl Rng {
+    fn seeded(seed: u64) -> Rng {
+        Rng {
+            state: seed,
+            bytes: Vec::new(),
+        }
+    }
+
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.0;
+        if let Some(byte) = self.bytes.pop() {
+            return u64::from(byte);
+        }
+        self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
         z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
         z ^ (z >> 31)
@@ -688,7 +704,22 @@ pub fn reference_limits() -> Limits {
 
 /// The grammar and inputs of one seed.
 pub fn generate(seed: u64) -> (Grammar, Vec<String>) {
-    let mut rng = Rng(seed);
+    generated(Rng::seeded(seed))
+}
+
+/// The grammar and inputs that the bytes choose, a byte for each choice, as a fuzzer feeds
+/// them, so that coverage steers through the shapes of grammars.
+pub fn generate_from(bytes: &[u8]) -> (Grammar, Vec<String>) {
+    // Inputs that share their bytes and differ after them still part where the bytes end.
+    let seed = (bytes.iter()).fold(bytes.len() as u64, |h, &b| h.rotate_left(8) ^ u64::from(b));
+    generated(Rng {
+        state: seed,
+        bytes: bytes.iter().rev().copied().collect(),
+    })
+}
+
+/// The grammar and inputs that `rng` chooses.
+fn generated(mut rng: Rng) -> (Grammar, Vec<String>) {
     let mut rules: Vec<String> = (0..1 + rng.below(4))
         .map(|i| match (i, rng.below(6)) {
             (0, _) => "start".to_owned(),
@@ -724,7 +755,7 @@ pub fn generate(seed: u64) -> (Grammar, Vec<String>) {
 
 /// The passes for one parser that a comparison samples.
 pub fn sampled_passes(sample: u64) -> Passes {
-    let mut rng = Rng(sample ^ PASSES_SALT);
+    let mut rng = Rng::seeded(sample ^ PASSES_SALT);
     Passes {
         hasher: !rng.chance(PASS_OFF_PERCENT),
         span: !rng.chance(PASS_OFF_PERCENT),

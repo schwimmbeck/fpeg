@@ -56,20 +56,22 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 
 ## Fuzzing
 
-The fuzz targets in `fuzz/` run under [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz), which needs a nightly toolchain and works best on Linux. Each target reads its input as a grammar text, then a NUL, then an input to parse.
+The fuzz targets in `fuzz/` run under [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz), which needs a nightly toolchain and works best on Linux. `grammar` and `differential` read their input as a grammar text, then a NUL, then an input to parse. `generated` lets its input's bytes choose a grammar and its inputs through the generator of the tests, a byte for each choice, so that every input is a grammar, and its first eight bytes pick what the machine remembers and the passes it runs.
 
 | Target | What it checks |
 |---|---|
 | `grammar` | reading, compiling and parsing end without a panic, whatever the grammar and the input |
 | `differential` | the parsing machine gives the tree or error of the reference interpreter |
+| `generated` | the same for generated grammars, in recovering mode too, at every setting of the machine |
 
 ```sh
 cargo install cargo-fuzz
 cd fuzz
 cargo +nightly fuzz run differential corpus/differential ../crates/fpeg/grammars -- -dict=fpeg.dict -max_total_time=600
+cargo +nightly fuzz run generated corpus/generated -- -max_total_time=600
 ```
 
-The corpus folders come before `--` and libFuzzer's options after it. The grammars of the project serve as the first inputs. libFuzzer keeps what it finds in `fuzz/corpus/` and a failing input in `fuzz/artifacts/`, both ignored by git.
+The corpus folders come before `--` and libFuzzer's options after it. The grammars of the project serve as the first inputs of the targets that read grammar text. libFuzzer keeps what it finds in `fuzz/corpus/` and a failing input in `fuzz/artifacts/`, both ignored by git.
 
 ## Tests of the core
 

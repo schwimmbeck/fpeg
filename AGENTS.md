@@ -111,7 +111,7 @@ Run the checks for everything you touched before calling work done. The Rust ver
   - the reference interpreter, compared with the engine on generated grammars and inputs at every optimization setting,
   - CPython's own `ast` for the Python grammar, over a corpus,
   - `json` and other standard parsers wherever a grammar has one.
-- Keep the suite fast. Slow, large-corpus and fuzz runs sit behind `#[ignore]` or a marker and run on a schedule.
+- Keep the suite fast. Slow, large-corpus and fuzz runs sit behind `#[ignore]` or a marker and run on a schedule. Each fuzz target runs a round on Linux when a milestone closes.
 - A performance claim is a benchmark in `benchmarks/`, never a number typed into a doc.
 
 ## Docs
