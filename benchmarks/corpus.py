@@ -203,11 +203,12 @@ def write_whole(path: Path, text: str) -> None:
     partial.replace(path)
 
 
-def fetch(url: str, path: Path) -> None:
-    """Download a file beside its target and rename it, as ``write_whole`` writes one."""
+def fetch(url: str, path: Path, expected: str) -> None:
+    """Download a file beside its target, and rename it once it has the pinned hash."""
     partial = path.with_suffix(".partial")
     with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response:
         partial.write_bytes(response.read())
+    check(partial, expected)
     partial.replace(path)
 
 
@@ -259,8 +260,7 @@ def prepare() -> None:
         for name, expected in ORDEC_PACKAGE_SHA256.items():
             check(ORD_PACKAGE / name, expected)
     if not matches(LUA_TESTS.path, LUA_TESTS.sha256):
-        fetch(LUA_TESTS_URL, LUA_TESTS.path)
-        check(LUA_TESTS.path, LUA_TESTS.sha256)
+        fetch(LUA_TESTS_URL, LUA_TESTS.path, LUA_TESTS.sha256)
 
 
 if __name__ == "__main__":
