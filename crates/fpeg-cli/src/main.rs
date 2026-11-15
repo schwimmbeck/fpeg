@@ -364,11 +364,26 @@ fn push_json_string(out: &mut String, text: &str) {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if u32::from(c) < 0x20 => {
+            c if acted_on(c) => {
                 let _ = write!(out, "\\u{:04x}", u32::from(c));
             }
             c => out.push(c),
         }
     }
     out.push('"');
+}
+
+/// Whether a terminal acts on a character rather than showing it: a control, DEL, a
+/// bidirectional control, or a line or paragraph separator. JSON may escape any character.
+fn acted_on(c: char) -> bool {
+    matches!(
+        c,
+        '\0'..='\x1f'
+            | '\x7f'..='\u{9f}'
+            | '\u{61c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+    )
 }

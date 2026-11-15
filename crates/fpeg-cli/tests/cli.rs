@@ -135,6 +135,23 @@ fn parse_reads_standard_input_and_prints_json() {
 }
 
 #[test]
+fn json_escapes_the_characters_a_terminal_acts_on() {
+    let paths = files("json_controls", &[("any.fpeg", "start: C*\nC: .\n")]);
+    let out = run_with_input(
+        ["parse".as_ref(), "--json".as_ref(), paths[0].as_os_str()],
+        "\u{9b}\u{202e}\u{7f}",
+    );
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let shown = text(&out.stdout);
+    for escaped in ["\\u009b", "\\u202e", "\\u007f"] {
+        assert!(
+            shown.contains(&format!("\"text\":\"{escaped}\"")),
+            "{shown}"
+        );
+    }
+}
+
+#[test]
 fn a_failed_parse_reports_where_and_what_was_expected() {
     let paths = files("failed", &[("sums.fpeg", SUMS)]);
     let out = run_with_input(["parse".as_ref(), paths[0].as_os_str()], "1 +\n+ 2");

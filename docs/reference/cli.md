@@ -44,7 +44,7 @@ start
 
 A token shows its kind and its text, and a field its name before the item. `~` marks a hidden token, here the anonymous literal `"+"`, whose kind is the literal itself. With `--spans` every item also shows its byte span, as in `start@0..6` and `first=N"1"@0..1`.
 
-`--json` prints the tree as JSON instead: an array of the top items, where a node has `kind`, `start`, `end` and `children`, a token has `kind`, `start`, `end` and `text`, and either has `field` when it fills one. A hidden token has `"hidden": true`. Spans are byte offsets.
+`--json` prints the tree as JSON instead: an array of the top items, where a node has `kind`, `start`, `end` and `children`, a token has `kind`, `start`, `end` and `text`, and either has `field` when it fills one. A hidden token has `"hidden": true`. Spans are byte offsets. Controls and the characters that change the direction of text are escaped, so that printing the JSON cannot rewrite the terminal.
 
 ```text
 [{"kind":"start","start":0,"end":6,"children":[{"kind":"N","field":"first","start":0,"end":1,"text":"1"},{"kind":"\"+\"","start":2,"end":3,"text":"+","hidden":true},{"kind":"N","start":4,"end":6,"text":"23"}]}]
