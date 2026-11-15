@@ -143,6 +143,19 @@ fn the_json_grammar_recovers_most_of_a_broken_text() {
 }
 
 #[test]
+fn a_json_member_that_does_not_parse_skips_whole_values_up_to_any_closing_bracket() {
+    let text = include_str!("../grammars/json.fpeg");
+    let parser = Parser::new(&Grammar::from_text(text).expect("reads")).expect("compiles");
+    let labels = |input: &str| {
+        let tree = parser.parse_recovering(input, "start").expect("recovers");
+        let labels: Vec<String> = tree.recoveries().iter().map(|r| r.label.clone()).collect();
+        labels
+    };
+    assert_eq!(labels("{\"a\": 1, [2, 3], \"b\": 4}"), ["member"]);
+    assert_eq!(labels("[{\"a\": 1, ]"), ["member", "brace"]);
+}
+
+#[test]
 fn the_json_grammar_names_each_mistake_and_what_it_expected() {
     let text = include_str!("../grammars/json.fpeg");
     let parser = Parser::new(&Grammar::from_text(text).expect("reads")).expect("compiles");
