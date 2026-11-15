@@ -20,9 +20,8 @@ from fpeg import python
 # know whole.
 ast: Any = python_ast
 
-GRAMMAR = fpeg.Grammar.open(
-    Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "ord.fpeg"
-)
+GRAMMAR_PATH = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "ord.fpeg"
+GRAMMAR = fpeg.Grammar.open(GRAMMAR_PATH)
 
 # The pin type and the side a pin faces by default, by the word that declares it.
 PINS = {"input": ("In", "West"), "output": ("Out", "East"), "inout": ("Inout", "South")}
