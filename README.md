@@ -69,6 +69,12 @@ fpeg needs Python 3.11 or newer. From Rust, the crate is [`fpeg`](https://docs.r
 
 > fpeg is not released yet. Until its first release, build it from a checkout as [Contributing](docs/contributing.md) describes.
 
+## Benchmarks
+
+![fpeg and other parsers, time per input](https://github.com/schwimmbeck/fpeg/raw/main/docs/_static/benchmarks.svg)
+
+The [benchmarks page](docs/explanation/benchmarks.md) has the numbers of the newest recorded runs, and the `benchmarks` folder the scripts that take them.
+
 ## Documentation
 
 - [Getting started](docs/start.md): install fpeg, write a first grammar and turn its tree into values, in five minutes.

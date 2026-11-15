@@ -5,6 +5,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | Path | What it holds |
 |---|---|
 | `run.py` | runs the suites and writes `results.json`, `summary.md` and the raw pyperf files |
+| `chart.py` | draws the chart of the README from a recorded run into `docs/_static/benchmarks.svg` |
 | `corpus.py` | generates or downloads the inputs and the corpora of the tests into `corpora/` and checks them against pinned hashes |
 | `harness.py` | the shared part of the pyperf scripts |
 | `bench_json.py` | JSON: fpeg, `json.loads`, Lark and pe on a generated 2.5 MB file |

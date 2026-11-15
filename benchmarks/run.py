@@ -7,7 +7,7 @@ Prepares the inputs, runs the pyperf suites and the criterion suite, and writes 
 a ``summary.md`` and the raw pyperf files to ``benchmarks/.cache/last-run``. With ``--pgo`` the
 criterion suite runs a second time, built with a profile of fpeg's machine. With ``--record`` a
 complete run is then moved to ``benchmarks/results/<date>-<platform>``, with a letter after the
-date for each later run of the same day.
+date for each later run of the same day, and the chart of the README is drawn from it.
 """
 
 import argparse
@@ -25,6 +25,7 @@ import tomllib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import chart
 import corpus
 import pyperf
 from harness import INPUT_METADATA_KEY
@@ -399,6 +400,7 @@ def main() -> None:
     if args.record:
         RESULTS.mkdir(exist_ok=True)
         out = LAST_RUN.rename(record)
+        chart.write(out)
     print(f"results written to {out}")
 
 
