@@ -15,6 +15,12 @@ fpeg is at an early stage. The [command line](reference/cli.md) and the [Python 
 
 [Getting started](start.md) installs fpeg, writes a first grammar and turns the tree of a parse into Python values, in about five minutes.
 
+## Examples
+
+Complete programs for common tasks, each a grammar and a `Transformer`, to copy and change.
+
+- [A calculator](examples/calculator.md): lines of arithmetic with Python's operators, variables and functions.
+
 ## Tutorials
 
 - [Your first grammar](tutorial/first-grammar.md): JSON from nothing to Python objects.
@@ -46,6 +52,7 @@ fpeg is at an early stage. The [command line](reference/cli.md) and the [Python 
 :hidden:
 
 start
+examples/calculator
 roadmap
 tutorial/first-grammar
 tutorial/transformer
