@@ -174,47 +174,149 @@ pub fn grammar_error(
     }
 }
 
-/// The exception for a parse that produced no tree, placed in `source`.
-pub fn parse_error(py: Python<'_>, source: &str, error: &fpeg::ParseError) -> PyErr {
-    let position = LineIndex::new(source).position(source, error.position);
-    let message = error.message();
-    let text = format!(
-        "line {}, column {}: {message}",
-        position.line, position.column
-    );
-    let (exception, limit) = match &error.kind {
-        ParseErrorKind::Limit(limit) => {
-            let name = match limit {
-                Limit::Depth => "depth",
-                Limit::Steps => "steps",
-                Limit::InputSize => "input size",
-                Limit::Memory => "memory",
-                _ => "limit",
-            };
-            (LimitError::new_err(text), Some(name))
-        }
-        _ => (ParseError::new_err(text), None),
-    };
-    let set = || -> PyResult<()> {
-        let value = exception.value(py);
+/// One error a parse found, as its exception reports it.
+struct Found {
+    start: usize,
+    end: usize,
+    message: String,
+    label: Option<String>,
+    expected: Vec<String>,
+    /// The limit that a limit error names.
+    limit: Option<&'static str>,
+}
+
+impl Found {
+    /// The error that ended a parse.
+    fn of_error(error: &fpeg::ParseError) -> Found {
         let (expected, label) = match &error.kind {
             ParseErrorKind::NoMatch { expected } => (expected.clone(), None),
             ParseErrorKind::Label(label) => (Vec::new(), Some(label.clone())),
             _ => (Vec::new(), None),
         };
-        value.setattr(intern!(py, "message"), message)?;
-        value.setattr(intern!(py, "pos"), position.offset)?;
-        value.setattr(intern!(py, "line"), position.line)?;
-        value.setattr(intern!(py, "column"), position.column)?;
-        value.setattr(intern!(py, "expected"), PyTuple::new(py, expected)?)?;
-        value.setattr(intern!(py, "label"), label)?;
-        if let Some(limit) = limit {
+        let limit = match &error.kind {
+            ParseErrorKind::Limit(Limit::Depth) => Some("depth"),
+            ParseErrorKind::Limit(Limit::Steps) => Some("steps"),
+            ParseErrorKind::Limit(Limit::InputSize) => Some("input size"),
+            ParseErrorKind::Limit(Limit::Memory) => Some("memory"),
+            ParseErrorKind::Limit(_) => Some("limit"),
+            _ => None,
+        };
+        Found {
+            start: error.position,
+            end: error.position,
+            message: error.message(),
+            label,
+            expected,
+            limit,
+        }
+    }
+
+    /// A labeled error that a parse recovered from.
+    fn of_recovery(recovery: &fpeg::Recovery) -> Found {
+        Found {
+            start: recovery.start,
+            end: recovery.end,
+            message: recovery.label.clone(),
+            label: Some(recovery.label.clone()),
+            expected: Vec::new(),
+            limit: None,
+        }
+    }
+}
+
+/// The errors of a parse, each placed in the source, and the exceptions that report them.
+struct Report<'s> {
+    source: &'s str,
+    lines: LineIndex,
+}
+
+impl Report<'_> {
+    /// Where an error starts, and its message, as one line of text.
+    fn line(&self, found: &Found) -> String {
+        let start = self.lines.position(self.source, found.start);
+        format!(
+            "line {}, column {}: {}",
+            start.line, start.column, found.message
+        )
+    }
+
+    /// The exception for one error, with `text` as what it says, and no tree and no errors of
+    /// its own.
+    fn exception(&self, py: Python<'_>, found: &Found, text: String) -> PyResult<PyErr> {
+        let exception = match found.limit {
+            Some(_) => LimitError::new_err(text),
+            None => ParseError::new_err(text),
+        };
+        let value = exception.value(py);
+        let start = self.lines.position(self.source, found.start);
+        let end = self.lines.position(self.source, found.end);
+        value.setattr(intern!(py, "message"), &found.message)?;
+        value.setattr(intern!(py, "pos"), start.offset)?;
+        value.setattr(intern!(py, "line"), start.line)?;
+        value.setattr(intern!(py, "column"), start.column)?;
+        value.setattr(intern!(py, "end_pos"), end.offset)?;
+        value.setattr(intern!(py, "end_line"), end.line)?;
+        value.setattr(intern!(py, "end_column"), end.column)?;
+        value.setattr(intern!(py, "expected"), PyTuple::new(py, &found.expected)?)?;
+        value.setattr(intern!(py, "label"), &found.label)?;
+        if let Some(limit) = found.limit {
             value.setattr(intern!(py, "limit"), limit)?;
         }
-        Ok(())
-    };
-    match set() {
-        Ok(()) => exception,
-        Err(failure) => failure,
+        value.setattr(intern!(py, "tree"), py.None())?;
+        value.setattr(intern!(py, "errors"), PyTuple::empty(py))?;
+        Ok(exception)
     }
+
+    /// The exception raised for the errors found: the one at `main` describes it, it says every
+    /// error on a line of its own, lists each as an exception of its own under `errors`, and
+    /// holds the tree the parse recovered.
+    fn raised(
+        &self,
+        py: Python<'_>,
+        found: &[Found],
+        main: usize,
+        tree: Option<Py<PyAny>>,
+    ) -> PyResult<PyErr> {
+        let lines: Vec<String> = found.iter().map(|f| self.line(f)).collect();
+        let errors = (found.iter().zip(&lines))
+            .map(|(f, line)| Ok(self.exception(py, f, line.clone())?.into_value(py)))
+            .collect::<PyResult<Vec<_>>>()?;
+        let raised = self.exception(py, &found[main], lines.join("\n"))?;
+        let value = raised.value(py);
+        value.setattr(intern!(py, "errors"), PyTuple::new(py, errors)?)?;
+        value.setattr(intern!(py, "tree"), tree)?;
+        Ok(raised)
+    }
+}
+
+/// The exception for a parse that produced no tree, placed in `source`: its error, after the
+/// errors a recovering parse recovered from on its way.
+pub fn parse_error(py: Python<'_>, source: &str, error: &fpeg::ParseError) -> PyErr {
+    let report = Report {
+        source,
+        lines: LineIndex::new(source),
+    };
+    let mut found: Vec<Found> = error.recoveries.iter().map(Found::of_recovery).collect();
+    found.push(Found::of_error(error));
+    report
+        .raised(py, &found, found.len() - 1, None)
+        .unwrap_or_else(|failure| failure)
+}
+
+/// The exception for a parse that recovered from errors, placed in `source`: the first error
+/// describes it, and `tree` holds the tree with the error items.
+pub fn recovered_error(
+    py: Python<'_>,
+    source: &str,
+    recoveries: &[fpeg::Recovery],
+    tree: Py<PyAny>,
+) -> PyErr {
+    let report = Report {
+        source,
+        lines: LineIndex::new(source),
+    };
+    let found: Vec<Found> = recoveries.iter().map(Found::of_recovery).collect();
+    report
+        .raised(py, &found, 0, Some(tree))
+        .unwrap_or_else(|failure| failure)
 }

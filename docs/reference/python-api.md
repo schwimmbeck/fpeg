@@ -390,6 +390,32 @@ except fpeg.LimitError as error:
     assert error.limit == "steps"
 ```
 
+A parse with `recover=True` goes on past an error where the grammar says how: where a label that `%recover` gives a recovery fails, what the recovery matches becomes an `<error>` node, or a `<missing>` token where it matches nothing, and the parse goes on. A valid text gives its tree as without `recover`. A text with errors raises `ParseError` all the same, so that no broken text passes for a valid one. `error.tree` holds the recovered tree, `None` where the parse failed even so, and `error.errors` every error in the order of the text, each a `ParseError` of its own whose span runs from `pos` to `end_pos`. The raised error describes the first and says each on a line of its own.
+
+```python
+numbers = fpeg.Grammar(r"""
+start: "[" (item ("," (item ^ item))*)? "]" ^ close
+item: NUMBER
+NUMBER: [0-9]+
+%ignore " "+
+%recover item: (!("," | "]") .)*
+%recover close: ()
+""")
+
+try:
+    numbers.parse("[1, x, 3", recover=True)
+except fpeg.ParseError as error:
+    for problem in error.errors:
+        print(problem)
+    print(error.tree)
+```
+
+```output
+line 1, column 5: item
+line 1, column 9: close
+Tree('start', [Tree('item', [Token('NUMBER', '1')]), Tree('<error>', []), Tree('item', [Token('NUMBER', '3')]), Token('<missing>', '')])
+```
+
 ```{eval-rst}
 .. autoexception:: fpeg.ParseError
 

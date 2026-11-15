@@ -82,8 +82,13 @@ class ParseError(ValueError):
     pos: int
     line: int
     column: int
+    end_pos: int
+    end_line: int
+    end_column: int
     expected: tuple[str, ...]
     label: str | None
+    tree: Tree | Token | None
+    errors: tuple[ParseError, ...]
 
 class LimitError(ParseError):
     """A parse stopped at a limit on its depth, its steps, its memory or the size of its input."""
@@ -114,6 +119,7 @@ class Grammar:
         text: str,
         start: str = "start",
         *,
+        recover: bool = False,
         max_steps: int | None = None,
         max_depth: int | None = None,
         max_memory: int | None = None,

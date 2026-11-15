@@ -164,6 +164,44 @@ def test_a_labelled_error_carries_its_label() -> None:
     assert (raised.value.line, raised.value.column) == (1, 2)
 
 
+RECOVERING = r"""
+start: "[" (item ("," (item ^ item))*)? "]" ^ close
+item: NUMBER
+NUMBER: [0-9]+
+%ignore " "+
+%recover item: (!("," | "]") .)*
+%recover close: ()
+"""
+
+
+def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:
+    grammar = fpeg.Grammar(RECOVERING)
+    tree = grammar.parse("[1, 2]", recover=True)
+    assert isinstance(tree, fpeg.Tree) and tree.data == "start"
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("[1, x, 3", recover=True)
+    error = raised.value
+    # The first error describes the whole, which says each on a line.
+    assert (error.label, error.line, error.column) == ("item", 1, 5)
+    assert str(error) == "line 1, column 5: item\nline 1, column 9: close"
+    spans = [(e.label, e.pos, e.end_pos, e.tree, e.errors) for e in error.errors]
+    assert spans == [("item", 4, 5, None, ()), ("close", 8, 8, None, ())]
+    assert isinstance(error.tree, fpeg.Tree)
+    kinds = [getattr(c, "data", getattr(c, "type", None)) for c in error.tree.children]
+    assert kinds == ["item", "<error>", "item", "<missing>"]
+    # A parse that fails even so has no tree, its error after those it recovered from.
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("[1, x] 4", recover=True)
+    assert raised.value.tree is None
+    assert [e.message for e in raised.value.errors] == ["item", "expected end of input"]
+    assert raised.value.message == "expected end of input"
+    # Without recover, the first error ends the parse and is the one error.
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("[1, x, 3")
+    assert raised.value.tree is None
+    assert [str(e) for e in raised.value.errors] == ["line 1, column 5: item"]
+
+
 def test_limits_end_a_parse_with_a_limit_error() -> None:
     grammar = fpeg.Grammar(PAIRS)
     with pytest.raises(fpeg.LimitError) as raised:

@@ -18,7 +18,7 @@ use pyo3::pybacked::PyBackedStr;
 use pyo3::types::{PyString, PyType};
 
 use crate::builders::{self, Builder};
-use crate::errors::{Diagnostic, diagnostics, grammar_error, parse_error};
+use crate::errors::{Diagnostic, diagnostics, grammar_error, parse_error, recovered_error};
 use crate::transform::{Plan, Plans};
 use crate::tree::{Parsed, item};
 
@@ -301,15 +301,23 @@ impl Grammar {
     /// Parse the whole text from the rule `start` and return its one visible item at the top:
     /// a `Tree` for a node, a `Token` for a token. Raises `ParseError` when the text does not
     /// match, and `LimitError` when the parse takes more steps, nests deeper or needs more memory
-    /// than allowed.
+    /// than allowed. With `recover`, where a label that the grammar gives a recovery fails, an
+    /// error item takes the place of what failed and the parse goes on, and a text with errors
+    /// raises `ParseError` with the recovered tree as `tree` and every error as `errors`.
     #[pyo3(signature = (
-        text, start = "start", *, max_steps = None, max_depth = None, max_memory = None
+        text, start = "start", *, recover = false, max_steps = None, max_depth = None,
+        max_memory = None
     ))]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the keyword arguments of the Python method, which callers name"
+    )]
     fn parse(
         &self,
         py: Python<'_>,
         text: Bound<'_, PyString>,
         start: &str,
+        recover: bool,
         max_steps: Option<u64>,
         max_depth: Option<u32>,
         max_memory: Option<u64>,
@@ -335,21 +343,29 @@ impl Grammar {
             max_depth: max_depth.unwrap_or(DEFAULT_MAX_DEPTH),
             max_memory_bytes: max_memory,
         };
+        let run = |source: &str| match recover {
+            true => core.parser.parse_recovering_with(source, start, limits),
+            false => core.parser.parse_with(source, start, limits),
+        };
         let result = if source.len() >= DETACH_MIN_BYTES {
-            py.detach(|| core.parser.parse_with(&source, start, limits))
+            py.detach(|| run(&source))
         } else {
-            core.parser.parse_with(&source, start, limits)
+            run(&source)
         };
         let tree = result.map_err(|error| parse_error(py, &source, &error))?;
         let parsed = Arc::new(Parsed::new(tree, source, Arc::clone(core)));
         let root = (parsed.tree.roots().into_iter())
             .find(|root| !root.is_hidden())
             .map(|root| root.index());
-        match root {
-            Some(index) => item(py, &parsed, index),
-            None => Err(PyRuntimeError::new_err(
+        let Some(root) = root else {
+            return Err(PyRuntimeError::new_err(
                 "a bug in fpeg: the parse left no visible item at the top",
-            )),
+            ));
+        };
+        let root = item(py, &parsed, root)?;
+        match parsed.tree.recoveries() {
+            [] => Ok(root),
+            recoveries => Err(recovered_error(py, &parsed.source, recoveries, root)),
         }
     }
 
