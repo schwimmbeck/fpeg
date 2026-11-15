@@ -93,7 +93,7 @@ start: (%def(c, ()) "a") ^ oops | "b"
 %recover oops: ()
 --- recover "\n b"
 error at 2: expected "a"
-errors: oops: expected end of input at 0
+errors: oops: expected "a" at 2
 
 === a capture made inside a block outlives the block, so a call after it is no left recursion
 start: %indent(%def(c, ())) start | "a"

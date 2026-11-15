@@ -141,12 +141,10 @@ enum Entry {
     Recovering,
 }
 
-/// What a recovery took, to the end of its error item, and the farthest failure in it with
-/// what failed there.
+/// Where the parse had got furthest under a floor, and what had failed there.
 #[derive(Clone, Debug)]
-struct Watched {
-    end: u32,
-    furthest: Option<u32>,
+struct Furthest {
+    at: u32,
     expected: BTreeSet<Expected>,
 }
 
@@ -613,9 +611,12 @@ pub(crate) struct Machine<'p, 'i> {
     /// In diagnose mode, the positions the run before asks about, each with the floor of the
     /// error there and what failed at it under that floor.
     diagnose: BTreeMap<(u32, Option<u32>), BTreeSet<Expected>>,
-    /// In diagnose mode, what each recovery took that the run before asks about, by its floor
-    /// and start, with the farthest failure in it. Recoveries of one floor never overlap.
-    watched: BTreeMap<(Option<u32>, u32), Watched>,
+    /// In a run that explains recoveries, where the parse got furthest under each floor.
+    furthest: Option<HashMap<Option<u32>, Furthest>>,
+    /// In a run that explains recoveries, the error each one explains, by its label, position
+    /// and floor: where the parse had got furthest under the floor when the label first failed
+    /// there.
+    explanations: HashMap<(u32, u32, Option<u32>), Furthest>,
     /// The counts of a profiling parse.
     profiler: Option<Box<Profiler>>,
 }
@@ -677,7 +678,8 @@ impl<'p, 'i> Machine<'p, 'i> {
             memory: Memory::new(limits.memory_bytes(input.len())),
             farthest: None,
             diagnose: (diagnose.iter()).map(|&at| (at, BTreeSet::new())).collect(),
-            watched: BTreeMap::new(),
+            furthest: None,
+            explanations: HashMap::new(),
             profiler: None,
         }
     }
@@ -834,28 +836,18 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.nodes.len()
     }
 
-    /// The machine for a run that also finds the farthest failure in what each recovery took,
-    /// given as its start, the end of its error item and the floor its label failed under.
-    pub fn watching(mut self, recoveries: &[(u32, u32, Option<u32>)]) -> Machine<'p, 'i> {
-        for &(start, end, floor) in recoveries {
-            let watched = Watched {
-                end,
-                furthest: None,
-                expected: BTreeSet::new(),
-            };
-            self.watched.insert((floor, start), watched);
-        }
+    /// The machine for a run that also explains the recoveries it makes.
+    pub fn explaining_recoveries(mut self) -> Machine<'p, 'i> {
+        self.furthest = Some(HashMap::new());
         self
     }
 
-    /// In diagnose mode, where the parse got furthest in what the recovery from `start` under
-    /// `floor` took, and what failed there, as an expected set shows it, sorted.
-    pub fn furthest(&self, start: u32, floor: Option<u32>) -> (u32, Vec<String>) {
-        match self.watched.get(&(floor, start)) {
-            Some(watched) => (
-                watched.furthest.unwrap_or(start),
-                self.shown(&watched.expected),
-            ),
+    /// In a run that explains recoveries, the error the recovery of a label at a position under
+    /// a floor explains: where the parse had got furthest under the floor when the label first
+    /// failed there, and what had failed there by then, as an expected set shows it, sorted.
+    pub fn explanation(&self, label: u32, start: u32, floor: Option<u32>) -> (u32, Vec<String>) {
+        match self.explanations.get(&(label, start, floor)) {
+            Some(furthest) => (furthest.at, self.shown(&furthest.expected)),
             None => (start, Vec::new()),
         }
     }
@@ -2194,6 +2186,22 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some(routine) = routine.flatten().filter(|_| !normal && past_floor) else {
             return self.throw(label);
         };
+        if let Some(furthest) = &mut self.furthest {
+            // What the error says is fixed where the label first fails here, since a later
+            // failure there may be a remembered match's, which records nothing again.
+            self.memory.room_in(furthest)?;
+            self.memory.room_in(&mut self.explanations)?;
+            let reached = furthest
+                .get(&self.floor)
+                .filter(|furthest| furthest.at >= start);
+            let explanation = reached.cloned().unwrap_or(Furthest {
+                at: start,
+                expected: BTreeSet::new(),
+            });
+            (self.explanations)
+                .entry((label, start, self.floor))
+                .or_insert(explanation);
+        }
         self.memory.room(&mut self.recovering_frames, 1)?;
         self.recovering_frames.push(RecoveryFrame {
             ret: self.pc + 1,
@@ -2304,9 +2312,10 @@ impl<'p, 'i> Machine<'p, 'i> {
 
     /// An error item as a recovery, with the name of its label and the floor it failed under.
     fn recovery_of(&self, item: &Item) -> Found {
-        let (label, floor) = self.labels.get(&item.value).copied().unzip();
-        let label = label.and_then(|label| self.program.labels.get(label as usize));
+        let (index, floor) = self.labels.get(&item.value).copied().unzip();
+        let label = index.and_then(|label| self.program.labels.get(label as usize));
         Found {
+            label: index.unwrap_or_default(),
             recovery: Recovery {
                 label: label.map_or_else(String::new, |label| label.text().to_owned()),
                 start: item.start as usize,
@@ -2328,18 +2337,17 @@ impl<'p, 'i> Machine<'p, 'i> {
         if let Some(expected) = self.diagnose.get_mut(&(pos, self.floor)) {
             expected.insert(what);
         }
-        // The recovery of this floor that started last before the position, if what it took
-        // reaches it: up to its end, or its start for a missing token.
-        let watched = (self.watched.range_mut(..=(self.floor, pos)).next_back()).filter(
-            |((floor, start), watched)| *floor == self.floor && pos < watched.end.max(start + 1),
-        );
-        if let Some((_, watched)) = watched {
-            if watched.furthest.is_none_or(|furthest| pos > furthest) {
-                watched.furthest = Some(pos);
-                watched.expected.clear();
+        if let Some(furthest) = &mut self.furthest {
+            let furthest = furthest.entry(self.floor).or_insert(Furthest {
+                at: pos,
+                expected: BTreeSet::new(),
+            });
+            if pos > furthest.at {
+                furthest.at = pos;
+                furthest.expected.clear();
             }
-            if watched.furthest == Some(pos) {
-                watched.expected.insert(what);
+            if pos == furthest.at {
+                furthest.expected.insert(what);
             }
         }
     }

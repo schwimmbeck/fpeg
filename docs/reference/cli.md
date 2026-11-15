@@ -62,7 +62,7 @@ error: expected N
 
 A [named error](grammar.md#errors) shows its name in brackets, as `error[close]: expected "]"`. Tabs show as spaces, control characters as visible marks, so that no input can rewrite the terminal, and a line too long to show is cut around the error.
 
-With `--recover` the parse goes on past an error whose label the grammar gives a recovery. The tree printed holds an `<error>` node for what each recovery took and a `<missing>` token where it took nothing, and each error follows on standard error, with carets under what its recovery took. An input with errors fails the command all the same. A parse that fails even so prints the errors it recovered from before the one that ended it.
+With `--recover` the parse goes on past an error whose label the grammar gives a recovery. The tree printed holds an `<error>` node for what each recovery took and a `<missing>` token where it took nothing, and each error follows on standard error where the parse had got furthest when its label failed, with carets to the end of what its recovery took. An input with errors fails the command all the same. A parse that fails even so prints the errors it recovered from before the one that ended it.
 
 The exit status is 0 when the input parses, 1 when the grammar has problems, which `parse` prints as `check` does, or the input has errors, and 2 for a command line `fpeg` cannot understand.
 

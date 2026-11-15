@@ -14,6 +14,7 @@
 //! since could be reached. Without it, every operator level of a precedence block re-parses the
 //! levels below it in each growing step, which is exponential in the number of levels.
 
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
@@ -153,6 +154,7 @@ fn recoveries_in(items: &[Item], labels: &[ir::Label], out: &mut Vec<Found>) {
             } => {
                 out.push(Found {
                     recovery: recovery(*label, *start, *end, labels),
+                    label: label.0,
                     floor: *floor,
                 });
                 recoveries_in(children, labels, out);
@@ -399,6 +401,14 @@ enum Outcome {
     Fail { cut: bool },
 }
 
+/// The error a recovery explains: where the parse had got furthest under its floor when its
+/// label first failed, and what had failed there by then.
+#[derive(Clone, Debug)]
+struct Explanation {
+    position: usize,
+    failed: BTreeSet<Failed>,
+}
+
 /// What a failure expects, shown as text only when an expected set is reported.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Failed {
@@ -467,6 +477,10 @@ struct Interp<'a> {
     farthest: Option<usize>,
     /// What failed at each position, outside lookahead and the skip expression.
     expected_at: HashMap<(usize, Option<usize>), BTreeSet<Failed>>,
+    /// The error each recovery explains, by its label, position and floor: where the parse
+    /// had got furthest under the floor when the label first failed there, and what had failed
+    /// at that position by then.
+    explanations: HashMap<(LabelId, usize, Option<usize>), Explanation>,
     quiet: u32,
     steps: u64,
     depth: u32,
@@ -533,6 +547,7 @@ impl<'a> Interp<'a> {
             dependency: usize::MAX,
             farthest: None,
             expected_at: HashMap::new(),
+            explanations: HashMap::new(),
             quiet: 0,
             steps: 0,
             nesting: 0,
@@ -730,9 +745,14 @@ impl<'a> Interp<'a> {
     /// What failed at a position under a floor over the whole parse, as an expected set shows
     /// it, sorted.
     fn expected_at(&self, position: usize, floor: Option<usize>) -> Vec<String> {
-        let Some(failed) = self.expected_at.get(&(position, floor)) else {
-            return Vec::new();
-        };
+        match self.expected_at.get(&(position, floor)) {
+            Some(failed) => self.shown(failed),
+            None => Vec::new(),
+        }
+    }
+
+    /// What failed, as an expected set shows it, sorted.
+    fn shown(&self, failed: &BTreeSet<Failed>) -> Vec<String> {
         let shown: BTreeSet<String> = (failed.iter())
             .map(|what| match what {
                 Failed::Kind(kind) => self.kind_display(*kind),
@@ -743,23 +763,19 @@ impl<'a> Interp<'a> {
         shown.into_iter().collect()
     }
 
-    /// The recoveries, each explained where the parse got furthest in what it took, under the
-    /// floor its label failed with.
+    /// The recoveries, each explained as the error its label would have ended the parse with
+    /// where it first failed.
     fn explained(&self, found: &[Found]) -> Vec<Recovery> {
         (found.iter())
             .map(|found| {
-                // A missing token took its position alone, and what follows an item is not
-                // part of it.
-                let start = found.recovery.start;
-                let taken = start..found.recovery.end.max(start + 1);
-                let position = (self.expected_at.keys())
-                    .filter(|&&(at, floor)| floor == found.floor && taken.contains(&at))
-                    .map(|&(at, _)| at)
-                    .max()
-                    .unwrap_or(start);
+                let key = (LabelId(found.label), found.recovery.start, found.floor);
+                let (position, expected) = match self.explanations.get(&key) {
+                    Some(explanation) => (explanation.position, self.shown(&explanation.failed)),
+                    None => (found.recovery.start, Vec::new()),
+                };
                 Recovery {
                     position,
-                    expected: self.expected_at(position, found.floor),
+                    expected,
                     ..found.recovery.clone()
                 }
             })
@@ -1293,6 +1309,20 @@ impl<'a> Interp<'a> {
         else {
             return Err(error);
         };
+        // What the error says is fixed where the label first fails here, since a later failure
+        // there may be a remembered match's, which records nothing again.
+        if let Entry::Vacant(entry) = self.explanations.entry((label, position, ctx.floor)) {
+            let at = (self.expected_at.keys())
+                .filter(|&&(at, floor)| floor == ctx.floor && at > position)
+                .map(|&(at, _)| at)
+                .max()
+                .unwrap_or(position);
+            let failed = self.expected_at.get(&(at, ctx.floor)).cloned();
+            entry.insert(Explanation {
+                position: at,
+                failed: failed.unwrap_or_default(),
+            });
+        }
         let inner = Ctx {
             floor: Some(position),
             ..ctx.clone()

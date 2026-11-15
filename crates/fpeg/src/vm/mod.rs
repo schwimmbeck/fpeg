@@ -395,28 +395,13 @@ struct Attempt {
     profile: Option<Profile>,
 }
 
-/// What each recovery took and the floor its label failed under, which a run after the first
-/// watches.
-fn watched(found: &[Found]) -> Vec<(u32, u32, Option<u32>)> {
-    (found.iter())
-        .map(|found| {
-            let floor = found.floor.map(|floor| floor as u32);
-            (
-                found.recovery.start as u32,
-                found.recovery.end as u32,
-                floor,
-            )
-        })
-        .collect()
-}
-
-/// The recoveries, each explained where the parse got furthest in what it took, as a run that
-/// watched them found.
+/// The recoveries, each explained as the error its label would have ended the parse with where
+/// it first failed, as a run that explains them found.
 fn explained(diagnosed: &Machine<'_, '_>, found: &[Found]) -> Vec<Recovery> {
     (found.iter())
         .map(|found| {
             let (start, floor) = (found.recovery.start as u32, found.floor.map(|f| f as u32));
-            let (position, expected) = diagnosed.furthest(start, floor);
+            let (position, expected) = diagnosed.explanation(found.label, start, floor);
             Recovery {
                 position: position as usize,
                 expected,
@@ -471,7 +456,10 @@ fn attempt(
     // parse the attempts of error alternatives. It follows the first exactly, so it ends the
     // same way.
     let diagnosed = |positions: &[(u32, Option<u32>)], explain: bool, found: &[Found]| {
-        let mut again = machine(positions).watching(&watched(found));
+        let mut again = machine(positions);
+        if !found.is_empty() {
+            again = again.explaining_recoveries();
+        }
         if explain && program.explains {
             again = again.explaining();
         }

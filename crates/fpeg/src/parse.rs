@@ -94,11 +94,11 @@ pub struct Recovery {
     pub start: usize,
     /// The byte offset where the recovery ended, `start` for a missing token.
     pub end: usize,
-    /// Where the parse got furthest in what the recovery took: the farthest byte offset from
-    /// `start` up to `end`, or at `start` for a missing token, where a failure was recorded under
-    /// the floor the label failed with, or `start` where none was.
+    /// Where the parse had got furthest when the label first failed at `start`: the farthest
+    /// byte offset at or after `start` where a failure had been recorded by then under the floor
+    /// the label failed with, or `start` where none had.
     pub position: usize,
-    /// What the grammar expected at `position`, sorted.
+    /// What the grammar had expected at `position` by then, sorted.
     pub expected: Vec<String>,
 }
 
@@ -114,6 +114,8 @@ impl Recovery {
 #[derive(Clone, Debug)]
 pub(crate) struct Found {
     pub(crate) recovery: Recovery,
+    /// The index of its label.
+    pub(crate) label: u32,
     pub(crate) floor: Option<usize>,
 }
 

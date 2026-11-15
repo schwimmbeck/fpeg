@@ -81,12 +81,19 @@ start: "(" ("1" ^ item) ")"
 (start ~"(" (<error> ~"x" (<error> ~"x" <missing>"")) ~")")
 errors: item: expected "1" at 1, item: expected "1" at 2, item: expected "1" at 3
 
-=== an error item is explained where the parse got furthest in what its recovery took
+=== an error item is explained where the parse had got furthest when its label failed
 start: ("(" ("x" | "a") "b" "c" ")") ^ group ";"
 %recover group: (!";" .)*
 --- recover "(ab);"
 (start (<error> ~"(" ~"a" ~"b" ~")") ~";")
 errors: group: expected "c" at 3
+
+=== an error item is explained also past what its recovery took
+start: ("(" "a"* ")") ^ group "a"* "b"
+%recover group: "("
+--- recover "(aab"
+(start (<error> ~"(") ~"a" ~"a" ~"b")
+errors: group: expected ")", "a" at 3
 
 === what a recovery tries does not explain the errors after it
 start: "[" ("1" ^ item) ("]" ^ close)
@@ -183,4 +190,4 @@ prec: %precedence {
 %recover v: ()
 --- recover "b"
 (start (r1 (post left=(other <missing>"") ~"b" (other <missing>""))))
-errors: v: expected "a" at 0, v: expected "a", "b" at 1
+errors: v: expected "a" at 0, v: expected "a" at 1
