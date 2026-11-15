@@ -328,3 +328,14 @@ fn the_problems_of_modules_stand_in_the_order_of_the_text() {
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(lines[0] < lines[1], "{lines:?}");
 }
+
+#[test]
+fn common_s_escaped_string_stands_on_one_line() {
+    let grammar = Grammar::from_text("%import common (ESCAPED_STRING)\nstart: ESCAPED_STRING")
+        .expect("it reads");
+    let parser = Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(parser.parse("\"a\\\"b\"", "start").is_ok());
+    assert!(parser.parse("\"a\nb\"", "start").is_err());
+    // A backslash escapes no line break either.
+    assert!(parser.parse("\"a\\\nb\"", "start").is_err());
+}
