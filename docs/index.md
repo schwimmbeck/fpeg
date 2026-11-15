@@ -20,6 +20,7 @@ fpeg is at an early stage. The [command line](reference/cli.md) and the [Python 
 Complete programs for common tasks, each a grammar and a `Transformer`, to copy and change.
 
 - [A calculator](examples/calculator.md): lines of arithmetic with Python's operators, variables and functions.
+- [A configuration file](examples/configuration.md): sections, comments and typed values, read into dictionaries.
 
 ## Tutorials
 
@@ -53,6 +54,7 @@ Complete programs for common tasks, each a grammar and a `Transformer`, to copy 
 
 start
 examples/calculator
+examples/configuration
 roadmap
 tutorial/first-grammar
 tutorial/transformer
