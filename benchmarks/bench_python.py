@@ -42,41 +42,50 @@ def positioned(value: Any, line: int, column: int, end_line: int, end_column: in
     return value
 
 
-def from_meta(function: Callable[..., Any]) -> Callable[..., Any]:
-    """Wrap the method of a node to position what it returns from the node's meta."""
+def from_meta(function: Callable[..., Any], set_positions: bool) -> Callable[..., Any]:
+    """Wrap a node's method to take the node's meta, which positions its value if asked."""
     signature = inspect.signature(function)
     extra = inspect.Parameter("meta", inspect.Parameter.KEYWORD_ONLY)
 
     def method(self: Any, *args: Any, meta: Any, **kwargs: Any) -> Any:
         value = function(self, *args, **kwargs)
-        return positioned(value, meta.line, meta.column, meta.end_line, meta.end_column)
+        if set_positions:
+            return positioned(value, meta.line, meta.column, meta.end_line, meta.end_column)
+        return value
 
     # The Transformer reads the signature to know what to pass.
     method.__signature__ = signature.replace(parameters=[*signature.parameters.values(), extra])
     return method
 
 
-def from_token(function: Callable[..., Any]) -> Callable[..., Any]:
-    """Wrap the method of a terminal to position what it returns from the token."""
+def from_token(function: Callable[..., Any], set_positions: bool) -> Callable[..., Any]:
+    """Wrap a terminal's method to position its value from the token if asked."""
 
     def method(self: Any, token: fpeg.Token) -> Any:
         value = function(self, token)
-        return positioned(value, token.line, token.column, token.end_line, token.end_column)
+        if set_positions:
+            return positioned(value, token.line, token.column, token.end_line, token.end_column)
+        return value
 
     return method
 
 
-class ToAstFromMeta(python_ast.ToAstBase):
-    """The transformer to `ast` with positions set in Python, as without native stamping.
+def wrapped(base: type, set_positions: bool) -> type:
+    """Make a subclass of a transformer to `ast` with each method in such a wrapper."""
+    methods = {}
+    for name, function in vars(python_ast.ToAstBase).items():
+        if inspect.isfunction(function) and not name.startswith("_"):
+            wrap = from_token if name.isupper() else from_meta
+            methods[name] = wrap(function, set_positions)
+    return type(f"{base.__name__}Wrapped", (base,), methods)
 
-    Columns count code points, which are the bytes `ast` counts on the ASCII benchmark file.
-    """
 
-
-for name, function in vars(python_ast.ToAstBase).items():
-    if inspect.isfunction(function) and not name.startswith("_"):
-        wrap = from_token if name.isupper() else from_meta
-        setattr(ToAstFromMeta, name, wrap(function))
+# Positions set in Python, as without native stamping. Columns count code points, which are
+# the bytes `ast` counts on the ASCII benchmark file.
+ToAstFromMeta = wrapped(python_ast.ToAstBase, set_positions=True)
+# The same wrappers around a transformer that stamps natively, so that the difference to it
+# is the setting of positions in Python alone.
+ToAstInWrappers = wrapped(python_ast.ToAst, set_positions=False)
 
 
 def add_fpeg(runner: pyperf.Runner, text: str) -> None:
@@ -107,7 +116,13 @@ def add_fpeg(runner: pyperf.Runner, text: str) -> None:
     )
     harness.add(
         runner,
-        "fpeg parse and transform to ast, positions set in Python",
+        "fpeg parse and transform to ast, stamped natively, each method in a wrapper",
+        lambda: checked(ToAstInWrappers()),
+        PYTHON_FILE,
+    )
+    harness.add(
+        runner,
+        "fpeg parse and transform to ast, positions set in Python by that wrapper",
         lambda: checked(ToAstFromMeta()),
         PYTHON_FILE,
     )
