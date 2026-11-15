@@ -1,0 +1,2521 @@
+{
+ "date": "2026-11-15",
+ "mode": "default",
+ "commit": "5f1b8f9",
+ "platform": "Windows-11-10.0.26200-SP0",
+ "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor",
+ "logical_cpus": 16,
+ "python": "CPython 3.15.2",
+ "python_build": "3.15.2 (main, Nov 11 2026, 00:22:41) [MSC v.1951 64 bit (AMD64)]",
+ "packages": {
+  "lark": "1.3.1",
+  "pe": "0.6.0",
+  "libcst": "1.9.0",
+  "tree-sitter": "0.26.1",
+  "tree-sitter-python": "0.25.0",
+  "pyperf": "2.11.0"
+ },
+ "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+ "crates": {
+  "criterion": "0.8.2",
+  "pest": "2.9.6",
+  "pest_derive": "2.9.6",
+  "pest_meta": "2.9.6",
+  "pest_vm": "2.9.6",
+  "serde_json": "1.0.154"
+ },
+ "inputs": {
+  "records.json": {
+   "bytes": 2506935,
+   "lines": 153001,
+   "sha256": "35148527f24c4ab316fed81f290d8c490b16896c0029a941fa71b1266e3c76e3"
+  },
+  "python_transformer.py": {
+   "bytes": 69525,
+   "lines": 1971,
+   "sha256": "9b35b499e1dfe631ebd1ab6b9fcc591541bebbaaa3e9bea63ca01888b557cf1a"
+  },
+  "expressions.c": {
+   "bytes": 100054,
+   "lines": 1488,
+   "sha256": "9186ae97b00659573f1e161e833ee0a08520218567fb839a2012714f7f326b67"
+  },
+  "calculator.txt": {
+   "bytes": 94015,
+   "lines": 2000,
+   "sha256": "5d776b59a1c5b3b7fc77fe20f6ff65232d51c5dc98e06417896af6cba5862162"
+  }
+ },
+ "rows": [
+  {
+   "suite": "json",
+   "name": "json.loads",
+   "input": "records.json",
+   "mean_s": 0.01117496319440963,
+   "stdev_s": 0.00039346537653786324,
+   "median_s": 0.011142128125356976,
+   "min_s": 0.01062807500056806,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "fpeg grammar load",
+   "input": null,
+   "mean_s": 0.0003030899848050063,
+   "stdev_s": 3.266576641465732e-05,
+   "median_s": 0.00029421474607715936,
+   "min_s": 0.00028114941403600824,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "fpeg parse, tree",
+   "input": "records.json",
+   "mean_s": 0.03389370416536824,
+   "stdev_s": 0.002961811465651116,
+   "median_s": 0.033292987500317395,
+   "min_s": 0.030048050000914373,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "fpeg parse and grammar builders, Python objects",
+   "input": "records.json",
+   "mean_s": 0.053623022222180024,
+   "stdev_s": 0.006812999888838476,
+   "median_s": 0.05125002498971298,
+   "min_s": 0.04892139998264611,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "fpeg parse and Transformer methods, Python objects",
+   "input": "records.json",
+   "mean_s": 0.10149986388892608,
+   "stdev_s": 0.013048497006742859,
+   "median_s": 0.09985277500527445,
+   "min_s": 0.08356415000162087,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark grammar load",
+   "input": null,
+   "mean_s": 0.005848756944336249,
+   "stdev_s": 0.00029536714387067725,
+   "median_s": 0.005855767186403682,
+   "min_s": 0.005366590625271783,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark LALR, tree",
+   "input": "records.json",
+   "mean_s": 1.3190127111124132,
+   "stdev_s": 0.03827509852118312,
+   "median_s": 1.321304550016066,
+   "min_s": 1.2551690000109375,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark Transformer over the tree",
+   "input": "records.json",
+   "mean_s": 0.4070546000051157,
+   "stdev_s": 0.01310219271896607,
+   "median_s": 0.4052551499917172,
+   "min_s": 0.3852801999892108,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "Lark LALR with inlined Transformer, Python objects",
+   "input": "records.json",
+   "mean_s": 1.0552424722247653,
+   "stdev_s": 0.02145967193262752,
+   "median_s": 1.0480180500017013,
+   "min_s": 1.0189913000212982,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe machine grammar load",
+   "input": null,
+   "mean_s": 0.0026775478298380526,
+   "stdev_s": 0.00017360935704003168,
+   "median_s": 0.002629574219099595,
+   "min_s": 0.0024833609377310495,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe machine, match only",
+   "input": "records.json",
+   "mean_s": 0.15773920554784127,
+   "stdev_s": 0.009175223621703248,
+   "median_s": 0.1576649000053294,
+   "min_s": 0.14261380000971258,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe machine, Python objects",
+   "input": "records.json",
+   "mean_s": 0.21098020555412708,
+   "stdev_s": 0.011872142183410627,
+   "median_s": 0.21080344999791123,
+   "min_s": 0.19290740002179518,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe packrat grammar load",
+   "input": null,
+   "mean_s": 0.0028222223091789703,
+   "stdev_s": 0.00013946496606794296,
+   "median_s": 0.0027706281252903864,
+   "min_s": 0.0026237390620735823,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe packrat, match only",
+   "input": "records.json",
+   "mean_s": 0.49482368888048867,
+   "stdev_s": 0.016663879802359494,
+   "median_s": 0.491817500005709,
+   "min_s": 0.47278120002010837,
+   "values": 18
+  },
+  {
+   "suite": "json",
+   "name": "pe packrat, Python objects",
+   "input": "records.json",
+   "mean_s": 0.5223497500022253,
+   "stdev_s": 0.01668305035004857,
+   "median_s": 0.5230804499879014,
+   "min_s": 0.49533180001890287,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "transform, no method",
+   "input": null,
+   "mean_s": 0.00017471532660174994,
+   "stdev_s": 1.3961818003825717e-05,
+   "median_s": 0.0001696085937226144,
+   "min_s": 0.00015939589843583235,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "transform, a method on every node, list",
+   "input": null,
+   "mean_s": 0.002608968923646494,
+   "stdev_s": 0.00021797858711027578,
+   "median_s": 0.0026045789063573466,
+   "min_s": 0.0022872265626574517,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "transform, a method on every node, *children",
+   "input": null,
+   "mean_s": 0.002362383072825954,
+   "stdev_s": 0.00011692322894821337,
+   "median_s": 0.0023410359372064704,
+   "min_s": 0.0021941093746136175,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "transform, the same with a member by field",
+   "input": null,
+   "mean_s": 0.002521980902757706,
+   "stdev_s": 0.0002340668469289169,
+   "median_s": 0.002502081250440824,
+   "min_s": 0.002214415625530819,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "transform, a method on every token, taking nothing",
+   "input": null,
+   "mean_s": 0.00262012170151138,
+   "stdev_s": 9.244470868260507e-05,
+   "median_s": 0.0025973640622396488,
+   "min_s": 0.002501070312973752,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "transform, a method on every token, taking it",
+   "input": null,
+   "mean_s": 0.004154882291711854,
+   "stdev_s": 0.0002648221094619302,
+   "median_s": 0.0040792531244733254,
+   "min_s": 0.003912225000021863,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "interpreter, no method",
+   "input": null,
+   "mean_s": 0.011042850347318259,
+   "stdev_s": 0.0007152578231224957,
+   "median_s": 0.010893734375713393,
+   "min_s": 0.00990395000189892,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "interpreter, a method on every node",
+   "input": null,
+   "mean_s": 0.01212737256961797,
+   "stdev_s": 0.0007101349293638086,
+   "median_s": 0.01216348437446868,
+   "min_s": 0.011175731251569232,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "visitor, no method",
+   "input": null,
+   "mean_s": 0.0023104147570746944,
+   "stdev_s": 9.439502152683195e-05,
+   "median_s": 0.002279453125083819,
+   "min_s": 0.0021854843753317255,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "visitor, a method on every node",
+   "input": null,
+   "mean_s": 0.0037362730902006864,
+   "stdev_s": 0.000282317715086422,
+   "median_s": 0.0036563249996106606,
+   "min_s": 0.0033750999991752906,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "parse",
+   "input": null,
+   "mean_s": 0.0036549253471902274,
+   "stdev_s": 0.00027083075574480214,
+   "median_s": 0.0035933218750869855,
+   "min_s": 0.003225440625101328,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "parse, then every view and token",
+   "input": null,
+   "mean_s": 0.009432677083168528,
+   "stdev_s": 0.0005615265100473247,
+   "median_s": 0.009435643749384326,
+   "min_s": 0.008420037498581223,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "2000 small CSV parses with a transformer",
+   "input": null,
+   "mean_s": 0.0052122000001367675,
+   "stdev_s": 0.0002710619827582737,
+   "median_s": 0.005268551562039647,
+   "min_s": 0.0047146000015345635,
+   "values": 18
+  },
+  {
+   "suite": "binding",
+   "name": "2000 small CSV parses with csv.reader",
+   "input": null,
+   "mean_s": 0.001857135329929507,
+   "stdev_s": 0.0001241568612927387,
+   "median_s": 0.0018517085936764488,
+   "min_s": 0.001676435937952192,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "eval, a line at a time",
+   "input": "calculator.txt",
+   "mean_s": 0.01845600555477884,
+   "stdev_s": 0.0012531437469498242,
+   "median_s": 0.018167137499403907,
+   "min_s": 0.016934000006585848,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "fpeg parse, tree",
+   "input": "calculator.txt",
+   "mean_s": 0.0057545826390802786,
+   "stdev_s": 0.0001888077702833394,
+   "median_s": 0.005720371875213459,
+   "min_s": 0.005487640624778578,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "fpeg parse and Transformer, numbers",
+   "input": "calculator.txt",
+   "mean_s": 0.009428989583385474,
+   "stdev_s": 0.0006914285784028733,
+   "median_s": 0.009246643750884687,
+   "min_s": 0.00853976875077933,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "Lark LALR, tree",
+   "input": "calculator.txt",
+   "mean_s": 0.11205677221813756,
+   "stdev_s": 0.004920391955599989,
+   "median_s": 0.11268539998854976,
+   "min_s": 0.10455064999405295,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "Lark LALR with inlined Transformer, numbers",
+   "input": "calculator.txt",
+   "mean_s": 0.10540950000480127,
+   "stdev_s": 0.006077704265856388,
+   "median_s": 0.10414500001934357,
+   "min_s": 0.0960087000275962,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "pe machine, numbers",
+   "input": "calculator.txt",
+   "mean_s": 0.05269565972331394,
+   "stdev_s": 0.003349066024809364,
+   "median_s": 0.05197607500304002,
+   "min_s": 0.04701432499859948,
+   "values": 18
+  },
+  {
+   "suite": "calculator",
+   "name": "pe packrat, numbers",
+   "input": "calculator.txt",
+   "mean_s": 0.11302533332491294,
+   "stdev_s": 0.004932673614380856,
+   "median_s": 0.11237625000649132,
+   "min_s": 0.10415059997467324,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "ast.parse",
+   "input": "python_transformer.py",
+   "mean_s": 0.0080057999995107,
+   "stdev_s": 0.0002889431014984983,
+   "median_s": 0.007985021873537335,
+   "min_s": 0.00762504999875091,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "fpeg Python grammar load",
+   "input": null,
+   "mean_s": 0.005202566319389411,
+   "stdev_s": 0.00026150943255216725,
+   "median_s": 0.005181098437788023,
+   "min_s": 0.00483806249940244,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "fpeg parse, tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.00845032465339399,
+   "stdev_s": 0.00032497413665705043,
+   "median_s": 0.008397537500059116,
+   "min_s": 0.008082824999291915,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "fpeg parse and transform to ast, positions stamped natively",
+   "input": "python_transformer.py",
+   "mean_s": 0.0186436381938822,
+   "stdev_s": 0.0008891849686473143,
+   "median_s": 0.018603787499159807,
+   "min_s": 0.01715200000035111,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "fpeg parse and transform to ast, stamped natively, each method in a wrapper",
+   "input": "python_transformer.py",
+   "mean_s": 0.022013549304877717,
+   "stdev_s": 0.0008581190550190251,
+   "median_s": 0.021908149996306747,
+   "min_s": 0.020830724999541417,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "fpeg parse and transform to ast, positions set in Python by that wrapper",
+   "input": "python_transformer.py",
+   "mean_s": 0.022732274998917192,
+   "stdev_s": 0.0012619241401675755,
+   "median_s": 0.022116756248578895,
+   "min_s": 0.021151449996978045,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "CPython parser and symbol table, no AST objects",
+   "input": "python_transformer.py",
+   "mean_s": 0.005894659721889184,
+   "stdev_s": 0.00018411335119213586,
+   "median_s": 0.00584388124934776,
+   "min_s": 0.005623303124593804,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "compile to bytecode",
+   "input": "python_transformer.py",
+   "mean_s": 0.00930699305576531,
+   "stdev_s": 0.0003324796617203771,
+   "median_s": 0.00918950624873105,
+   "min_s": 0.008748243748414097,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter parse, native tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.007650498264006779,
+   "stdev_s": 0.0003525448733643792,
+   "median_s": 0.0076236531258473406,
+   "min_s": 0.0072084250023181085,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter cursor walk over every node",
+   "input": null,
+   "mean_s": 0.0024689416665953307,
+   "stdev_s": 6.830230078654014e-05,
+   "median_s": 0.002455718749843072,
+   "min_s": 0.0023814343749108957,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter walk, a Python Node per node",
+   "input": null,
+   "mean_s": 0.0030592700521891755,
+   "stdev_s": 0.00013447766221409783,
+   "median_s": 0.0030720906247552193,
+   "min_s": 0.0029036375008217874,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "tree-sitter walk, a Node per node and the text of every leaf",
+   "input": null,
+   "mean_s": 0.0052236468750884845,
+   "stdev_s": 0.0002958065745172774,
+   "median_s": 0.005182845313356665,
+   "min_s": 0.004873587500696885,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "LibCST parse_module",
+   "input": "python_transformer.py",
+   "mean_s": 0.09113340277528753,
+   "stdev_s": 0.004139711876382653,
+   "median_s": 0.08962854999117553,
+   "min_s": 0.0867900000012014,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "Lark Python grammar load",
+   "input": null,
+   "mean_s": 0.26637152221842875,
+   "stdev_s": 0.013363844982309974,
+   "median_s": 0.26435934999608435,
+   "min_s": 0.24061739997705445,
+   "values": 18
+  },
+  {
+   "suite": "python",
+   "name": "Lark LALR, bundled Python grammar, tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.0941777555595359,
+   "stdev_s": 0.006954450629630349,
+   "median_s": 0.09476962500775699,
+   "min_s": 0.0846218999940902,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "grammar load without cache",
+   "input": null,
+   "mean_s": 0.5989066277785847,
+   "stdev_s": 0.024468919656131263,
+   "median_s": 0.5992551500094123,
+   "min_s": 0.5642796000465751,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "grammar load with a warm cache",
+   "input": null,
+   "mean_s": 0.03236992638671331,
+   "stdev_s": 0.0024256778391926644,
+   "median_s": 0.03232240000215825,
+   "min_s": 0.028495650010881945,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "LALR parse, tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.1553063500064632,
+   "stdev_s": 0.005365625299654135,
+   "median_s": 0.15547155000967905,
+   "min_s": 0.1446832999936305,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "Transformer with the real callbacks",
+   "input": null,
+   "mean_s": 0.019520647223544074,
+   "stdev_s": 0.0020703628784952462,
+   "median_s": 0.019024468751013046,
+   "min_s": 0.017771587503375486,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "Transformer, trivial method on every rule",
+   "input": null,
+   "mean_s": 0.009824392013696424,
+   "stdev_s": 0.0005138679650133874,
+   "median_s": 0.009657506248913705,
+   "min_s": 0.009231993750290712,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "end to end: parse, transform, fix locations",
+   "input": "python_transformer.py",
+   "mean_s": 0.1878431333332426,
+   "stdev_s": 0.010866001583223883,
+   "median_s": 0.18704545000218786,
+   "min_s": 0.16983289999188855,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "fpeg ORD grammar load",
+   "input": null,
+   "mean_s": 0.005892802256817554,
+   "stdev_s": 0.00035204771761986097,
+   "median_s": 0.005869834374607308,
+   "min_s": 0.005336790623914567,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "fpeg parse, tree",
+   "input": "python_transformer.py",
+   "mean_s": 0.009080124999753834,
+   "stdev_s": 0.00043573183728261273,
+   "median_s": 0.008974734373623505,
+   "min_s": 0.008407293749769451,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "fpeg parse and transform to ast, positions stamped natively",
+   "input": "python_transformer.py",
+   "mean_s": 0.01997317013875646,
+   "stdev_s": 0.0011488312973531826,
+   "median_s": 0.01996904375118902,
+   "min_s": 0.017941362501005642,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "fpeg end to end: parse, transform, fix locations",
+   "input": "python_transformer.py",
+   "mean_s": 0.024916660416945687,
+   "stdev_s": 0.001097549807593409,
+   "median_s": 0.02483671874870197,
+   "min_s": 0.02359864999743877,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "end to end over the 76 ORD files",
+   "input": null,
+   "mean_s": 0.6970062666643773,
+   "stdev_s": 0.02926213213382528,
+   "median_s": 0.6957691000134218,
+   "min_s": 0.6471659999806434,
+   "values": 18
+  },
+  {
+   "suite": "ord",
+   "name": "fpeg end to end over the 76 ORD files",
+   "input": null,
+   "mean_s": 0.14395243888914896,
+   "stdev_s": 0.007884209682954696,
+   "median_s": 0.1443749499740079,
+   "min_s": 0.12982959998771548,
+   "values": 18
+  },
+  {
+   "suite": "rust",
+   "name": "a parse that starts again with every rule remembered",
+   "input": null,
+   "mean_s": 0.0023309232380952375,
+   "stdev_s": 0.00020809030914599436,
+   "median_s": 0.0022939071428571428,
+   "min_s": 0.002132447619047619,
+   "values": 100
+  },
+  {
+   "suite": "rust",
+   "name": "expressions/fpeg machine, every rule remembered, tree",
+   "input": "expressions.c",
+   "mean_s": 0.02988420848484848,
+   "stdev_s": 0.0007678340422425195,
+   "median_s": 0.02981326818181818,
+   "min_s": 0.02866628484848485,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "expressions/fpeg machine, tree",
+   "input": "expressions.c",
+   "mean_s": 0.01329951347826087,
+   "stdev_s": 0.0008405715632669367,
+   "median_s": 0.012961940579710144,
+   "min_s": 0.012455033333333334,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "fpeg grammar load",
+   "input": null,
+   "mean_s": 0.00035069698303790076,
+   "stdev_s": 2.8906470578862153e-05,
+   "median_s": 0.0003523096014492754,
+   "min_s": 0.0002817416666666667,
+   "values": 100
+  },
+  {
+   "suite": "rust",
+   "name": "fpeg machine on a small sum",
+   "input": null,
+   "mean_s": 1.7018647248392332e-06,
+   "stdev_s": 1.971964166887115e-07,
+   "median_s": 1.6652366461264628e-06,
+   "min_s": 1.370016583747927e-06,
+   "values": 100
+  },
+  {
+   "suite": "rust",
+   "name": "fpeg machine on a small sum, nothing remembered",
+   "input": null,
+   "mean_s": 3.5309085505487137e-06,
+   "stdev_s": 3.646538768774504e-07,
+   "median_s": 3.4182927978883863e-06,
+   "min_s": 3.056055363321799e-06,
+   "values": 100
+  },
+  {
+   "suite": "rust",
+   "name": "json/fpeg machine with its profile, tree",
+   "input": "records.json",
+   "mean_s": 0.43055672,
+   "stdev_s": 0.01688069307655903,
+   "median_s": 0.43391945,
+   "min_s": 0.38988033333333333,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "json/fpeg machine, tree",
+   "input": "records.json",
+   "mean_s": 0.036786043448275865,
+   "stdev_s": 0.0012436029482804627,
+   "median_s": 0.03686141379310345,
+   "min_s": 0.034944765517241384,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "json/pest generated, token queue",
+   "input": "records.json",
+   "mean_s": 0.063852593125,
+   "stdev_s": 0.0027851521039394885,
+   "median_s": 0.0631677625,
+   "min_s": 0.06028984375,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "json/pest_vm interpreter, token queue",
+   "input": "records.json",
+   "mean_s": 0.3257208475,
+   "stdev_s": 0.006759974375490244,
+   "median_s": 0.3255057,
+   "min_s": 0.317149625,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "json/serde_json to Value",
+   "input": "records.json",
+   "mean_s": 0.010333130526315789,
+   "stdev_s": 0.0005281535041917235,
+   "median_s": 0.010449971710526315,
+   "min_s": 0.00952685657894737,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/every pass",
+   "input": null,
+   "mean_s": 0.0018743290506329114,
+   "stdev_s": 6.618911498582104e-05,
+   "median_s": 0.0018589174050632911,
+   "min_s": 0.0018144455696202531,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without dispatch",
+   "input": null,
+   "mean_s": 0.0017646226086956522,
+   "stdev_s": 6.942678611221396e-05,
+   "median_s": 0.0017532913043478262,
+   "min_s": 0.001685310559006211,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without hasher",
+   "input": null,
+   "mean_s": 0.0018520456875,
+   "stdev_s": 8.261562018611844e-05,
+   "median_s": 0.001830888125,
+   "min_s": 0.001767098125,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without inline",
+   "input": null,
+   "mean_s": 0.002072963493150685,
+   "stdev_s": 7.716060341104048e-05,
+   "median_s": 0.002050007191780822,
+   "min_s": 0.001966909589041096,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without left_loop",
+   "input": null,
+   "mean_s": 0.001873518727272727,
+   "stdev_s": 6.784918730999417e-05,
+   "median_s": 0.001863589393939394,
+   "min_s": 0.0017942430303030303,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without skip",
+   "input": null,
+   "mean_s": 0.0019020584177215191,
+   "stdev_s": 5.1040113686719e-05,
+   "median_s": 0.0018967664556962024,
+   "min_s": 0.0018350582278481012,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without span",
+   "input": null,
+   "mean_s": 0.0020891514482758618,
+   "stdev_s": 4.626101437601536e-05,
+   "median_s": 0.0021037,
+   "min_s": 0.0020340193103448277,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on CSV/without split",
+   "input": null,
+   "mean_s": 0.0022866321374045797,
+   "stdev_s": 0.00012972433235167592,
+   "median_s": 0.002248716030534351,
+   "min_s": 0.0021008099236641225,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/every pass",
+   "input": "expressions.c",
+   "mean_s": 0.013991492380952382,
+   "stdev_s": 0.0004381460393377437,
+   "median_s": 0.014025683333333332,
+   "min_s": 0.01331669523809524,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without dispatch",
+   "input": "expressions.c",
+   "mean_s": 0.020425405333333337,
+   "stdev_s": 0.0005320457404619494,
+   "median_s": 0.020471223333333337,
+   "min_s": 0.01978632,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without hasher",
+   "input": "expressions.c",
+   "mean_s": 0.013745220454545452,
+   "stdev_s": 0.0008298824046001191,
+   "median_s": 0.013690043181818181,
+   "min_s": 0.012517118181818181,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without inline",
+   "input": "expressions.c",
+   "mean_s": 0.013451885454545457,
+   "stdev_s": 0.00040190148791814336,
+   "median_s": 0.013510970454545454,
+   "min_s": 0.012436690909090909,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without left_loop",
+   "input": "expressions.c",
+   "mean_s": 0.04698439,
+   "stdev_s": 0.002356847019049831,
+   "median_s": 0.046936842857142856,
+   "min_s": 0.04407208571428572,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without skip",
+   "input": "expressions.c",
+   "mean_s": 0.016132660952380955,
+   "stdev_s": 0.0003768619244127195,
+   "median_s": 0.01604744523809524,
+   "min_s": 0.015716957142857143,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without span",
+   "input": "expressions.c",
+   "mean_s": 0.01363090909090909,
+   "stdev_s": 0.0007363406038547757,
+   "median_s": 0.013821729545454546,
+   "min_s": 0.012498322727272727,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on expressions/without split",
+   "input": "expressions.c",
+   "mean_s": 0.012479163599999999,
+   "stdev_s": 0.00046180886576139077,
+   "median_s": 0.012450618,
+   "min_s": 0.011667736,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/every pass",
+   "input": "records.json",
+   "mean_s": 0.03692562625,
+   "stdev_s": 0.0014032828282980524,
+   "median_s": 0.0367043875,
+   "min_s": 0.0349737125,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without dispatch",
+   "input": "records.json",
+   "mean_s": 0.03844349125,
+   "stdev_s": 0.001657595115222255,
+   "median_s": 0.0383087625,
+   "min_s": 0.0364905,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without hasher",
+   "input": "records.json",
+   "mean_s": 0.03558909111111111,
+   "stdev_s": 0.0009754539362102324,
+   "median_s": 0.03545762222222222,
+   "min_s": 0.0342618,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without inline",
+   "input": "records.json",
+   "mean_s": 0.05450040166666667,
+   "stdev_s": 0.0024076701301559266,
+   "median_s": 0.05480749166666667,
+   "min_s": 0.0505864,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without left_loop",
+   "input": "records.json",
+   "mean_s": 0.03722759875,
+   "stdev_s": 0.0014709010509251963,
+   "median_s": 0.0378078,
+   "min_s": 0.0346901375,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without skip",
+   "input": "records.json",
+   "mean_s": 0.04704182714285715,
+   "stdev_s": 0.002849826175869938,
+   "median_s": 0.046243464285714284,
+   "min_s": 0.043871228571428576,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without span",
+   "input": "records.json",
+   "mean_s": 0.03800179625,
+   "stdev_s": 0.001958522184210177,
+   "median_s": 0.03729491875,
+   "min_s": 0.035897075,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on JSON/without split",
+   "input": "records.json",
+   "mean_s": 0.04697656571428572,
+   "stdev_s": 0.001628500772808705,
+   "median_s": 0.0471067,
+   "min_s": 0.04465048571428572,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/every pass",
+   "input": null,
+   "mean_s": 0.0077964305263157905,
+   "stdev_s": 0.00027318560180779615,
+   "median_s": 0.007699467105263157,
+   "min_s": 0.007499047368421052,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without dispatch",
+   "input": null,
+   "mean_s": 0.011974137307692308,
+   "stdev_s": 0.0007323187932121385,
+   "median_s": 0.011874882692307692,
+   "min_s": 0.01116108076923077,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without hasher",
+   "input": null,
+   "mean_s": 0.008520112162162164,
+   "stdev_s": 0.0003844058608241698,
+   "median_s": 0.008555694594594595,
+   "min_s": 0.007903510810810812,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without inline",
+   "input": null,
+   "mean_s": 0.007794041,
+   "stdev_s": 0.0002258017188978468,
+   "median_s": 0.00772862875,
+   "min_s": 0.0075072625,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without left_loop",
+   "input": null,
+   "mean_s": 0.019870566666666666,
+   "stdev_s": 0.0005416467507313027,
+   "median_s": 0.01968868333333333,
+   "min_s": 0.01931934,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without skip",
+   "input": null,
+   "mean_s": 0.0090385803125,
+   "stdev_s": 0.0002634764679152083,
+   "median_s": 0.0090337859375,
+   "min_s": 0.008627771875,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without span",
+   "input": null,
+   "mean_s": 0.008247970263157893,
+   "stdev_s": 0.00036438798683026614,
+   "median_s": 0.00812145394736842,
+   "min_s": 0.007912623684210527,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Lua/without split",
+   "input": null,
+   "mean_s": 0.007731203421052632,
+   "stdev_s": 0.00037288169440114323,
+   "median_s": 0.007737130263157895,
+   "min_s": 0.007003936842105263,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/every pass",
+   "input": "python_transformer.py",
+   "mean_s": 0.00825459342857143,
+   "stdev_s": 0.00037702566276309393,
+   "median_s": 0.00813619,
+   "min_s": 0.007832431428571427,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without dispatch",
+   "input": "python_transformer.py",
+   "mean_s": 0.012530164583333335,
+   "stdev_s": 0.0007961879606968948,
+   "median_s": 0.012538672916666667,
+   "min_s": 0.011571658333333333,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without hasher",
+   "input": "python_transformer.py",
+   "mean_s": 0.009438606666666668,
+   "stdev_s": 0.0004318515607107583,
+   "median_s": 0.009379825757575757,
+   "min_s": 0.0086835,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without inline",
+   "input": "python_transformer.py",
+   "mean_s": 0.008247701764705883,
+   "stdev_s": 0.00038747614803053313,
+   "median_s": 0.008254267647058822,
+   "min_s": 0.00766974705882353,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without left_loop",
+   "input": "python_transformer.py",
+   "mean_s": 0.015935802222222222,
+   "stdev_s": 0.0005139085272670665,
+   "median_s": 0.0159964,
+   "min_s": 0.015301855555555556,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without skip",
+   "input": "python_transformer.py",
+   "mean_s": 0.010142741935483871,
+   "stdev_s": 0.0008000564625106124,
+   "median_s": 0.0099332,
+   "min_s": 0.009154680645161289,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without span",
+   "input": "python_transformer.py",
+   "mean_s": 0.008493604166666667,
+   "stdev_s": 0.0003841270890815593,
+   "median_s": 0.008485438888888888,
+   "min_s": 0.007918305555555555,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on Python/without split",
+   "input": "python_transformer.py",
+   "mean_s": 0.008458842352941176,
+   "stdev_s": 0.00045868757271180343,
+   "median_s": 0.008271892647058824,
+   "min_s": 0.008033891176470588,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/every pass",
+   "input": null,
+   "mean_s": 0.005930594814814815,
+   "stdev_s": 0.00032867622221501686,
+   "median_s": 0.0058288740740740745,
+   "min_s": 0.0055955907407407406,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without dispatch",
+   "input": null,
+   "mean_s": 0.007441254285714285,
+   "stdev_s": 0.0003467370619024592,
+   "median_s": 0.007359182142857143,
+   "min_s": 0.007105364285714286,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without hasher",
+   "input": null,
+   "mean_s": 0.006301205833333333,
+   "stdev_s": 0.00038711921842317435,
+   "median_s": 0.006193469791666667,
+   "min_s": 0.005770460416666667,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without inline",
+   "input": null,
+   "mean_s": 0.005960094038461538,
+   "stdev_s": 0.0003388206793523382,
+   "median_s": 0.005851271153846154,
+   "min_s": 0.005611863461538462,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without left_loop",
+   "input": null,
+   "mean_s": 0.01210310653846154,
+   "stdev_s": 0.0010740077120666926,
+   "median_s": 0.011830269230769233,
+   "min_s": 0.010745511538461539,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without skip",
+   "input": null,
+   "mean_s": 0.007011564285714286,
+   "stdev_s": 0.00043795056983787013,
+   "median_s": 0.006811133333333334,
+   "min_s": 0.006475140476190476,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without span",
+   "input": null,
+   "mean_s": 0.006150862448979592,
+   "stdev_s": 0.0002131368199663301,
+   "median_s": 0.006079188775510204,
+   "min_s": 0.005918397959183673,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on SQL/without split",
+   "input": null,
+   "mean_s": 0.005888517358490566,
+   "stdev_s": 0.0002392512443883604,
+   "median_s": 0.005828724528301887,
+   "min_s": 0.005474877358490566,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/every pass",
+   "input": null,
+   "mean_s": 0.006234858124999999,
+   "stdev_s": 0.00018946334726291193,
+   "median_s": 0.00616686875,
+   "min_s": 0.0060141375,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without dispatch",
+   "input": null,
+   "mean_s": 0.010759194827586208,
+   "stdev_s": 0.0005117246901693017,
+   "median_s": 0.01059658275862069,
+   "min_s": 0.010305872413793105,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without hasher",
+   "input": null,
+   "mean_s": 0.00619444306122449,
+   "stdev_s": 0.00026698050567751033,
+   "median_s": 0.006240684693877551,
+   "min_s": 0.005727857142857143,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without inline",
+   "input": null,
+   "mean_s": 0.006310220408163265,
+   "stdev_s": 0.0003374299042666438,
+   "median_s": 0.006199142857142856,
+   "min_s": 0.0060375795918367345,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without left_loop",
+   "input": null,
+   "mean_s": 0.006282340625,
+   "stdev_s": 0.00019938081214256043,
+   "median_s": 0.006359413541666667,
+   "min_s": 0.00595438125,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without skip",
+   "input": null,
+   "mean_s": 0.007354621162790698,
+   "stdev_s": 0.00034586989369489994,
+   "median_s": 0.007278848837209302,
+   "min_s": 0.006881820930232559,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without span",
+   "input": null,
+   "mean_s": 0.0070794327272727265,
+   "stdev_s": 0.00039257192176353695,
+   "median_s": 0.006922776136363637,
+   "min_s": 0.0066232363636363634,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the grammar files/without split",
+   "input": null,
+   "mean_s": 0.006234696041666667,
+   "stdev_s": 0.00025389538594981775,
+   "median_s": 0.006263707291666666,
+   "min_s": 0.005916302083333333,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/every pass",
+   "input": null,
+   "mean_s": 0.001741430935672515,
+   "stdev_s": 5.561151993367652e-05,
+   "median_s": 0.0017486292397660818,
+   "min_s": 0.0016589274853801169,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without dispatch",
+   "input": null,
+   "mean_s": 0.0017424152513966478,
+   "stdev_s": 0.00012745210692244877,
+   "median_s": 0.0017238673184357541,
+   "min_s": 0.001611050837988827,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without hasher",
+   "input": null,
+   "mean_s": 0.0017790133142857143,
+   "stdev_s": 7.175834374457846e-05,
+   "median_s": 0.001797672857142857,
+   "min_s": 0.001676074857142857,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without inline",
+   "input": null,
+   "mean_s": 0.0018602121604938272,
+   "stdev_s": 9.182234791262268e-05,
+   "median_s": 0.0018521577160493827,
+   "min_s": 0.0017205876543209876,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without left_loop",
+   "input": null,
+   "mean_s": 0.0017739723030303033,
+   "stdev_s": 5.936670684146018e-05,
+   "median_s": 0.0017800575757575758,
+   "min_s": 0.0016967078787878788,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without skip",
+   "input": null,
+   "mean_s": 0.002327266377952756,
+   "stdev_s": 0.00013112182066314234,
+   "median_s": 0.0023200826771653544,
+   "min_s": 0.0021713102362204725,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without span",
+   "input": null,
+   "mean_s": 0.0021874584444444446,
+   "stdev_s": 0.00010226944030081595,
+   "median_s": 0.0021577229629629628,
+   "min_s": 0.0020830222222222223,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on the outline language/without split",
+   "input": null,
+   "mean_s": 0.001747986,
+   "stdev_s": 8.988698117884695e-05,
+   "median_s": 0.0017405724242424243,
+   "min_s": 0.00163278,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/every pass",
+   "input": null,
+   "mean_s": 0.004328368873239437,
+   "stdev_s": 0.00015530639946124237,
+   "median_s": 0.0043156288732394375,
+   "min_s": 0.004108385915492958,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without dispatch",
+   "input": null,
+   "mean_s": 0.005432948909090909,
+   "stdev_s": 0.00019658136686915916,
+   "median_s": 0.005424474545454545,
+   "min_s": 0.0051442781818181816,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without hasher",
+   "input": null,
+   "mean_s": 0.00461995546875,
+   "stdev_s": 0.0001419740902874928,
+   "median_s": 0.00457611875,
+   "min_s": 0.004435715625,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without inline",
+   "input": null,
+   "mean_s": 0.004379713611111112,
+   "stdev_s": 0.00024005230643285051,
+   "median_s": 0.004295523611111112,
+   "min_s": 0.004129658333333334,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without left_loop",
+   "input": null,
+   "mean_s": 0.010511450344827587,
+   "stdev_s": 0.0004396431964207676,
+   "median_s": 0.010323424137931034,
+   "min_s": 0.010079482758620691,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without skip",
+   "input": null,
+   "mean_s": 0.004960164666666666,
+   "stdev_s": 0.00021035437023517493,
+   "median_s": 0.004887423333333334,
+   "min_s": 0.004664328333333333,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without span",
+   "input": null,
+   "mean_s": 0.0048856269841269844,
+   "stdev_s": 0.0003356458773727759,
+   "median_s": 0.0048907079365079365,
+   "min_s": 0.004504353968253968,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on tiny/without split",
+   "input": null,
+   "mean_s": 0.004425443055555556,
+   "stdev_s": 0.0001446467298303603,
+   "median_s": 0.004417671527777778,
+   "min_s": 0.004216326388888889,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/every pass",
+   "input": null,
+   "mean_s": 0.0031559066326530614,
+   "stdev_s": 0.0002475869044488853,
+   "median_s": 0.0031051091836734692,
+   "min_s": 0.0029023163265306123,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without dispatch",
+   "input": null,
+   "mean_s": 0.003226192558139535,
+   "stdev_s": 0.00015585978781322668,
+   "median_s": 0.0032085523255813955,
+   "min_s": 0.0030262674418604653,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without hasher",
+   "input": null,
+   "mean_s": 0.0031341259595959597,
+   "stdev_s": 0.00012176450451579428,
+   "median_s": 0.0031198040404040402,
+   "min_s": 0.0029723191919191917,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without inline",
+   "input": null,
+   "mean_s": 0.0032440443298969073,
+   "stdev_s": 8.919553781805077e-05,
+   "median_s": 0.0032610407216494847,
+   "min_s": 0.0030945371134020617,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without left_loop",
+   "input": null,
+   "mean_s": 0.003086261237113402,
+   "stdev_s": 0.0001474055670064478,
+   "median_s": 0.003067353092783505,
+   "min_s": 0.002813798969072165,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without skip",
+   "input": null,
+   "mean_s": 0.003892632564102564,
+   "stdev_s": 0.00020747381150067206,
+   "median_s": 0.0038770865384615385,
+   "min_s": 0.0035262935897435897,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without span",
+   "input": null,
+   "mean_s": 0.0035343454761904763,
+   "stdev_s": 0.00012819783824341465,
+   "median_s": 0.003539870238095238,
+   "min_s": 0.0033114595238095236,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "passes on TOML/without split",
+   "input": null,
+   "mean_s": 0.0032468566315789473,
+   "stdev_s": 0.00015039696167995145,
+   "median_s": 0.0032129342105263153,
+   "min_s": 0.0029709821052631576,
+   "values": 10
+  },
+  {
+   "suite": "rust",
+   "name": "pest_vm grammar load",
+   "input": null,
+   "mean_s": 0.0007661059464914757,
+   "stdev_s": 5.056756016330764e-05,
+   "median_s": 0.000758960430406109,
+   "min_s": 0.000632975,
+   "values": 100
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "a parse that starts again with every rule remembered",
+   "input": null,
+   "mean_s": 0.0020025454615384625,
+   "stdev_s": 0.00012454748821988157,
+   "median_s": 0.001989467307692308,
+   "min_s": 0.0018044153846153844,
+   "values": 100
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "expressions/fpeg machine, every rule remembered, tree",
+   "input": "expressions.c",
+   "mean_s": 0.025710636052631578,
+   "stdev_s": 0.0006786576463218603,
+   "median_s": 0.02568557763157895,
+   "min_s": 0.02463603684210526,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "expressions/fpeg machine, tree",
+   "input": "expressions.c",
+   "mean_s": 0.010641564222222222,
+   "stdev_s": 0.00015142490328426907,
+   "median_s": 0.01062885,
+   "min_s": 0.010442252222222222,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "fpeg grammar load",
+   "input": null,
+   "mean_s": 0.00030904474101519286,
+   "stdev_s": 2.4897652391538834e-05,
+   "median_s": 0.00030137265731292523,
+   "min_s": 0.00026720625,
+   "values": 100
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "fpeg machine on a small sum",
+   "input": null,
+   "mean_s": 1.4516839759703942e-06,
+   "stdev_s": 1.741345182149579e-07,
+   "median_s": 1.4078907165578435e-06,
+   "min_s": 1.1794198895027625e-06,
+   "values": 100
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "fpeg machine on a small sum, nothing remembered",
+   "input": null,
+   "mean_s": 2.9489235282365006e-06,
+   "stdev_s": 3.0766503495241707e-07,
+   "median_s": 2.903602967306326e-06,
+   "min_s": 2.467598039215686e-06,
+   "values": 100
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "json/fpeg machine with its profile, tree",
+   "input": "records.json",
+   "mean_s": 0.4031710499999999,
+   "stdev_s": 0.009321923205232887,
+   "median_s": 0.4034371166666667,
+   "min_s": 0.3846319,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "json/fpeg machine, tree",
+   "input": "records.json",
+   "mean_s": 0.025255861282051283,
+   "stdev_s": 0.0009081675002021812,
+   "median_s": 0.025081441025641023,
+   "min_s": 0.02417577435897436,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "json/pest generated, token queue",
+   "input": "records.json",
+   "mean_s": 0.08838198833333333,
+   "stdev_s": 0.004614014623867414,
+   "median_s": 0.09040840833333334,
+   "min_s": 0.07870885833333333,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "json/pest_vm interpreter, token queue",
+   "input": "records.json",
+   "mean_s": 0.36936106333333335,
+   "stdev_s": 0.010137218505342053,
+   "median_s": 0.37184891666666664,
+   "min_s": 0.35379336666666666,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "json/serde_json to Value",
+   "input": "records.json",
+   "mean_s": 0.009688008157894737,
+   "stdev_s": 0.0007146537038141944,
+   "median_s": 0.00960075657894737,
+   "min_s": 0.008639655263157894,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/every pass",
+   "input": null,
+   "mean_s": 0.001462768309178744,
+   "stdev_s": 4.6023698191885494e-05,
+   "median_s": 0.001451701690821256,
+   "min_s": 0.0014097816425120773,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without dispatch",
+   "input": null,
+   "mean_s": 0.001397810934579439,
+   "stdev_s": 3.7147748087126434e-05,
+   "median_s": 0.001391581074766355,
+   "min_s": 0.0013409621495327102,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without hasher",
+   "input": null,
+   "mean_s": 0.0015010585148514852,
+   "stdev_s": 5.2126958537077316e-05,
+   "median_s": 0.0015209702970297029,
+   "min_s": 0.0014162757425742573,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without inline",
+   "input": null,
+   "mean_s": 0.0017574909826589594,
+   "stdev_s": 6.407069680441179e-05,
+   "median_s": 0.0017727242774566473,
+   "min_s": 0.0016163872832369941,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without left_loop",
+   "input": null,
+   "mean_s": 0.0015046951741293534,
+   "stdev_s": 8.182666747382461e-05,
+   "median_s": 0.0015194422885572137,
+   "min_s": 0.0013336820895522388,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without skip",
+   "input": null,
+   "mean_s": 0.0014463287864077668,
+   "stdev_s": 8.808844530279537e-05,
+   "median_s": 0.001420470631067961,
+   "min_s": 0.0013412898058252428,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without span",
+   "input": null,
+   "mean_s": 0.0016135597354497355,
+   "stdev_s": 5.058421394221208e-05,
+   "median_s": 0.001606461904761905,
+   "min_s": 0.0015521142857142856,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on CSV/without split",
+   "input": null,
+   "mean_s": 0.0019428921052631579,
+   "stdev_s": 9.354366578723697e-05,
+   "median_s": 0.0019568444078947368,
+   "min_s": 0.0017456085526315788,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/every pass",
+   "input": "expressions.c",
+   "mean_s": 0.010723427586206896,
+   "stdev_s": 0.0004529169096765407,
+   "median_s": 0.010675924137931034,
+   "min_s": 0.009852217241379309,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without dispatch",
+   "input": "expressions.c",
+   "mean_s": 0.01727524263157895,
+   "stdev_s": 0.000524671272818594,
+   "median_s": 0.01706979210526316,
+   "min_s": 0.01679188421052632,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without hasher",
+   "input": "expressions.c",
+   "mean_s": 0.010863845517241377,
+   "stdev_s": 0.0004897459994111494,
+   "median_s": 0.010751370689655173,
+   "min_s": 0.010092593103448275,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without inline",
+   "input": "expressions.c",
+   "mean_s": 0.01118477857142857,
+   "stdev_s": 0.00033596061446662033,
+   "median_s": 0.011131996428571428,
+   "min_s": 0.010672089285714285,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without left_loop",
+   "input": "expressions.c",
+   "mean_s": 0.0374287325,
+   "stdev_s": 0.002670904760298153,
+   "median_s": 0.03675574375,
+   "min_s": 0.0343620875,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without skip",
+   "input": "expressions.c",
+   "mean_s": 0.01246004875,
+   "stdev_s": 0.0002842649931239853,
+   "median_s": 0.012409727083333334,
+   "min_s": 0.011971554166666665,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without span",
+   "input": "expressions.c",
+   "mean_s": 0.01098981,
+   "stdev_s": 0.00035967836697521036,
+   "median_s": 0.010872121153846155,
+   "min_s": 0.010652396153846154,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on expressions/without split",
+   "input": "expressions.c",
+   "mean_s": 0.011046202142857144,
+   "stdev_s": 0.0004566395764197781,
+   "median_s": 0.0109395375,
+   "min_s": 0.010323310714285714,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/every pass",
+   "input": "records.json",
+   "mean_s": 0.026802850000000003,
+   "stdev_s": 0.001023223367741966,
+   "median_s": 0.0269667,
+   "min_s": 0.02529865833333333,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without dispatch",
+   "input": "records.json",
+   "mean_s": 0.028879635454545458,
+   "stdev_s": 0.0019117786749495182,
+   "median_s": 0.029232645454545455,
+   "min_s": 0.026150972727272726,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without hasher",
+   "input": "records.json",
+   "mean_s": 0.026501880833333328,
+   "stdev_s": 0.0007718033030784122,
+   "median_s": 0.026395566666666665,
+   "min_s": 0.025511166666666668,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without inline",
+   "input": "records.json",
+   "mean_s": 0.04119678,
+   "stdev_s": 0.0009935877693609213,
+   "median_s": 0.04131395,
+   "min_s": 0.0396983375,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without left_loop",
+   "input": "records.json",
+   "mean_s": 0.02479372384615385,
+   "stdev_s": 0.0006306288664279931,
+   "median_s": 0.024842365384615383,
+   "min_s": 0.02365353846153846,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without skip",
+   "input": "records.json",
+   "mean_s": 0.0403671825,
+   "stdev_s": 0.0020307302632783224,
+   "median_s": 0.04120559375,
+   "min_s": 0.0364667,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without span",
+   "input": "records.json",
+   "mean_s": 0.026434087272727273,
+   "stdev_s": 0.0018604660584984095,
+   "median_s": 0.025899595454545454,
+   "min_s": 0.02441799090909091,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on JSON/without split",
+   "input": "records.json",
+   "mean_s": 0.03326613555555556,
+   "stdev_s": 0.001152684986975584,
+   "median_s": 0.032808416666666666,
+   "min_s": 0.03194902222222223,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/every pass",
+   "input": null,
+   "mean_s": 0.006770163333333333,
+   "stdev_s": 0.0002688627088372282,
+   "median_s": 0.006700568888888889,
+   "min_s": 0.006464173333333333,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without dispatch",
+   "input": null,
+   "mean_s": 0.01086382142857143,
+   "stdev_s": 0.0005074968647597043,
+   "median_s": 0.01082475357142857,
+   "min_s": 0.010202725,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without hasher",
+   "input": null,
+   "mean_s": 0.006938262272727274,
+   "stdev_s": 0.00019794857640457252,
+   "median_s": 0.006857651136363637,
+   "min_s": 0.0066205863636363636,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without inline",
+   "input": null,
+   "mean_s": 0.00673411357142857,
+   "stdev_s": 0.00045631347271560057,
+   "median_s": 0.006692175,
+   "min_s": 0.006291442857142857,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without left_loop",
+   "input": null,
+   "mean_s": 0.01722665875,
+   "stdev_s": 0.001123917620888383,
+   "median_s": 0.017248259375,
+   "min_s": 0.01586420625,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without skip",
+   "input": null,
+   "mean_s": 0.008189381891891893,
+   "stdev_s": 0.00016389336795258872,
+   "median_s": 0.008226956756756757,
+   "min_s": 0.008004494594594595,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without span",
+   "input": null,
+   "mean_s": 0.007499548571428572,
+   "stdev_s": 0.00028650281303997443,
+   "median_s": 0.007537809523809524,
+   "min_s": 0.007186716666666667,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Lua/without split",
+   "input": null,
+   "mean_s": 0.007211320869565217,
+   "stdev_s": 0.00023354143585066261,
+   "median_s": 0.007183760869565217,
+   "min_s": 0.006961854347826087,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/every pass",
+   "input": "python_transformer.py",
+   "mean_s": 0.007579230487804877,
+   "stdev_s": 0.0004232236179353729,
+   "median_s": 0.007697601219512195,
+   "min_s": 0.0068178512195121955,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without dispatch",
+   "input": "python_transformer.py",
+   "mean_s": 0.011613154999999998,
+   "stdev_s": 0.00030454390801671293,
+   "median_s": 0.011611869230769232,
+   "min_s": 0.011245711538461538,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without hasher",
+   "input": "python_transformer.py",
+   "mean_s": 0.008009297567567566,
+   "stdev_s": 0.0003712353956690621,
+   "median_s": 0.008047894594594594,
+   "min_s": 0.007475178378378378,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without inline",
+   "input": "python_transformer.py",
+   "mean_s": 0.007580790975609755,
+   "stdev_s": 0.000354672372421281,
+   "median_s": 0.007576396341463415,
+   "min_s": 0.007045473170731707,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without left_loop",
+   "input": "python_transformer.py",
+   "mean_s": 0.014088297391304348,
+   "stdev_s": 0.0005526038402892778,
+   "median_s": 0.013922613043478261,
+   "min_s": 0.013526034782608696,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without skip",
+   "input": "python_transformer.py",
+   "mean_s": 0.009070563939393941,
+   "stdev_s": 0.00042857709780300764,
+   "median_s": 0.009126487878787878,
+   "min_s": 0.008320324242424243,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without span",
+   "input": "python_transformer.py",
+   "mean_s": 0.008140500810810811,
+   "stdev_s": 0.00043085453002164825,
+   "median_s": 0.008086435135135135,
+   "min_s": 0.0073858378378378374,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on Python/without split",
+   "input": "python_transformer.py",
+   "mean_s": 0.007706971,
+   "stdev_s": 0.0005166176730361955,
+   "median_s": 0.00767778375,
+   "min_s": 0.006961835,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/every pass",
+   "input": null,
+   "mean_s": 0.004996414179104477,
+   "stdev_s": 0.00035931514918298435,
+   "median_s": 0.004967135074626866,
+   "min_s": 0.00435490447761194,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without dispatch",
+   "input": null,
+   "mean_s": 0.006149555714285715,
+   "stdev_s": 0.00027362822529526415,
+   "median_s": 0.006116130612244899,
+   "min_s": 0.005694628571428572,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without hasher",
+   "input": null,
+   "mean_s": 0.005442735833333333,
+   "stdev_s": 0.0001455393279721123,
+   "median_s": 0.005427758333333334,
+   "min_s": 0.00518615,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without inline",
+   "input": null,
+   "mean_s": 0.004974330350877193,
+   "stdev_s": 0.0002338120883581341,
+   "median_s": 0.004995914912280702,
+   "min_s": 0.004576943859649123,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without left_loop",
+   "input": null,
+   "mean_s": 0.0098257371875,
+   "stdev_s": 0.0004908010912683596,
+   "median_s": 0.0097068125,
+   "min_s": 0.009310146875,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without skip",
+   "input": null,
+   "mean_s": 0.006004322641509434,
+   "stdev_s": 0.00023796150422989056,
+   "median_s": 0.00596648962264151,
+   "min_s": 0.005565620754716981,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without span",
+   "input": null,
+   "mean_s": 0.005444266296296296,
+   "stdev_s": 0.00044240420776842944,
+   "median_s": 0.0055803129629629624,
+   "min_s": 0.004846335185185186,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on SQL/without split",
+   "input": null,
+   "mean_s": 0.004679800322580645,
+   "stdev_s": 0.00012078049875267758,
+   "median_s": 0.004648162903225807,
+   "min_s": 0.0045346435483870975,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/every pass",
+   "input": null,
+   "mean_s": 0.005521778,
+   "stdev_s": 0.00010916370526195859,
+   "median_s": 0.005508493636363637,
+   "min_s": 0.005379618181818181,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without dispatch",
+   "input": null,
+   "mean_s": 0.009338355625,
+   "stdev_s": 0.0004758472007105276,
+   "median_s": 0.009345815625,
+   "min_s": 0.008591040625,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without hasher",
+   "input": null,
+   "mean_s": 0.0055350514814814815,
+   "stdev_s": 0.00014608331504682815,
+   "median_s": 0.00552755,
+   "min_s": 0.005315203703703703,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without inline",
+   "input": null,
+   "mean_s": 0.005619927037037037,
+   "stdev_s": 0.0001583390861400454,
+   "median_s": 0.005583252777777778,
+   "min_s": 0.00538157962962963,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without left_loop",
+   "input": null,
+   "mean_s": 0.005145444655172414,
+   "stdev_s": 0.00022509033549725045,
+   "median_s": 0.005102497413793104,
+   "min_s": 0.004930329310344828,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without skip",
+   "input": null,
+   "mean_s": 0.0064939557999999994,
+   "stdev_s": 0.00011580356197726486,
+   "median_s": 0.0064834,
+   "min_s": 0.00632489,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without span",
+   "input": null,
+   "mean_s": 0.0058090977999999995,
+   "stdev_s": 0.000263203949694191,
+   "median_s": 0.005755867,
+   "min_s": 0.0054853,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the grammar files/without split",
+   "input": null,
+   "mean_s": 0.005237629818181818,
+   "stdev_s": 0.00016728633142790798,
+   "median_s": 0.005221279090909091,
+   "min_s": 0.004964830909090909,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/every pass",
+   "input": null,
+   "mean_s": 0.0013662119913419911,
+   "stdev_s": 2.4549216126398806e-05,
+   "median_s": 0.0013620928571428572,
+   "min_s": 0.0013309051948051948,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without dispatch",
+   "input": null,
+   "mean_s": 0.0012658597816593887,
+   "stdev_s": 6.149671151881111e-05,
+   "median_s": 0.0012480021834061137,
+   "min_s": 0.0011938069868995633,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without hasher",
+   "input": null,
+   "mean_s": 0.001300796535087719,
+   "stdev_s": 9.661397066774863e-05,
+   "median_s": 0.0012682754385964913,
+   "min_s": 0.0012267350877192983,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without inline",
+   "input": null,
+   "mean_s": 0.0013510974782608696,
+   "stdev_s": 3.5596963521680806e-05,
+   "median_s": 0.0013375754347826087,
+   "min_s": 0.0012990917391304349,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without left_loop",
+   "input": null,
+   "mean_s": 0.0013017631601731602,
+   "stdev_s": 7.906178133714506e-05,
+   "median_s": 0.0012810296536796535,
+   "min_s": 0.0012015142857142857,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without skip",
+   "input": null,
+   "mean_s": 0.0017290056906077347,
+   "stdev_s": 5.8855671130191526e-05,
+   "median_s": 0.0016981406077348066,
+   "min_s": 0.0016680696132596684,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without span",
+   "input": null,
+   "mean_s": 0.0018095271257485028,
+   "stdev_s": 4.9327339734846325e-05,
+   "median_s": 0.0018012071856287424,
+   "min_s": 0.0017427437125748502,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on the outline language/without split",
+   "input": null,
+   "mean_s": 0.0012780225531914893,
+   "stdev_s": 6.356682313416369e-05,
+   "median_s": 0.001247653829787234,
+   "min_s": 0.001216,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/every pass",
+   "input": null,
+   "mean_s": 0.0035842471764705877,
+   "stdev_s": 0.00011546365532571913,
+   "median_s": 0.003543056470588235,
+   "min_s": 0.003446756470588235,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without dispatch",
+   "input": null,
+   "mean_s": 0.0049914868852459025,
+   "stdev_s": 0.00016554203256566075,
+   "median_s": 0.004947283606557377,
+   "min_s": 0.0048188131147540985,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without hasher",
+   "input": null,
+   "mean_s": 0.0037226083333333337,
+   "stdev_s": 0.0002337221499355513,
+   "median_s": 0.0036472160714285714,
+   "min_s": 0.0033697583333333336,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without inline",
+   "input": null,
+   "mean_s": 0.003902689875,
+   "stdev_s": 9.02171810180893e-05,
+   "median_s": 0.003872564375,
+   "min_s": 0.0037673325,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without left_loop",
+   "input": null,
+   "mean_s": 0.009698926129032257,
+   "stdev_s": 0.0004964088104112162,
+   "median_s": 0.009733166129032259,
+   "min_s": 0.008575851612903225,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without skip",
+   "input": null,
+   "mean_s": 0.004519290606060606,
+   "stdev_s": 0.00012484597911250947,
+   "median_s": 0.004530072727272727,
+   "min_s": 0.004368627272727272,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without span",
+   "input": null,
+   "mean_s": 0.004288942638888889,
+   "stdev_s": 0.0001046358716489626,
+   "median_s": 0.00429095,
+   "min_s": 0.004155006944444445,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on tiny/without split",
+   "input": null,
+   "mean_s": 0.0037780115,
+   "stdev_s": 0.00014844242720336991,
+   "median_s": 0.00375068625,
+   "min_s": 0.00354757125,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/every pass",
+   "input": null,
+   "mean_s": 0.0024119395726495724,
+   "stdev_s": 0.000117978712557632,
+   "median_s": 0.002390569230769231,
+   "min_s": 0.002232057264957265,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without dispatch",
+   "input": null,
+   "mean_s": 0.002676630810810811,
+   "stdev_s": 0.00010895300039217198,
+   "median_s": 0.002628654054054054,
+   "min_s": 0.0025406234234234236,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without hasher",
+   "input": null,
+   "mean_s": 0.002385959523809524,
+   "stdev_s": 7.716018084673234e-05,
+   "median_s": 0.0023795246031746036,
+   "min_s": 0.0022504904761904763,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without inline",
+   "input": null,
+   "mean_s": 0.002427413949579832,
+   "stdev_s": 5.933375317619013e-05,
+   "median_s": 0.00243381974789916,
+   "min_s": 0.00234517731092437,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without left_loop",
+   "input": null,
+   "mean_s": 0.0024789010077519383,
+   "stdev_s": 0.00014150920921845406,
+   "median_s": 0.002506653488372093,
+   "min_s": 0.0022926906976744187,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without skip",
+   "input": null,
+   "mean_s": 0.0030606654545454544,
+   "stdev_s": 0.00016339963930886848,
+   "median_s": 0.0030042297979797983,
+   "min_s": 0.002839468686868687,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without span",
+   "input": null,
+   "mean_s": 0.002864037766990291,
+   "stdev_s": 7.480306869084158e-05,
+   "median_s": 0.0028280203883495145,
+   "min_s": 0.002799576699029126,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "passes on TOML/without split",
+   "input": null,
+   "mean_s": 0.0024145741269841273,
+   "stdev_s": 0.00014935012883557602,
+   "median_s": 0.002356712301587301,
+   "min_s": 0.002270742857142857,
+   "values": 10
+  },
+  {
+   "suite": "rust-pgo",
+   "name": "pest_vm grammar load",
+   "input": null,
+   "mean_s": 0.00072465941258636,
+   "stdev_s": 6.934739818064756e-05,
+   "median_s": 0.0007113370465116279,
+   "min_s": 0.000580775,
+   "values": 100
+  }
+ ]
+}
