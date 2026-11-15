@@ -44,8 +44,8 @@ benchmarks/rust/      fpeg's Rust benchmarks and baselines, a package outside th
 docs/                 user documentation, one Markdown file per page
 tests/                Python tests, and oracle and corpus tests that span crates
 fuzz/                 fuzz targets for cargo-fuzz, a package outside the workspace
-scripts/              development helpers, among them the licence header check
-.github/workflows/    CI
+scripts/              development helpers: the checks, the licence header check, the release's helpers
+.github/workflows/    CI, and the release from a tag the maintainer pushes
 ```
 
 ## Commands

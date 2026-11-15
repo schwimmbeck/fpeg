@@ -140,13 +140,19 @@ A full run takes several minutes. Close other programs while it runs, and record
 
 ## Releases
 
-The wheels of a release are built with profile-guided optimization:
+A release starts from a tag that the maintainer pushes, and `.github/workflows/release.yml` builds and tests every package of it. Nothing is released from a push to `main`.
+
+1. A release commit sets the version in `Cargo.toml`, in `[workspace.package]` and in the entry of `fpeg` under `[workspace.dependencies]`. Every crate and the Python package take it from there. For a release, the section `Unreleased` of `CHANGELOG.md` becomes `## X.Y.Z (YYYY-MM-DD)`.
+2. The tag is the version with a `v` before it, as `v0.1.0`. A pre-release, as `v0.2.0-rc.1` with the version `0.2.0-rc.1`, rehearses a release.
+3. The workflow checks the tag against the version and the changelog, builds the wheels for every platform and interpreter and tests each one installed, builds and tests the source distribution, packages and builds the crates, builds the command line for every platform and checks the metadata of the packages.
+
+The wheels are built with profile-guided optimization, as this builds one:
 
 ```sh
 uv run maturin build --release --pgo
 ```
 
-maturin builds the module with counters, installs it in a fresh environment, runs `scripts/pgo_training.py` there, which parses the samples of every grammar and turns larger texts into Python values, and builds the module again with the counts. It needs rustup's component `llvm-tools`, and builds and trains once for each interpreter.
+maturin builds the module with counters, installs it in a fresh environment, runs `scripts/pgo_training.py` there, which parses the samples of every grammar and turns larger texts into Python values, and builds the module again with the counts. It needs rustup's component `llvm-tools`, and builds and trains once for each interpreter. `scripts/test_wheels.py` then installs each wheel with its interpreter and runs the Python tests against it.
 
 ## Layout
 

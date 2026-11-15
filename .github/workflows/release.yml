@@ -1,0 +1,232 @@
+# SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+name: Release
+
+# A tag that the maintainer pushes starts a release: vX.Y.Z, or vX.Y.Z-rc.N for a pre-release.
+# It builds and tests every package of the release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # The interpreters that get wheels, the free-threaded ones with a t.
+  PYTHONS: "3.11 3.12 3.13 3.14 3.14t 3.15 3.15t"
+  MATURIN_VERSION: v1.16.0
+
+jobs:
+  notes:
+    name: Version and release notes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 scripts/release_notes.py "$GITHUB_REF_NAME" > notes.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes
+          path: notes.md
+
+  linux:
+    name: Wheels (${{ matrix.target }})
+    needs: notes
+    strategy:
+      fail-fast: false
+      matrix:
+        # Native images, so that the module built with counters runs for the training.
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+            image: quay.io/pypa/manylinux_2_28_x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+            image: quay.io/pypa/manylinux_2_28_aarch64
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+            image: quay.io/pypa/musllinux_1_2_x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+            image: quay.io/pypa/musllinux_1_2_aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find the interpreters in the image
+        run: |
+          interpreters=""
+          for version in $PYTHONS; do
+            number=${version%t}
+            tag=cp${number/./}
+            interpreters+="/opt/python/$tag-$tag${version#"$number"}/bin/python "
+          done
+          echo "INTERPRETERS=$interpreters" >> "$GITHUB_ENV"
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          container: ${{ matrix.image }}
+          rustup-components: llvm-tools
+          args: --release --pgo --out dist --interpreter ${{ env.INTERPRETERS }}
+      - name: Test each wheel in the image
+        run: >-
+          docker run --rm -v "$PWD:/io" -w /io -e INTERPRETERS ${{ matrix.image }}
+          sh -c '${INTERPRETERS%% *} scripts/test_wheels.py dist $INTERPRETERS'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist/*.whl
+
+  native:
+    name: Wheels (${{ matrix.target }})
+    needs: notes
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Install the interpreters
+        shell: bash
+        run: |
+          uv python install $PYTHONS
+          interpreters=""
+          for version in $PYTHONS; do
+            interpreters+="$(uv python find "$version") "
+          done
+          echo "INTERPRETERS=$interpreters" >> "$GITHUB_ENV"
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          target: ${{ matrix.target }}
+          rustup-components: llvm-tools
+          args: --release --pgo --out dist --interpreter ${{ env.INTERPRETERS }}
+      - name: Test each wheel
+        shell: bash
+        run: uv run --no-project python scripts/test_wheels.py dist $INTERPRETERS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist/*.whl
+
+  sdist:
+    name: Source distribution
+    needs: notes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          command: sdist
+          args: --out dist
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Build a wheel from the source distribution alone and test it
+        run: |
+          rustup toolchain install
+          # The build runs outside the checkout, where no toolchain file pins the version.
+          rustup default "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+          uv python install 3.13
+          uv build --python 3.13 --wheel dist/*.tar.gz --out-dir sdist-wheel
+          uv run --no-project python scripts/test_wheels.py sdist-wheel "$(uv python find 3.13)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  crates:
+    name: Crates, packaged and built
+    needs: notes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: cargo publish --workspace --dry-run
+
+  binaries:
+    name: Command line (${{ matrix.target }})
+    needs: notes
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux gets static binaries, which run on any distribution.
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCHIVE: fpeg-${{ github.ref_name }}-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release --locked -p fpeg-cli --target ${{ matrix.target }}
+      - name: Pack the binary with the readme and the licences
+        shell: bash
+        run: |
+          mkdir "$ARCHIVE"
+          cp README.md LICENSE-MIT LICENSE-APACHE target/${{ matrix.target }}/release/fpeg* "$ARCHIVE/"
+          rm -f "$ARCHIVE"/fpeg.d "$ARCHIVE"/fpeg.pdb
+      - if: runner.os != 'Windows'
+        run: tar czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path $env:ARCHIVE -DestinationPath "$env:ARCHIVE.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}.*
+
+  distributions:
+    name: Package metadata
+    needs: [linux, native, sdist]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{wheels-*,sdist}"
+          merge-multiple: true
+          path: dist
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uvx twine check --strict dist/*
