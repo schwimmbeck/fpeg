@@ -3,6 +3,7 @@
 
 //! Errors shown with the line of the text they stand in, the way rustc shows its errors.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 use crate::lines::LineIndex;
@@ -31,7 +32,7 @@ const DELETE_PICTURE: char = '\u{2421}';
 pub struct Source<'t> {
     text: &'t str,
     path: Option<&'t str>,
-    lines: LineIndex,
+    lines: Cow<'t, LineIndex>,
 }
 
 impl<'t> Source<'t> {
@@ -40,7 +41,17 @@ impl<'t> Source<'t> {
         Source {
             text,
             path,
-            lines: LineIndex::new(text),
+            lines: Cow::Owned(LineIndex::new(text)),
+        }
+    }
+
+    /// The text whose lines `lines` indexes, for a caller that shows the errors of one text
+    /// one at a time.
+    pub fn indexed(text: &'t str, path: Option<&'t str>, lines: &'t LineIndex) -> Source<'t> {
+        Source {
+            text,
+            path,
+            lines: Cow::Borrowed(lines),
         }
     }
 

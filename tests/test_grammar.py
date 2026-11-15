@@ -3,6 +3,7 @@
 
 import pickle
 import threading
+import time
 from pathlib import Path
 
 import fpeg
@@ -226,6 +227,26 @@ def test_render_shows_each_error_with_its_line_and_a_caret() -> None:
     assert pickle.loads(pickle.dumps(error)).render("data.txt") == error.render("data.txt")
     # An error that no parse raised has no text to show, only its message.
     assert fpeg.ParseError("bad \x1b[2J value").render() == "error: bad \u241b[2J value"
+
+
+# Errors of a long text shown one at a time, and a time that showing them stays well within
+# when the errors share the text's index, which indexing the text for each takes many times.
+ERRORS_SHOWN = 1_000
+LONG_TEXT_CHARS = 4_000_000
+SHOW_SECONDS = 1.0
+
+
+def test_showing_the_errors_of_a_parse_one_at_a_time_costs_what_they_show() -> None:
+    grammar = fpeg.Grammar(RECOVERING)
+    text = "[1" + ", x" * (ERRORS_SHOWN - 1) + ", " + "\u00e9" * LONG_TEXT_CHARS + "]"
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse(text, recover=True)
+    errors = raised.value.errors
+    assert len(errors) == ERRORS_SHOWN
+    started = time.perf_counter()
+    shown = [error.render() for error in errors]
+    assert time.perf_counter() - started < SHOW_SECONDS
+    assert shown[-1] == raised.value.render().split("\n\n")[-1]
 
 
 def test_limits_end_a_parse_with_a_limit_error() -> None:

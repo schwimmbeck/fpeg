@@ -352,7 +352,7 @@ impl Grammar {
         } else {
             run(&source)
         };
-        let tree = result.map_err(|error| parse_error(py, &text, &source, &error))?;
+        let tree = result.map_err(|error| parse_error(py, &text, &error))?;
         let parsed = Arc::new(Parsed::new(tree, source, Arc::clone(core)));
         let root = (parsed.tree.roots().into_iter())
             .find(|root| !root.is_hidden())
@@ -365,7 +365,7 @@ impl Grammar {
         let root = item(py, &parsed, root)?;
         match parsed.tree.recoveries() {
             [] => Ok(root),
-            recoveries => Err(recovered_error(py, &text, &parsed.source, recoveries, root)),
+            recoveries => Err(recovered_error(py, &text, recoveries, root)),
         }
     }
 

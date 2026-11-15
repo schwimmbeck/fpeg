@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use fpeg::{Grammar, ParseError, Parser, Source};
+use fpeg::{Grammar, LineIndex, ParseError, Parser, Source};
 
 /// A line of two million code points beyond ASCII, errors shown near its end, and a time that
 /// showing them stays well within when each costs what it shows, also in a build without
@@ -52,6 +52,10 @@ fn errors_show_their_name_place_and_line_with_carets_under_the_span() {
          error[close]: expected \",\", \"]\"\n \
          --> data.txt:1:10\n  |\n1 | [1, xy, 3\n  |          ^"
     );
+    // A text whose lines are indexed already shows the same.
+    let lines = LineIndex::new(input);
+    let indexed = Source::indexed(input, Some("data.txt"), &lines);
+    assert_eq!(tree.recoveries()[0].render(&indexed), shown[0]);
     // A parse that fails shows the recoveries on its way first.
     let error = failure(&list(false), input);
     let blocks = error.render(&source);

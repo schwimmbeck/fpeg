@@ -34,6 +34,8 @@ mod _fpeg {
         module.add("ParseError", py.get_type::<crate::errors::ParseError>())?;
         module.add("LimitError", py.get_type::<crate::errors::LimitError>())?;
         module.add("GrammarError", py.get_type::<crate::errors::GrammarError>())?;
+        // Private, so that pickles of errors find it but __all__ leaves it out.
+        module.setattr("_Text", py.get_type::<crate::errors::Text>())?;
         module.add("Discard", crate::transform::discard(py)?)?;
         module.add("NO_VALUE", crate::transform::no_value(py)?)?;
         Ok(())

@@ -4,11 +4,11 @@
 //! The exceptions of the package, and the diagnostics that a grammar error carries and a
 //! check returns.
 
-use fpeg::{Limit, LineIndex, ParseErrorKind, Severity, Source};
+use fpeg::{Limit, LineCursor, LineIndex, ParseErrorKind, Position, Severity, Source};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
-use pyo3::types::{PyDict, PyString, PyTuple};
+use pyo3::types::{PyDict, PyString, PyTuple, PyType};
 use pyo3::{create_exception, intern};
 
 /// The input does not match the grammar.
@@ -39,8 +39,9 @@ impl ParseError {
         let Some(text) = slf.getattr_opt(intern!(py, "_text"))? else {
             return Ok(fpeg::error_title(None, &slf.str()?.to_string_lossy()));
         };
-        let text: PyBackedStr = text.extract()?;
-        let source = Source::new(&text, path);
+        let text = text.cast_into::<Text>()?;
+        let text = text.get();
+        let source = Source::indexed(&text.source, path, &text.lines);
         let errors = slf.getattr(intern!(py, "errors"))?;
         let mut shown: Vec<Bound<'_, PyAny>> = errors.try_iter()?.collect::<PyResult<_>>()?;
         if shown.is_empty() {
@@ -56,6 +57,33 @@ impl ParseError {
             })
             .collect::<PyResult<Vec<_>>>()?;
         Ok(blocks.join("\n\n"))
+    }
+}
+
+/// The text of a parse with its lines indexed, which the errors of the parse share, so that
+/// each shows itself without indexing the text again. It pickles as its text.
+#[pyclass(frozen, module = "fpeg._fpeg", name = "_Text")]
+pub struct Text {
+    text: Py<PyString>,
+    source: PyBackedStr,
+    lines: LineIndex,
+}
+
+#[pymethods]
+impl Text {
+    #[new]
+    fn new(text: Bound<'_, PyString>) -> PyResult<Text> {
+        let source = PyBackedStr::try_from(text.clone())?;
+        let lines = LineIndex::new(&source);
+        Ok(Text {
+            text: text.unbind(),
+            source,
+            lines,
+        })
+    }
+
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> (Bound<'py, PyType>, (Py<PyString>,)) {
+        (slf.get_type(), (slf.get().text.clone_ref(slf.py()),))
     }
 }
 
@@ -282,38 +310,41 @@ impl Found {
     }
 }
 
-/// The errors of a parse, each placed in the source, and the exceptions that report them.
-struct Report<'s, 'py> {
-    source: &'s str,
-    /// The source as the caller gave it, which each exception keeps to show its error in.
-    text: &'s Bound<'py, PyString>,
-    lines: LineIndex,
+/// The errors of a parse, each placed in the text, and the exceptions that report them.
+struct Report<'py> {
+    /// The text with its lines indexed, which each exception keeps to show its error in.
+    text: Bound<'py, Text>,
 }
 
-impl<'py> Report<'_, 'py> {
+impl<'py> Report<'py> {
+    /// The text of a parse as the caller gave it, with its lines indexed.
+    fn new(py: Python<'py>, text: &Bound<'py, PyString>) -> PyResult<Self> {
+        Ok(Report {
+            text: Bound::new(py, Text::new(text.clone())?)?,
+        })
+    }
+
     /// Where an error starts, and its message, as one line of text.
-    fn line(&self, found: &Found) -> String {
-        let start = self.lines.position(self.source, found.start);
+    fn line(found: &Found, start: Position) -> String {
         format!(
             "line {}, column {}: {}",
             start.line, start.column, found.message
         )
     }
 
-    /// The exception for one error, with `text` as what it says, and no tree and no errors of
-    /// its own.
+    /// The exception for one error from `start` to `end`, with `text` as what it says, and no
+    /// tree and no errors of its own.
     fn exception(
         &self,
         py: Python<'py>,
         found: &Found,
+        (start, end): (Position, Position),
         text: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let value = match found.limit {
             Some(_) => py.get_type::<LimitError>().call1((text,))?,
             None => py.get_type::<ParseError>().call1((text,))?,
         };
-        let start = self.lines.position(self.source, found.start);
-        let end = self.lines.position(self.source, found.end);
         value.setattr(intern!(py, "message"), &found.message)?;
         value.setattr(intern!(py, "pos"), start.offset)?;
         value.setattr(intern!(py, "line"), start.line)?;
@@ -328,7 +359,7 @@ impl<'py> Report<'_, 'py> {
         }
         value.setattr(intern!(py, "tree"), py.None())?;
         value.setattr(intern!(py, "errors"), PyTuple::empty(py))?;
-        value.setattr(intern!(py, "_text"), self.text)?;
+        value.setattr(intern!(py, "_text"), &self.text)?;
         Ok(value)
     }
 
@@ -342,53 +373,45 @@ impl<'py> Report<'_, 'py> {
         main: usize,
         tree: Option<Py<PyAny>>,
     ) -> PyResult<PyErr> {
-        let lines: Vec<String> = found.iter().map(|f| self.line(f)).collect();
-        let errors = (found.iter().zip(&lines))
-            .map(|(f, line)| self.exception(py, f, line.clone()))
+        // The errors come in the order of the text, so one pass over it places them.
+        let text = self.text.get();
+        let mut cursor = LineCursor::new(&text.lines, &text.source);
+        let places: Vec<(Position, Position)> = (found.iter())
+            .map(|f| (cursor.position(f.start), cursor.position(f.end)))
+            .collect();
+        let lines: Vec<String> = (found.iter().zip(&places))
+            .map(|(f, &(start, _))| Report::line(f, start))
+            .collect();
+        let errors = (found.iter().zip(&places).zip(&lines))
+            .map(|((f, &place), line)| self.exception(py, f, place, line.clone()))
             .collect::<PyResult<Vec<_>>>()?;
-        let raised = self.exception(py, &found[main], lines.join("\n"))?;
+        let raised = self.exception(py, &found[main], places[main], lines.join("\n"))?;
         raised.setattr(intern!(py, "errors"), PyTuple::new(py, errors)?)?;
         raised.setattr(intern!(py, "tree"), tree)?;
         Ok(PyErr::from_value(raised))
     }
 }
 
-/// The exception for a parse of `text`, also given as `source`, that produced no tree: its
-/// error, after the errors a recovering parse recovered from on its way.
-pub fn parse_error(
-    py: Python<'_>,
-    text: &Bound<'_, PyString>,
-    source: &str,
-    error: &fpeg::ParseError,
-) -> PyErr {
-    let report = Report {
-        source,
-        text,
-        lines: LineIndex::new(source),
-    };
+/// The exception for a parse of `text` that produced no tree: its error, after the errors a
+/// recovering parse recovered from on its way.
+pub fn parse_error(py: Python<'_>, text: &Bound<'_, PyString>, error: &fpeg::ParseError) -> PyErr {
     let mut found: Vec<Found> = error.recoveries.iter().map(Found::of_recovery).collect();
     found.push(Found::of_error(error));
-    report
-        .raised(py, &found, found.len() - 1, None)
+    Report::new(py, text)
+        .and_then(|report| report.raised(py, &found, found.len() - 1, None))
         .unwrap_or_else(|failure| failure)
 }
 
-/// The exception for a parse of `text`, also given as `source`, that recovered from errors:
-/// the first error describes it, and `tree` holds the tree with the error items.
+/// The exception for a parse of `text` that recovered from errors: the first error describes
+/// it, and `tree` holds the tree with the error items.
 pub fn recovered_error(
     py: Python<'_>,
     text: &Bound<'_, PyString>,
-    source: &str,
     recoveries: &[fpeg::Recovery],
     tree: Py<PyAny>,
 ) -> PyErr {
-    let report = Report {
-        source,
-        text,
-        lines: LineIndex::new(source),
-    };
     let found: Vec<Found> = recoveries.iter().map(Found::of_recovery).collect();
-    report
-        .raised(py, &found, 0, Some(tree))
+    Report::new(py, text)
+        .and_then(|report| report.raised(py, &found, 0, Some(tree)))
         .unwrap_or_else(|failure| failure)
 }
