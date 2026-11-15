@@ -97,23 +97,22 @@ enum Unit {
 }
 
 /// The positions a transformer class gives its values: the attributes of the start line and
-/// column and of the end line and column, the classes whose instances get them, and how lines
-/// and columns count.
+/// column and of the end line and column, and how lines and columns count. The classes whose
+/// instances get them stay with the class, since a plan that held them would keep a class
+/// that refers back to the transformer alive as long as the grammar.
 struct Stamp {
     names: [Py<PyString>; 4],
-    types: Py<PyTuple>,
     line_base: i64,
     column_base: i64,
     unit: Unit,
 }
 
 /// The positions of a plan as `fpeg._transformer` gives them.
-type StampEntry = (String, String, String, String, Py<PyTuple>, i64, i64, u8);
+type StampEntry = (String, String, String, String, i64, i64, u8);
 
 impl Stamp {
     fn from_entry(py: Python<'_>, entry: StampEntry) -> PyResult<Stamp> {
-        let (start_line, start_column, end_line, end_column, types, line_base, column_base, unit) =
-            entry;
+        let (start_line, start_column, end_line, end_column, line_base, column_base, unit) = entry;
         let unit = match unit {
             0 => Unit::CodePoints,
             1 => Unit::Utf8,
@@ -128,7 +127,6 @@ impl Stamp {
                 name(&end_line),
                 name(&end_column),
             ],
-            types,
             line_base,
             column_base,
             unit,
@@ -332,6 +330,8 @@ struct Scan<'py, 'p> {
     spliced: Option<u32>,
     /// Positions of the tokens the scan makes, which come in input order.
     cursor: Option<LineCursor<'p>>,
+    /// The classes whose instances get positions, from the class's record at this transform.
+    position_types: Option<Bound<'py, PyTuple>>,
     /// The byte offsets of the characters beyond the BMP, which take two UTF-16 units, found
     /// at the first stamp in that unit.
     beyond_bmp: OnceCell<Vec<u32>>,
@@ -469,13 +469,11 @@ impl<'py, 'p> Scan<'py, 'p> {
     /// is an instance of their classes without the first attribute yet. A value passed up from a
     /// child has its own already.
     fn stamp(&self, entry: usize, value: &Bound<'py, PyAny>) -> PyResult<()> {
-        let Some(stamp) = &self.plan.positions else {
+        let (Some(stamp), Some(types)) = (&self.plan.positions, &self.position_types) else {
             return Ok(());
         };
         let py = self.py;
-        if !value.is_instance(stamp.types.bind(py))?
-            || value.getattr_opt(stamp.names[0].bind(py))?.is_some()
-        {
+        if !value.is_instance(types)? || value.getattr_opt(stamp.names[0].bind(py))?.is_some() {
             return Ok(());
         }
         let Some(node) = self.parsed.tree.node(entry) else {
@@ -807,6 +805,15 @@ pub fn scan<'py>(
         Some(value) => value.is_truthy()?,
         None => true,
     };
+    let position_types = match plan.positions {
+        Some(_) => Some(
+            (transformer.get_type())
+                .getattr(intern!(py, "__fpeg_positions__"))?
+                .getattr(intern!(py, "types"))?
+                .cast_into::<PyTuple>()?,
+        ),
+        None => None,
+    };
     let mut scan = Scan {
         py,
         transformer,
@@ -819,6 +826,7 @@ pub fn scan<'py>(
         arguments: Vec::new(),
         spliced: None,
         cursor: None,
+        position_types,
         beyond_bmp: OnceCell::new(),
         discard: discard(py)?.clone(),
     };

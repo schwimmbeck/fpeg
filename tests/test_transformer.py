@@ -524,6 +524,23 @@ def test_a_transformer_class_goes_when_it_is_no_longer_used() -> None:
     gc.collect()
     assert gone() is None
 
+    # Nor does a class whose instances get positions, though it refers back to the transformer.
+    def task() -> weakref.ref[type]:
+        class Node:
+            def owner(self) -> type:
+                return Stamped
+
+        class Stamped(fpeg.Transformer, positions=fpeg.Positions("l", "c", "el", "ec", Node)):
+            def call(self, children: list[Any]) -> Node:
+                return Node()
+
+        assert isinstance(Stamped().transform(parse("f(a)")).children[0], Node)
+        return weakref.ref(Stamped)
+
+    stamped = task()
+    gc.collect()
+    assert stamped() is None
+
 
 def test_a_tree_built_in_python_transforms_as_the_parse_it_copies() -> None:
     class Modes(fpeg.Transformer):

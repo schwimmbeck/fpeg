@@ -520,7 +520,7 @@ def _make_plan(
     list[tuple[int, str, int, tuple[str, ...], int]],
     bool,
     bool,
-    tuple[str, str, str, str, tuple[type, ...], int, int, int] | None,
+    tuple[str, str, str, str, int, int, int] | None,
 ]:
     """Make the plan of a transformer class for a grammar.
 
@@ -546,13 +546,11 @@ def _make_plan(
     positions: Positions | None = getattr(cls, "__fpeg_positions__", None)
     stamp = None
     if positions is not None:
-        classes = positions.types if isinstance(positions.types, tuple) else (positions.types,)
         stamp = (
             positions.start_line,
             positions.start_column,
             positions.end_line,
             positions.end_column,
-            classes,
             positions.line_base,
             positions.column_base,
             COLUMN_UNITS[positions.column_unit],

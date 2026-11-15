@@ -223,7 +223,7 @@ def scan(
             list[tuple[int, str, int, tuple[str, ...], int]],
             bool,
             bool,
-            tuple[str, str, str, str, tuple[type, ...], int, int, int] | None,
+            tuple[str, str, str, str, int, int, int] | None,
         ],
     ],
 ) -> tuple[Any, ...] | list[Any]: ...
