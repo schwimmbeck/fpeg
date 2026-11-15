@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 554" role="img" aria-label="A release commit sets the version and the changelog, and the maintainer tags it. The tag starts release.yml, which builds and tests every package. A pre-release tag publishes to TestPyPI and stops. A release tag waits for the maintainer's approval in the environment release, then publishes to crates.io and PyPI by trusted publishing, and makes the GitHub release and the docs.">
+  <defs>
+    <marker id="release-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <g class="box">
+    <rect x="20" y="20" width="270" height="58" rx="8"/>
+    <text class="title" x="155" y="45" text-anchor="middle">release commit</text>
+    <text x="155" y="64" text-anchor="middle">version and changelog</text>
+  </g>
+  <g class="box">
+    <rect x="390" y="20" width="270" height="58" rx="8"/>
+    <text class="title" x="525" y="45" text-anchor="middle"><tspan class="code">vX.Y.Z</tspan> tag</text>
+    <text x="525" y="64" text-anchor="middle">pushed by the maintainer</text>
+  </g>
+  <g class="box">
+    <rect x="20" y="134" width="270" height="58" rx="8"/>
+    <text class="title" x="155" y="159" text-anchor="middle">TestPyPI</text>
+    <text x="155" y="178" text-anchor="middle">a rehearsal stops here</text>
+  </g>
+  <g class="box">
+    <rect x="390" y="134" width="270" height="58" rx="8"/>
+    <text class="title" x="525" y="159" text-anchor="middle">build and test</text>
+    <text x="525" y="178" text-anchor="middle">wheels, sdist, crates, binaries</text>
+  </g>
+  <g class="box accent">
+    <rect x="390" y="248" width="270" height="58" rx="8"/>
+    <text class="title" x="525" y="273" text-anchor="middle">approval</text>
+    <text x="525" y="292" text-anchor="middle">by the maintainer, in <tspan class="code">release</tspan></text>
+  </g>
+  <g class="box">
+    <rect x="20" y="362" width="270" height="58" rx="8"/>
+    <text class="title" x="155" y="387" text-anchor="middle">crates.io</text>
+    <text x="155" y="406" text-anchor="middle">fpeg, then fpeg-cli</text>
+  </g>
+  <g class="box">
+    <rect x="390" y="362" width="270" height="58" rx="8"/>
+    <text class="title" x="525" y="387" text-anchor="middle">PyPI</text>
+    <text x="525" y="406" text-anchor="middle">wheels and the sdist</text>
+  </g>
+  <g class="box">
+    <rect x="100" y="476" width="480" height="58" rx="8"/>
+    <text class="title" x="340" y="501" text-anchor="middle">GitHub release and docs</text>
+    <text x="340" y="520" text-anchor="middle">notes, packages and binaries, the site on GitHub Pages</text>
+  </g>
+  <path class="arrow" d="M290,49 H386" marker-end="url(#release-arrow)"/>
+  <text x="340" y="41" text-anchor="middle">tagged</text>
+  <path class="arrow" d="M525,78 V130" marker-end="url(#release-arrow)"/>
+  <text class="code" x="537" y="110">release.yml</text>
+  <path class="arrow" d="M390,163 H294" marker-end="url(#release-arrow)"/>
+  <text x="340" y="155" text-anchor="middle">pre-release</text>
+  <text class="code" x="340" y="181" text-anchor="middle">vX.Y.Z-rc.N</text>
+  <path class="arrow" d="M525,192 V244" marker-end="url(#release-arrow)"/>
+  <text x="537" y="224">release</text>
+  <path class="arrow" d="M525,306 V358" marker-end="url(#release-arrow)"/>
+  <path class="arrow" d="M525,332 H155 V358" marker-end="url(#release-arrow)"/>
+  <text x="340" y="324" text-anchor="middle">trusted publishing</text>
+  <path class="arrow" d="M155,420 V472" marker-end="url(#release-arrow)"/>
+  <path class="arrow" d="M525,420 V472" marker-end="url(#release-arrow)"/>
+</svg>
