@@ -12,7 +12,7 @@
 //!
 //! A call of a rule that is remembered or on a left cycle keeps a frame beside the stack.
 //! Left recursion follows the semantics page: a frame is the entry of the table of left
-//! recursion for its rule, position and flags, a call that finds it takes the match of the
+//! recursion for its rule, position, flags and context, a call that finds it takes the match of the
 //! pass before, its seed, and the rule's routine runs again for as long as each pass ends
 //! further.
 
@@ -27,6 +27,10 @@ use crate::tree::{FieldId, KindId, Tree};
 
 /// Bytes of a literal compared in one step, about the work of one instruction.
 const LITERAL_BYTES_PER_STEP: u64 = 8;
+
+/// Bytes before a position for each step that finding its column counts. It reads them
+/// twice, back to the start of the line and forward, with more work for each than a literal.
+const COLUMN_BYTES_PER_STEP: u64 = 3;
 
 /// An item is a token.
 const TOKEN: u8 = 1;
@@ -265,6 +269,15 @@ pub fn memo_hashes(keys: impl Iterator<Item = (u32, u32, u64)>) -> Vec<u64> {
         })
     })
     .collect()
+}
+
+/// The id after `count` ids from 1. Past 32 bits two contexts, texts or maps would share an
+/// id and so a key, so the parse stops as at its memory limit, which it would reach first at
+/// the default limits.
+fn id_after(count: usize) -> Result<u32, Stop> {
+    (u32::try_from(count).ok())
+        .and_then(|count| count.checked_add(1))
+        .ok_or(Stop::Limit(Limit::Memory))
 }
 
 /// A skip that ran the skip routine: where it started, with which flags and context, and where
@@ -1166,8 +1179,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             return Ok(id);
         }
         self.memory.room_in(&mut self.contexts)?;
-        // Ids stay below the count of `Indent` and `DefClose` run, which the steps bound.
-        let id = self.contexts.len() as u32 + 1;
+        let id = id_after(self.contexts.len())?;
         self.contexts.insert((column, map), id);
         Ok(id)
     }
@@ -1186,7 +1198,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             None => {
                 self.memory.room_in(&mut self.texts)?;
                 self.memory.room(&mut self.text_list, 1)?;
-                let id = self.text_list.len() as u32;
+                let id = id_after(self.text_list.len())? - 1;
                 self.texts.insert(text, id);
                 self.text_list.push(text);
                 id
@@ -1209,8 +1221,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                 self.memory.take(2 * size_of_val(&*map) as u64)?;
                 self.memory.room_in(&mut self.maps)?;
                 self.memory.room(&mut self.map_list, 1)?;
+                let id = id_after(self.map_list.len())?;
                 self.map_list.push(map.clone());
-                let id = self.map_list.len() as u32;
                 self.maps.insert(map, id);
                 id
             }
@@ -1255,7 +1267,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 _ => column.saturating_add(1),
             };
         }
-        self.steps += (pos - start) as u64 / LITERAL_BYTES_PER_STEP;
+        self.steps += (pos - start) as u64 / COLUMN_BYTES_PER_STEP;
         column
     }
 

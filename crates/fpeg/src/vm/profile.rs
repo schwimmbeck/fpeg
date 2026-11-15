@@ -87,8 +87,9 @@ pub struct ProfileRow {
     /// Bytes that failed calls had got through before they failed: from where each started
     /// to the farthest point one of its tries failed at.
     pub backtracked_bytes: u64,
-    /// Calls at a position where the rule had been called before, with the same flags and the
-    /// same recording of failures: what remembering the rule would answer.
+    /// Calls at a position where the rule had been called before, with the same flags, the
+    /// same context of columns and captures and the same recording of failures: what
+    /// remembering the rule would answer.
     pub repeats: u64,
     /// Calls that a remembered result answered, a remembered failure included.
     pub memo_hits: u64,
