@@ -115,6 +115,10 @@ create_exception!(
 /// The path that messages show for a grammar given as text.
 const TEXT_PATH: &str = "<grammar>";
 
+/// The errors that the text of a raised error lists before it counts the rest, since one
+/// mistake can give an error for most lines after it.
+const LISTED_ERRORS: usize = 10;
+
 /// An error or a warning about a grammar: its stable code, what exactly is wrong, and where.
 /// Diagnostics with the same parts are equal.
 #[pyclass(frozen, eq, hash, module = "fpeg", get_all)]
@@ -390,7 +394,13 @@ impl<'py> Report<'py> {
         let errors = (found.iter().zip(&places).zip(&lines))
             .map(|((f, &place), line)| self.exception(py, f, place, line.clone()))
             .collect::<PyResult<Vec<_>>>()?;
-        let raised = self.exception(py, &found[main], places[main], lines.join("\n"))?;
+        let mut listed = lines[..lines.len().min(LISTED_ERRORS)].join("\n");
+        match lines.len().saturating_sub(LISTED_ERRORS) {
+            0 => {}
+            1 => listed.push_str("\nand 1 more error"),
+            more => listed.push_str(&format!("\nand {more} more errors")),
+        }
+        let raised = self.exception(py, &found[main], places[main], listed)?;
         raised.setattr(intern!(py, "errors"), PyTuple::new(py, errors)?)?;
         raised.setattr(intern!(py, "tree"), tree)?;
         Ok(PyErr::from_value(raised))
