@@ -46,6 +46,7 @@ A grammar with `%extends "m"` is joined with the grammar `m` before anything els
 - Each rule of the grammar whose name `m` defines takes the place of `m`'s rule, and every reference means it. A `...` that stands as a whole alternative of it is replaced by the alternatives of `m`'s rule, in their order.
 - The other rules are added.
 - The skip expression is the ordered choice of `m`'s `%ignore` expressions and then the grammar's. The flags and soft keywords are those of both, and `%word` and `%tabs` the grammar's where it gives them, otherwise `m`'s.
+- A `%recover` of the grammar takes the place of `m`'s for the same label, and `m`'s others are added.
 
 A grammar with `%import m (a, b)` then adds rules of `m`, joined with what it extends and imports first:
 
@@ -70,6 +71,7 @@ The translation runs in this order.
    - `%indent`, `%same`, `%def` and `e ^ l` carry `s = true` in syntactic mode and `s = false` otherwise.
 5. **Rules.** The body of a terminal marked `@reserved` becomes `unreserved(body)`. In a syntactic or lexical rule `r`, each top-level alternative `A` becomes `node(alias, A)` when it has an alias, and otherwise `node(r, A)`, `transparent(r, A)` for a transparent rule, or `A` alone for an inlined rule or a precedence level.
 6. **Fields.** `label=e` becomes `field(f, e)`.
+7. **Recoveries.** `%recover l: r` gives the named label `l` the *recovery* `r`, translated in syntactic mode. A label has at most one.
 
 ## Matching
 

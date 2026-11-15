@@ -185,8 +185,10 @@ fn unused(grammar: &Grammar, bodies: &[Body<'_>], found: &mut Vec<Diagnostic>) {
             }
         }
     }
-    // The ignored text is matched with the flags of the place it is skipped at.
+    // The ignored text is matched with the flags of the place it is skipped at, and so is a
+    // recovery with those of the label.
     uses.add(&grammar.ignore.iter().collect::<Vec<_>>());
+    uses.add(&grammar.recovers.iter().map(|r| &r.expr).collect::<Vec<_>>());
     for flag in &grammar.flags {
         let name = flag.text.as_str();
         let message = match (uses.set.contains(name), uses.tested.contains(name)) {

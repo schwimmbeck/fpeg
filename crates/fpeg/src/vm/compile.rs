@@ -29,6 +29,14 @@ pub(crate) fn compile(
     grammar: &ir::Grammar,
     options: &Options,
 ) -> Result<Program, Vec<Diagnostic>> {
+    // Only the reference interpreter recovers so far.
+    if let Some(recovery) = grammar.recoveries.iter().flatten().next() {
+        return Err(vec![Diagnostic {
+            code: DiagnosticCode::NotYet,
+            message: "%recover is not supported yet, see the roadmap (M8)".to_owned(),
+            span: recovery.span,
+        }]);
+    }
     let facts = analysis::analyze(grammar);
     let mut c = Compiler {
         has_skip: grammar.skip.is_some(),

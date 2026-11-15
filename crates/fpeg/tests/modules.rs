@@ -342,9 +342,15 @@ fn common_s_escaped_string_stands_on_one_line() {
 
 #[test]
 fn an_extension_joins_and_replaces_the_directives_of_its_base() {
-    let base = "%flag a\n%keywords soft \"if\"\n%word [a-z]\n%tabs 4\nstart: \"x\"";
-    let text = "%extends \"base\"\n%flag a b\n%keywords soft \"if\" \"do\"\n%word [a-z0-9]";
+    let base = "%flag a\n%keywords soft \"if\"\n%word [a-z]\n%tabs 4\n%recover l: \"x\"\n%recover m: ()\nstart: \"x\"";
+    let text = "%extends \"base\"\n%flag a b\n%keywords soft \"if\" \"do\"\n%word [a-z0-9]\n%recover l: \"y\"";
     let joined = linked(text, &[("base", base)]).expect("it joins");
+    // The extension's recovery of l takes the place of the base's, whose text lies past it.
+    let own = |span: fpeg::Span| (span.end as usize) <= text.len();
+    let recovers: Vec<(&str, bool)> = (joined.recovers.iter())
+        .map(|r| (r.label.text.as_str(), own(r.expr.span)))
+        .collect();
+    assert_eq!(recovers, [("m", false), ("l", true)]);
     let flags: Vec<&str> = joined.flags.iter().map(|f| f.text.as_str()).collect();
     assert_eq!(flags, ["a", "b"]);
     let words: Vec<&str> = (joined.soft_keywords.iter())

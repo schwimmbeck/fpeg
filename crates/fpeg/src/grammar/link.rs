@@ -396,6 +396,10 @@ fn extend(mut base: Grammar, extension: Grammar) -> Result<Grammar, Vec<Diagnost
         }
     }
     base.imports.extend(extension.imports);
+    // As a rule does, a recovery of the extension takes the place of the base's for its label.
+    base.recovers.retain(|recover| {
+        (extension.recovers.iter()).all(|other| other.label.text != recover.label.text)
+    });
     base.recovers.extend(extension.recovers);
     Ok(base)
 }

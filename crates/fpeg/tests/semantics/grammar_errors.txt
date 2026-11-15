@@ -181,7 +181,7 @@ start: "a"
 --- grammar
 an import under a prefix is not supported yet
 
-=== recovery and a word set that is no class are errors in a grammar that extends and imports others, and builders print back
+=== a word set that is no class is an error in a grammar that extends and imports others, and recoveries and builders print back
 %extends "json"
 %import common (WS, LETTER)
 %word "a"
@@ -191,8 +191,20 @@ start: "a" => Point(x, y=*, z=None, w="s", n=1.5)
     | "c" => 42
     | "d" => True
 --- grammar
-%recover is not supported yet
 %word needs a character class
+
+=== a label recovered twice is an error
+start: "1" ^ item
+%recover item: ()
+%recover item: "x"
+--- grammar
+the recovery of the label item is defined twice
+
+=== a recovery refers to rules as a rule body does
+start: "1" ^ item
+%recover item: missing
+--- grammar
+unknown rule missing
 
 === a repetition maximum below its minimum is an error
 start: "a"{3,2}

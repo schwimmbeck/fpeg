@@ -288,8 +288,30 @@ pub(crate) fn resolve_counted(
         let start = r.reference(name, &[], syntactic, name.span);
         entry.insert(name.text.clone(), start);
     }
+    // A recovery is matched where its label fails, as the body of a syntactic rule is.
+    let mut recovered: Vec<(LabelId, ir::Recovery)> = Vec::new();
+    for recover in &grammar.recovers {
+        let name = &recover.label;
+        let what = format!("%recover {}", name.text);
+        if r.too_deep(&[&recover.expr], &what, name.span) {
+            continue;
+        }
+        let expr = r.lower(&recover.expr, syntactic);
+        let label = r.label(ir::Label::Named(name.text.clone()));
+        if recovered.iter().any(|&(other, _)| other == label) {
+            let message = format!("the recovery of the label {} is defined twice", name.text);
+            r.error(DiagnosticCode::Duplicate, message, name.span);
+        }
+        let span = name.span;
+        recovered.push((label, ir::Recovery { expr, span }));
+    }
     while let Some(pending) = r.queue.pop_front() {
         r.lower_rule(pending);
+    }
+    // The rules lowered last may have named further labels.
+    let mut recoveries: Vec<Option<ir::Recovery>> = (r.labels.iter()).map(|_| None).collect();
+    for (label, recovery) in recovered {
+        recoveries[label.0 as usize] = Some(recovery);
     }
     r.check_fields();
     let counts = match crate::items::Counts::new(&r.rules) {
@@ -337,6 +359,7 @@ pub(crate) fn resolve_counted(
         reserved: r.reserved,
         tab_width: grammar.tabs.map_or(DEFAULT_TAB_WIDTH, |t| t.value),
         labels: r.labels,
+        recoveries,
     };
     Ok((resolved, counts))
 }
@@ -582,10 +605,6 @@ impl<'g> Resolver<'g> {
         {
             let message = format!("%tabs needs a width from 1 to {MAX_TAB_WIDTH}");
             self.error(DiagnosticCode::Bounds, message, tabs.span);
-        }
-        for recover in &g.recovers {
-            let message = "%recover is not supported yet, see the roadmap (M8)".into();
-            self.error(DiagnosticCode::NotYet, message, recover.label.span);
         }
     }
 
