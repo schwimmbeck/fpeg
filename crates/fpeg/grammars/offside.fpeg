@@ -26,8 +26,8 @@ expr: %precedence {
     sum: left=sum op=("+" | "-") right=product -> binary
     product: left=product op=("*" | "/") right=apply -> binary
     apply: func=apply arg=atom -> apply
-    atom: "let" decls=block<decl> _BREAK? "in" body=expr -> let
-        | "if" test=expr _BREAK? "then" yes=expr _BREAK? "else" no=expr -> if
+    atom: "let" decls=block<decl> "in" body=expr -> let
+        | "if" test=expr "then" yes=expr "else" no=expr -> if
         | "case" subject=expr "of" alternatives=block<alternative> -> case
         | "\\" params=NAME+ "->" body=expr -> lambda
         | NUMBER | NAME
