@@ -24,6 +24,7 @@ end
 
 local text = [[
 long string, no escapes: \n stays]]
+local keyed = {[ [[a]] ] = Stack[ [=[new]=] ], print[[called with a long string]]}
 local escaped = "tab\tquote\" zap \z
                  continued"
 local codes = "\x41\65\255\0000\u{20AC}\u{7FFFFFFF}\u{0}\\\

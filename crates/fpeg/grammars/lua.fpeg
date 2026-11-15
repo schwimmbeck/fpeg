@@ -75,7 +75,7 @@ exp: %precedence {
         | prefix
 }
 
-?prefix: object=prefix "[" key=exp "]" -> index
+?prefix: object=prefix _KEY_START key=exp "]" -> index
        | object=prefix "." name=NAME -> member
        | object=prefix ":" method=NAME args=args -> method_call
        | func=prefix args=args -> call
@@ -88,16 +88,18 @@ args: "(" items=(exp ** ",") ")"
 function_expression: "function" body=function_body
 table: "{" (fields=(field ++ _separator) _separator?)? "}"
 _separator: "," | ";"
-field: "[" key=exp "]" "=" value=exp -> keyed
+field: _KEY_START key=exp "]" "=" value=exp -> keyed
      | name=NAME "=" !"=" value=exp -> named
      | value=exp -> positional
 
 @reserved
 NAME "name": [A-Za-z_] [A-Za-z0-9_]*
-// Lua reads "..." and ">=" as one token each, so ".." is the operator only where no dot follows
-// at once, and an attribute ends with a ">" that no "=" follows at once.
+// Lua reads "...", ">=" and a long bracket as one token each, so ".." is the operator only where
+// no dot follows at once, an attribute ends with a ">" that no "=" follows at once, and a key in
+// brackets starts with a "[" that opens no long bracket.
 CONCAT "\"..\"": ".." !"."
 _ATTRIBUTE_END "\">\"": ">" !"="
+_KEY_START "\"[\"": "[" !("="* "[")
 // Lua reads a numeral on through letters, digits and dots, so one that touches them is malformed.
 NUMBER "number": ("0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
         | (DIGIT+ ("." !"." DIGIT*)? | "." DIGIT+) ([eE] [+\-]? DIGIT+)?) ![0-9A-Za-z_.]
