@@ -128,11 +128,13 @@ pub struct Diagnostic {
     code: String,
     /// What exactly is wrong.
     message: String,
-    /// Where the problem starts, line and column counted from 1 in code points.
+    /// The line where the problem starts, from 1.
     line: usize,
+    /// The column where the problem starts, from 1, in code points.
     column: usize,
-    /// Where the problem ends.
+    /// The line where the problem ends.
     end_line: usize,
+    /// The column after the problem's last character.
     end_column: usize,
     /// The grammar file, or `None` for a grammar given as text.
     path: Option<String>,

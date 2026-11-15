@@ -105,14 +105,17 @@ pub fn item(py: Python<'_>, parsed: &Arc<Parsed>, index: usize) -> PyResult<Py<P
 /// Where a node of a parse spans, as `Tree.meta` gives it.
 #[pyclass(frozen, module = "fpeg", get_all)]
 pub struct Meta {
-    /// The line and column where the node starts, from 1, the column in code points.
+    /// The line where the node starts, from 1.
     line: Option<usize>,
+    /// The column where the node starts, from 1, in code points.
     column: Option<usize>,
-    /// The line and column where it ends, the column after its last character.
+    /// The line where the node ends.
     end_line: Option<usize>,
+    /// The column after the node's last character.
     end_column: Option<usize>,
-    /// The code points before its start and before its end.
+    /// The code points before the node's start.
     start_pos: Option<usize>,
+    /// The code points before the node's end.
     end_pos: Option<usize>,
     /// Whether the node holds no text.
     empty: bool,

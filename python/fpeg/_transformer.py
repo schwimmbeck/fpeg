@@ -50,7 +50,8 @@ class Positions:
 
     `types` are the classes whose instances get them. Lines count from `line_base`, columns
     from `column_base` in the `column_unit`: code points, UTF-8 bytes or UTF-16 units. A
-    record checks its fields when it is made.
+    value that has the first attribute already, also as a default of its class, keeps its own.
+    A record checks its fields when it is made.
     """
 
     start_line: str
