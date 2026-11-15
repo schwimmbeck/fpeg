@@ -14,12 +14,10 @@ pip install fpeg
 fpeg is not released yet. Until its first release, build it from a checkout as [Contributing](contributing.md) describes.
 ```
 
-Then check that it imports:
+Then check that it imports, which prints its version:
 
-```python
-import fpeg
-
-print(fpeg.__version__)
+```sh
+python -c "import fpeg; print(fpeg.__version__)"
 ```
 
 ## A first grammar
@@ -27,6 +25,8 @@ print(fpeg.__version__)
 A grammar is a string of rules, loaded at runtime. This one reads pairs such as `x = 1`, separated by commas:
 
 ```python
+import fpeg
+
 grammar = fpeg.Grammar(r"""
 start: (pair ** ",")
 pair: key=NAME "=" value=NUMBER

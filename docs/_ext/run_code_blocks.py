@@ -5,8 +5,9 @@
 
 The blocks of one page run in order and share a namespace, so a page can build an example up
 step by step. A block in the language ``output`` right after a Python block shows what that
-block printed, and must equal it. A block that raises, and output that differs, are reported as
-warnings at their line, which fail a build with ``-W``.
+block printed, and must equal it. A block that raises, output that differs, and a block that
+prints with no output block after it are reported as warnings at their line, which fail a build
+with ``-W``.
 """
 
 import contextlib
@@ -41,12 +42,20 @@ def failing_line(error: Exception, filename: str) -> int:
     return (lines[-1] or 1) if lines else 1
 
 
+def missing_output(start: int, docname: str) -> None:
+    """Report a Python block that printed with no output block after it to show what."""
+    logger.warning(
+        "the block prints, and no output block after it shows what", location=(docname, start)
+    )
+
+
 def run_blocks(app: Sphinx, doctree: nodes.document) -> None:
     """Execute the Python blocks of the page that was just read."""
     docname = app.env.docname
     namespace: dict[str, Any] = {"__name__": f"docs.{docname}"}
-    # What the Python block just before printed, if it ran.
+    # What the Python block just before printed, if it ran, and where it starts.
     printed: str | None = None
+    printed_at = 0
     for block in doctree.findall(nodes.literal_block):
         language = block.get("language")
         # The opening fence is at block.line, so code line n is at block.line + n.
@@ -62,6 +71,8 @@ def run_blocks(app: Sphinx, doctree: nodes.document) -> None:
                     printed,
                     location=(docname, start),
                 )
+        elif printed:
+            missing_output(printed_at, docname)
         printed = None
         if language not in RUN_LANGUAGES:
             continue
@@ -71,7 +82,7 @@ def run_blocks(app: Sphinx, doctree: nodes.document) -> None:
             code = compile(block.astext(), filename, "exec")
             with contextlib.redirect_stdout(out):
                 exec(code, namespace)
-            printed = out.getvalue()
+            printed, printed_at = out.getvalue(), start
         except Exception as error:
             line = start + failing_line(error, filename)
             logger.warning(
@@ -80,6 +91,8 @@ def run_blocks(app: Sphinx, doctree: nodes.document) -> None:
                 error,
                 location=(docname, line),
             )
+    if printed:
+        missing_output(printed_at, docname)
 
 
 def read_all(

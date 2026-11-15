@@ -23,6 +23,8 @@ def test_the_readme_examples_run_and_print_what_the_readme_shows() -> None:
         if language == "output":
             assert printed is not None, "an output block follows no Python block"
             assert lines(code) == lines(printed)
+        else:
+            assert not printed, "a block prints, and no output block after it shows what"
         printed = None
         if language == "python":
             out = io.StringIO()
@@ -30,4 +32,5 @@ def test_the_readme_examples_run_and_print_what_the_readme_shows() -> None:
                 exec(compile(code, str(README), "exec"), namespace)
             printed = out.getvalue()
             ran += 1
+    assert not printed, "the last block prints, and no output block after it shows what"
     assert ran > 0
