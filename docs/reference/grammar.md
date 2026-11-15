@@ -2,7 +2,7 @@
 
 This page is the normative reference for the syntax of fpeg grammars, draft 0. What a grammar means is defined on the [semantics](semantics.md) page. Where this page and the code disagree, one of them has a bug.
 
-Some constructs are part of the language from the start but take effect in a later milestone. Their status is marked where they are described.
+Some constructs are part of the language from the start but take effect in a later release. Their status is marked where they are described.
 
 ## A first grammar
 
@@ -378,10 +378,10 @@ NAME: [a-z]+
 | `%extends "json"` | start from the rules and directives of another grammar | now |
 | `...` | in a rule that replaces an inherited one, the inherited alternatives | now |
 | `%import common (WS, INT)` | take the named rules from another grammar, with what they depend on | now |
-| `%import python as py` | take a whole grammar under a prefix | M9 |
+| `%import python as py` | take a whole grammar under a prefix | after the first release |
 
 - A rule defined again replaces the inherited one for every reference, also in the inherited rules. Replacing `?value` above lets every array and member hold a name.
-- `...` stands as a whole alternative, at most once and without an alias or a builder of its own, and puts the inherited alternatives there, with their aliases and builders: `?value: ... | NAME` tries them first, `?value: NAME | ...` last. A rule that uses it takes the parameters of the rule it replaces ([E605](diagnostics/E605.md)). In a precedence block, or for one, it waits for M9 ([E501](diagnostics/E501.md)).
+- `...` stands as a whole alternative, at most once and without an alias or a builder of its own, and puts the inherited alternatives there, with their aliases and builders: `?value: ... | NAME` tries them first, `?value: NAME | ...` last. A rule that uses it takes the parameters of the rule it replaces ([E605](diagnostics/E605.md)). In a precedence block, or for one, it waits for a release after the first ([E501](diagnostics/E501.md)).
 - A rule that replaces another says its own markers and attributes, `?` and `@memo` included.
 - The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's.
 - A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn.

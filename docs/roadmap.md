@@ -81,7 +81,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## Later
 
-A compiled backend, incremental parsing, a WebAssembly binding and regular expression terminals.
+A compiled backend, incremental parsing, a WebAssembly binding and regular expression terminals. Imports under a prefix, `%import m as p`, which need a syntax for prefixed names, and `...` in a precedence block, which needs a rule for where inherited alternatives go among levels.
 
 ## Not planned
 

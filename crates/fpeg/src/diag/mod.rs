@@ -123,7 +123,7 @@ pub enum DiagnosticCode {
     /// E402: a grammar too large: too many template instances, expressions, names, flags or
     /// fields passed on to one node.
     TooLarge,
-    /// E501: a form that a later milestone of the roadmap brings.
+    /// E501: a form that a later release brings.
     NotYet,
     /// E601: a grammar extended or imported that no module provides.
     UnknownModule,
