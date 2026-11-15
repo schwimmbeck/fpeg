@@ -27,6 +27,15 @@ const MAX_COMPARED_ALTERNATIVES: usize = 256;
 /// grammar too large to compile, which is an error too, and the warnings. Sorted by where they
 /// stand in the grammar.
 pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
+    let grammar = match crate::grammar::link::link(grammar) {
+        Ok(grammar) => grammar,
+        Err(errors) => return errors,
+    };
+    grammar.locate(check_joined(&grammar))
+}
+
+/// The problems of a grammar joined with its modules.
+fn check_joined(grammar: &Grammar) -> Vec<Diagnostic> {
     let (resolved, counts) = match crate::resolve::resolve_counted(grammar) {
         Ok(resolved) => resolved,
         Err(errors) => return errors,

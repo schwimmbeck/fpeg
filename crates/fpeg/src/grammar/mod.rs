@@ -9,6 +9,7 @@
 #[cfg(test)]
 mod bootstrap;
 pub mod builder;
+pub(crate) mod link;
 // Printed from the grammar file by `bootstrap`, which lays it out.
 #[rustfmt::skip]
 mod meta;
@@ -73,6 +74,9 @@ pub struct Grammar {
     pub extends: Option<Text>,
     /// The `%recover` directives.
     pub recovers: Vec<Recover>,
+    /// The texts of the grammars joined in, where a problem found in their rules is traced
+    /// back to.
+    pub(crate) sources: Vec<link::Source>,
 }
 
 /// A number written in the grammar, such as a repetition bound or a tab width.

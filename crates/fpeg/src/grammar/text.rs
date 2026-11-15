@@ -19,17 +19,23 @@ use crate::vm::Parser;
 impl Grammar {
     /// Read a grammar from its text.
     pub fn from_text(text: &str) -> Result<Grammar, Vec<Diagnostic>> {
+        Grammar::read_module(text, 0)
+    }
+
+    /// Read the grammar of a module, its spans counted from `base`.
+    pub(crate) fn read_module(text: &str, base: u32) -> Result<Grammar, Vec<Diagnostic>> {
         static META: OnceLock<Result<Parser, Vec<Diagnostic>>> = OnceLock::new();
         let meta = META
             .get_or_init(|| Parser::new(&meta::grammar()))
             .as_ref()
             .map_err(Clone::clone)?;
-        read(meta, text)
+        read(meta, text, base)
     }
 }
 
-/// Read a grammar from its text with `meta`, a parser of the grammar of grammars.
-pub(super) fn read(meta: &Parser, text: &str) -> Result<Grammar, Vec<Diagnostic>> {
+/// Read a grammar from its text with `meta`, a parser of the grammar of grammars, its spans
+/// counted from `base`, where a module's text lies among the spans of a grammar that uses it.
+pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<Diagnostic>> {
     let tree = meta.parse(text, "start").map_err(|error| {
         let (code, message) = match error.kind {
             ParseErrorKind::NoMatch { expected } => (
@@ -52,7 +58,7 @@ pub(super) fn read(meta: &Parser, text: &str) -> Result<Grammar, Vec<Diagnostic>
             }
             other => (DiagnosticCode::Internal, format!("{other:?}")),
         };
-        let at = error.position as u32;
+        let at = error.position as u32 + base;
         vec![Diagnostic {
             code,
             message,
@@ -61,6 +67,7 @@ pub(super) fn read(meta: &Parser, text: &str) -> Result<Grammar, Vec<Diagnostic>
     })?;
     let mut converter = Converter {
         text,
+        base,
         depth: 0,
         errors: Vec::new(),
     };
@@ -89,11 +96,6 @@ pub(super) fn read(meta: &Parser, text: &str) -> Result<Grammar, Vec<Diagnostic>
     }
 }
 
-fn span(node: &NodeRef<'_>) -> Span {
-    let (start, end) = node.span();
-    Span { start, end }
-}
-
 fn visible<'t>(node: &NodeRef<'t>) -> Vec<NodeRef<'t>> {
     node.children()
         .into_iter()
@@ -114,12 +116,22 @@ fn fields<'t>(node: &NodeRef<'t>, name: &str) -> Vec<NodeRef<'t>> {
 
 struct Converter<'t> {
     text: &'t str,
+    /// Where the text lies among the spans of the grammar.
+    base: u32,
     /// How many choices, lookaheads and suffixes enclose the node being converted.
     depth: usize,
     errors: Vec<Diagnostic>,
 }
 
 impl<'t> Converter<'t> {
+    fn span(&self, node: &NodeRef<'_>) -> Span {
+        let (start, end) = node.span();
+        Span {
+            start: start + self.base,
+            end: end + self.base,
+        }
+    }
+
     fn error(&mut self, code: DiagnosticCode, message: String, span: Span) {
         self.errors.push(Diagnostic {
             code,
@@ -138,7 +150,7 @@ impl<'t> Converter<'t> {
     /// Go one level deeper into an expression, unless that is too deep to convert safely.
     fn enter(&mut self, node: &NodeRef<'_>, levels: usize) -> bool {
         if self.depth + levels > MAX_EXPRESSION_DEPTH {
-            self.too_deep(span(node));
+            self.too_deep(self.span(node));
             return false;
         }
         self.depth += levels;
@@ -168,10 +180,11 @@ impl<'t> Converter<'t> {
                 }
             }
             "import" => {
+                let whole = self.span(node);
                 let module = field(node, "module").map_or_else(
                     || Text {
                         value: String::new(),
-                        span: span(node),
+                        span: whole,
                     },
                     |m| self.module(&m),
                 );
@@ -187,6 +200,10 @@ impl<'t> Converter<'t> {
                     prefix,
                 });
             }
+            "extends" if grammar.extends.is_some() => {
+                let message = "a grammar extends at most one other".to_owned();
+                self.error(DiagnosticCode::Duplicate, message, self.span(node));
+            }
             "extends" => grammar.extends = field(node, "module").map(|m| self.string(&m)),
             "recover" => {
                 let label = field(node, "label").map(|l| self.name(&l));
@@ -198,7 +215,7 @@ impl<'t> Converter<'t> {
             other => self.error(
                 DiagnosticCode::Internal,
                 format!("unexpected {other}"),
-                span(node),
+                self.span(node),
             ),
         }
     }
@@ -210,7 +227,7 @@ impl<'t> Converter<'t> {
     fn name(&self, node: &NodeRef<'_>) -> Name {
         Name {
             text: self.text_of(node).to_owned(),
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -219,7 +236,7 @@ impl<'t> Converter<'t> {
             Some(n) => self.name(&n),
             None => Name {
                 text: String::new(),
-                span: span(node),
+                span: self.span(node),
             },
         }
     }
@@ -227,12 +244,12 @@ impl<'t> Converter<'t> {
     fn count(&mut self, node: &NodeRef<'_>) -> Count {
         let value = self.text_of(node).parse().unwrap_or_else(|_| {
             let message = "the number is too large".into();
-            self.error(DiagnosticCode::Number, message, span(node));
+            self.error(DiagnosticCode::Number, message, self.span(node));
             0
         });
         Count {
             value,
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -242,7 +259,7 @@ impl<'t> Converter<'t> {
         } else {
             Text {
                 value: self.text_of(node).to_owned(),
-                span: span(node),
+                span: self.span(node),
             }
         }
     }
@@ -278,7 +295,7 @@ impl<'t> Converter<'t> {
             display,
             attributes,
             body,
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -317,7 +334,7 @@ impl<'t> Converter<'t> {
         }
         Expr {
             kind: ExprKind::Choice(items),
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -331,7 +348,7 @@ impl<'t> Converter<'t> {
         }
         Expr {
             kind: ExprKind::Sequence(items),
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -353,7 +370,7 @@ impl<'t> Converter<'t> {
                 expr: Box::new(expr),
                 label,
             },
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -386,7 +403,7 @@ impl<'t> Converter<'t> {
         };
         Expr {
             kind,
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -427,7 +444,10 @@ impl<'t> Converter<'t> {
             let (_, end) = op.span();
             expr = Expr {
                 kind,
-                span: Span { start, end },
+                span: Span {
+                    start: start + self.base,
+                    end: end + self.base,
+                },
             };
         }
         expr
@@ -477,7 +497,7 @@ impl<'t> Converter<'t> {
                     Some(m) => self.string(&m),
                     None => Text {
                         value: String::new(),
-                        span: span(node),
+                        span: self.span(node),
                     },
                 },
             },
@@ -485,14 +505,14 @@ impl<'t> Converter<'t> {
                 self.error(
                     DiagnosticCode::Internal,
                     format!("unexpected {other}"),
-                    span(node),
+                    self.span(node),
                 );
                 ExprKind::Empty
             }
         };
         Expr {
             kind,
-            span: span(node),
+            span: self.span(node),
         }
     }
 
@@ -500,8 +520,8 @@ impl<'t> Converter<'t> {
         let raw = self.text_of(node);
         let inner = raw.get(1..raw.len().saturating_sub(1)).unwrap_or("");
         Text {
-            value: self.unescape(inner, span(node), false),
-            span: span(node),
+            value: self.unescape(inner, self.span(node), false),
+            span: self.span(node),
         }
     }
 
@@ -511,7 +531,7 @@ impl<'t> Converter<'t> {
         let quoted = raw.strip_suffix('i').unwrap_or(raw);
         let inner = quoted.get(1..quoted.len().saturating_sub(1)).unwrap_or("");
         ExprKind::Literal {
-            text: self.unescape(inner, span(node), false),
+            text: self.unescape(inner, self.span(node), false),
             case_insensitive,
         }
     }
@@ -574,7 +594,7 @@ impl<'t> Converter<'t> {
 
     fn class(&mut self, node: &NodeRef<'_>) -> ExprKind {
         let raw = self.text_of(node);
-        let at = span(node);
+        let at = self.span(node);
         let inner = raw.get(1..raw.len().saturating_sub(1)).unwrap_or("");
         let (negated, inner) = match inner.strip_prefix('^') {
             Some(rest) => (true, rest),
@@ -658,7 +678,7 @@ impl<'t> Converter<'t> {
                 self.error(
                     DiagnosticCode::Property,
                     format!("unknown Unicode property {name}"),
-                    span(node),
+                    self.span(node),
                 );
                 ExprKind::Empty
             }

@@ -351,14 +351,26 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 
 ## Modules
 
-Status: syntax now, effect in M7.
+A grammar can start from another one and change it. The grammars that come with fpeg are `json` and `python`.
 
-| Form | Meaning |
-|---|---|
-| `%import common (WS, INT)` | take the named rules from another grammar, with what they depend on |
-| `%import python as py` | take a whole grammar under a prefix |
-| `%extends "python"` | start from another grammar. A rule defined again replaces the inherited one |
-| `...` | inside a replacing rule, the inherited body |
+```fpeg
+%extends "json"
+?value: object | array | STRING | INT | NAME
+NAME: [a-z]+
+%ignore "//" [^\n]*
+```
+
+| Form | Meaning | Status |
+|---|---|---|
+| `%extends "json"` | start from the rules and directives of another grammar | now |
+| `...` | in a rule that replaces an inherited one, the inherited alternatives | M7 |
+| `%import common (WS, INT)` | take the named rules from another grammar, with what they depend on | M7 |
+| `%import python as py` | take a whole grammar under a prefix | M9 |
+
+- A rule defined again replaces the inherited one for every reference, also in the inherited rules. Replacing `?value` above lets every array and member hold a name.
+- A rule that replaces another says its own markers and attributes, `?` and `@memo` included.
+- The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's.
+- A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn. A problem that `check` finds in the rules of a grammar extended is reported at `%extends`, with the line and column in that grammar.
 
 ## The grammar of grammars
 

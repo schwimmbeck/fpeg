@@ -38,6 +38,15 @@ The definition has two steps. First, every grammar is translated into a small co
 | `label(e, l, s)` | match `e`, and stop the parse with the labeled error `l` if it fails |
 | `error_alternative(m)` | fail. Reserved for explaining errors |
 
+## Modules
+
+A grammar with `%extends "m"` is joined with the grammar `m` before anything else, into one grammar that the rest of this page reads:
+
+- `m` is joined with what it extends first.
+- Each rule of the grammar whose name `m` defines takes the place of `m`'s rule, and every reference means it.
+- The other rules are added.
+- The skip expression is the ordered choice of `m`'s `%ignore` expressions and then the grammar's. The flags and soft keywords are those of both, and `%word` and `%tabs` the grammar's where it gives them, otherwise `m`'s.
+
 ## Translation into the core
 
 The translation runs in this order.

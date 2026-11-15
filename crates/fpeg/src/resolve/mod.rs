@@ -145,7 +145,10 @@ struct Resolver<'g> {
 /// Resolve a grammar into the core language, or report the problems found, the first hundred at
 /// most.
 pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>> {
-    resolve_counted(grammar).map(|(resolved, _)| resolved)
+    let grammar = crate::grammar::link::link(grammar)?;
+    resolve_counted(&grammar)
+        .map(|(resolved, _)| resolved)
+        .map_err(|errors| grammar.locate(errors))
 }
 
 /// Resolve a grammar and keep the item counts of its rules, which `check` asks about the shapes
@@ -575,13 +578,6 @@ impl<'g> Resolver<'g> {
         {
             let message = format!("%tabs needs a width from 1 to {MAX_TAB_WIDTH}");
             self.error(DiagnosticCode::Bounds, message, tabs.span);
-        }
-        if let Some(module) = &g.extends {
-            self.error(
-                DiagnosticCode::NotYet,
-                "%extends is not supported yet, see the roadmap (M7)".into(),
-                module.span,
-            );
         }
         for import in &g.imports {
             let message = "%import is not supported yet, see the roadmap (M7)".into();
@@ -1330,11 +1326,8 @@ impl<'g> Resolver<'g> {
             }
             ExprKind::Error { .. } => E::ErrorAlternative,
             ExprKind::Inherited => {
-                self.error(
-                    DiagnosticCode::NotYet,
-                    "... needs a grammar that uses %extends (M7)".into(),
-                    expr.span,
-                );
+                let message = "... is not supported yet, see the roadmap (M7)";
+                self.error(DiagnosticCode::NotYet, message.into(), expr.span);
                 E::Empty
             }
         };

@@ -9,6 +9,13 @@ start: "b"
 --- grammar
 the rule start is defined twice
 
+=== a rule defined twice is an error also where it replaces an inherited one
+%extends "json"
+?value: INT
+?value: STRING
+--- grammar
+the rule value is defined twice
+
 === a rule defined twice is an error also in a grammar with templates
 start: t<"a">
 start: "b"
@@ -174,8 +181,8 @@ start: "a"
 --- grammar
 %import is not supported yet
 
-=== extending, recovery and a word set that is no class are errors, and builders print back
-%extends "base"
+=== recovery and a word set that is no class are errors in a grammar that extends another, and builders print back
+%extends "json"
 %import common (WS, INT) as c
 %word "a"
 %recover missing: (!";" .)*
@@ -184,7 +191,6 @@ start: "a" => Point(x, y=*, z=None, w="s", n=1.5)
     | "c" => 42
     | "d" => True
 --- grammar
-%extends is not supported yet
 %recover is not supported yet
 %word needs a character class
 
@@ -251,10 +257,10 @@ e: %precedence {
 the parameter p takes no arguments
 the level b takes no arguments
 
-=== the inherited body needs a grammar that extends another
+=== the inherited body is not supported yet
 start: ...
 --- grammar
-... needs a grammar that uses %extends (M7)
+... is not supported yet, see the roadmap (M7)
 
 === a builder on a terminal cannot take children
 start: NAME

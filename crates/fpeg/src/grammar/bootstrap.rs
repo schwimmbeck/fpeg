@@ -368,7 +368,7 @@ mod tests {
     fn the_parser_that_the_grammar_file_describes_reads_the_file_as_the_bootstrap_does() {
         let (text, read) = grammar_file();
         let described = Parser::new(&read).unwrap_or_else(|e| panic!("{e:?}"));
-        let again = text::read(&described, &text).unwrap_or_else(|e| panic!("{e:?}"));
+        let again = text::read(&described, &text, 0).unwrap_or_else(|e| panic!("{e:?}"));
         assert_eq!(read, again);
     }
 

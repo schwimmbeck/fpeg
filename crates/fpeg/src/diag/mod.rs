@@ -82,7 +82,7 @@ pub enum DiagnosticCode {
     UnknownFlag,
     /// E203: an attribute the language does not define.
     UnknownAttribute,
-    /// E204: a name defined twice.
+    /// E204: a name defined twice, or a second `%extends`.
     Duplicate,
     /// E205: a name that does not start with a letter after its underscores.
     Name,
@@ -120,6 +120,8 @@ pub enum DiagnosticCode {
     TooLarge,
     /// E501: a form that a later milestone of the roadmap brings.
     NotYet,
+    /// E601: a grammar extended that no module provides.
+    UnknownModule,
     /// E901: a bug of fpeg itself.
     Internal,
     /// W101: an alternative after one that cannot fail.
@@ -144,7 +146,7 @@ pub enum DiagnosticCode {
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 35] = [
+    pub const ALL: [DiagnosticCode; 36] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -170,6 +172,7 @@ impl DiagnosticCode {
         DiagnosticCode::TooDeep,
         DiagnosticCode::TooLarge,
         DiagnosticCode::NotYet,
+        DiagnosticCode::UnknownModule,
         DiagnosticCode::Internal,
         DiagnosticCode::UnreachableAlternative,
         DiagnosticCode::ShadowedLiteral,
@@ -210,6 +213,7 @@ impl DiagnosticCode {
             DiagnosticCode::TooDeep => "E401",
             DiagnosticCode::TooLarge => "E402",
             DiagnosticCode::NotYet => "E501",
+            DiagnosticCode::UnknownModule => "E601",
             DiagnosticCode::Internal => "E901",
             DiagnosticCode::UnreachableAlternative => "W101",
             DiagnosticCode::ShadowedLiteral => "W102",
