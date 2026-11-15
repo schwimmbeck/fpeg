@@ -22,6 +22,7 @@ Complete programs for common tasks, each a grammar and a `Transformer`, to copy 
 - [A calculator](examples/calculator.md): lines of arithmetic with Python's operators, variables and functions.
 - [A configuration file](examples/configuration.md): sections, comments and typed values, read into dictionaries.
 - [CSV](examples/csv.md): a header and rows of quoted and bare fields, into a dictionary for each row.
+- [JSON to Python objects](examples/json.md): the values `json.loads` gives, with a grammar of your own or the one that comes with fpeg.
 
 ## Tutorials
 
@@ -57,6 +58,7 @@ start
 examples/calculator
 examples/configuration
 examples/csv
+examples/json
 roadmap
 tutorial/first-grammar
 tutorial/transformer
