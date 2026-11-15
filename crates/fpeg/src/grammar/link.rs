@@ -439,7 +439,7 @@ fn inherited(expr: &Expr, found: &mut Vec<Span>) {
 fn splice(mut rule: Rule, old: &Rule) -> Result<Rule, Vec<Diagnostic>> {
     let misplaced = |span, message: String| problem(DiagnosticCode::Inherited, message, span);
     let not_yet = |span, form: &str| {
-        let message = format!("... {form} is not supported yet, see the roadmap");
+        let message = format!("... {form} is not supported yet");
         problem(DiagnosticCode::NotYet, message, span)
     };
     let alternatives = match &rule.body {
@@ -521,7 +521,7 @@ fn by_module(imports: Vec<Import>) -> Result<Vec<Taken>, Vec<Diagnostic>> {
     let mut index: HashMap<String, usize> = HashMap::new();
     for import in imports {
         if let Some(prefix) = &import.prefix {
-            let message = "an import under a prefix is not supported yet, see the roadmap";
+            let message = "an import under a prefix is not supported yet";
             return Err(problem(DiagnosticCode::NotYet, message.into(), prefix.span));
         }
         let names = (!import.names.is_empty()).then_some(import.names);
