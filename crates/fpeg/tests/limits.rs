@@ -547,13 +547,17 @@ fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
 }
 
 /// A grammar whose tree doubles with each level, on an empty input: each rule matches the one
-/// below it twice, at one position.
-fn doubling(levels: usize) -> Grammar {
-    let mut text = format!("start: x{levels}\nx0: ()\n");
+/// below it twice, at one position, and the lowest matches `bottom`.
+fn doubling_text(levels: usize, bottom: &str) -> String {
+    let mut text = format!("start: x{levels}\nx0: {bottom}\n");
     for level in 1..=levels {
         text += &format!("x{level}: x{} x{}\n", level - 1, level - 1);
     }
-    Grammar::from_text(&text).expect("the grammar reads")
+    text
+}
+
+fn doubling(levels: usize) -> Grammar {
+    Grammar::from_text(&doubling_text(levels, "()")).expect("the grammar reads")
 }
 
 #[test]
@@ -658,6 +662,35 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
     let error = doubling(20)
         .parse_with("", "start", limits)
         .expect_err("a larger tree than the steps allow");
+    assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
+}
+
+#[test]
+fn a_failed_recovering_parse_lists_the_error_items_its_shared_nodes_repeat_within_its_steps() {
+    // Each level shares the node below, so the tree doubles with it while the parse takes a
+    // few steps. The parse fails on the input left over and lists the error items of its tree.
+    let options = Options {
+        memo: Memo::All,
+        ..Options::default()
+    };
+    let limits = Limits {
+        max_steps: 100_000,
+        ..Limits::default()
+    };
+    let parse = |bottom: &str| {
+        let text = doubling_text(20, bottom) + "%recover lost: ()\n";
+        let grammar = Grammar::from_text(&text).expect("the grammar reads");
+        let parser = Parser::with_options(&grammar, &options).expect("it compiles");
+        parser.parse_recovering_with("x", "start", limits)
+    };
+    // A tree without error items is not walked, however large.
+    let error = parse("()").expect_err("the input is left over");
+    assert!(
+        matches!(error.kind, ParseErrorKind::NoMatch { .. }),
+        "{error:?}"
+    );
+    // A million missing tokens take more steps than are left.
+    let error = parse("\"q\" ^ lost").expect_err("the input is left over");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
 }
 

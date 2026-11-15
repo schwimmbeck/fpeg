@@ -391,10 +391,10 @@ fn a_flag_is_set_somewhere_and_tested_somewhere() {
             "start: %on(f, \"a\" \"b\")\n%ignore \" \" | %if(f) \"\\n\"\n%flag f\n",
             vec![],
         ),
-        // Or in a recovery, which the parser does not run yet.
+        // Or in a recovery.
         (
             "start: %on(f, \"a\" ^ l)\n%recover l: %if(f) \"b\"\n%flag f\n",
-            vec!["E501"],
+            vec![],
         ),
     ] {
         assert_eq!(codes(text), expected, "{text}");

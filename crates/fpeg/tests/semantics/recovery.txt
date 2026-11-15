@@ -136,3 +136,17 @@ start: "[" ("1" ^ item) "]"
 --- recover "[x] #"
 error at 5: bang
 errors: item at 1
+
+=== a rule that calls itself only through an empty recovery is left recursive
+%ignore " "
+start: r1
+r1: prec | "b"
+prec: %precedence {
+    l1: left=l1 r1 -> post
+        | left=l1 "b" l2 -> post
+    l2: "a" ^ v -> other
+}
+%recover v: ()
+--- recover "b"
+(start (r1 (post left=(other <missing>"") ~"b" (other <missing>""))))
+errors: v at 0, v at 1

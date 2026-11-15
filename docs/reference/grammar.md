@@ -322,7 +322,7 @@ A capture lasts until the rule activation that made it returns, and rules called
 |---|---|---|
 | `e ^ "message"` | if `e` fails, stop the parse with this message | now |
 | `e ^ label` | if `e` fails, stop the parse with the named error | now |
-| `%recover label: e` | in a parse that recovers, where the named error occurs, what `e` matches stands in the tree as an error node and the parse goes on | M8 |
+| `%recover label: e` | in a parse that recovers, where the named error occurs, what `e` matches stands in the tree as an error node and the parse goes on | now |
 | `%error("message")` at the end of an alternative | an error alternative, tried only when a failed parse is explained | M8 |
 | `@sync` | recovery may resume before this rule | M8 |
 

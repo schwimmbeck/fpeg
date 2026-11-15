@@ -117,7 +117,6 @@ impl Tree {
     }
 
     /// Record what a parse in recovering mode recovered from, in the order of the text.
-    #[cfg(feature = "reference")]
     pub(crate) fn set_recoveries(&mut self, recoveries: Vec<Recovery>) {
         self.recoveries = recoveries;
     }

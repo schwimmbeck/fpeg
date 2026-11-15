@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use common::cases::{CheckKind, case_files, parse_cases};
 use common::generator::{check_seeds, generate, reference_limits, sampled_passes};
 use fpeg::{
-    DiagnosticCode, Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser,
-    Passes, Reference, RuleKind, Tree,
+    Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser, Passes, Reference,
+    RuleKind, Tree,
 };
 
 /// Steps a parse of a generated grammar may take on the machine. Each instruction is a step,
@@ -70,10 +70,6 @@ fn engines(grammar: &Grammar, sample: u64) -> Result<Engines, String> {
             }
         }
         (Err(expected), Err(errors)) if expected == errors => Ok(Engines::Rejected),
-        // A form only the reference interpreter runs so far, such as %recover.
-        (Ok(_), Err(errors)) if errors.iter().all(|e| e.code == DiagnosticCode::NotYet) => {
-            Ok(Engines::Rejected)
-        }
         (Ok(_), Err(errors)) => Err(format!("the machine rejects it: {errors:?}")),
         (Err(expected), Err(errors)) => Err(format!(
             "the engines reject it differently:\n{expected:?}\n{errors:?}"
@@ -82,10 +78,15 @@ fn engines(grammar: &Grammar, sample: u64) -> Result<Engines, String> {
     }
 }
 
-/// A parse as text: the tree with spans, or the error with its expected set, or the limit hit.
+/// A parse as text: the tree with spans and its recoveries, or the error with its expected set
+/// and its recoveries, or the limit hit.
 fn shown(result: Result<Tree, ParseError>, input: &str) -> Result<String, Limit> {
     match result {
-        Ok(tree) => Ok(tree.to_text(input, true)),
+        Ok(tree) => Ok(format!(
+            "{}\n{:?}",
+            tree.to_text(input, true),
+            tree.recoveries()
+        )),
         Err(ParseError {
             kind: ParseErrorKind::Limit(limit),
             ..
@@ -112,8 +113,8 @@ fn default_limits() -> [Limits; 2] {
     [reference, Limits::default()]
 }
 
-/// Parse with the reference and with each parser, and compare. With `remembering`, the parser
-/// that remembers nothing is left out.
+/// Parse with the reference and with each parser, in recovering mode where `recovering`, and
+/// compare. With `remembering`, the parser that remembers nothing is left out.
 fn compare(
     reference: &Reference,
     parsers: &[(Options, Parser)],
@@ -121,13 +122,22 @@ fn compare(
     start: &str,
     limits: [Limits; 2],
     remembering: bool,
+    recovering: bool,
 ) -> Vec<Verdict> {
-    let expected = shown(reference.parse_with(input, start, limits[0]), input);
+    let expected = match recovering {
+        true => reference.parse_recovering(input, start, limits[0]),
+        false => reference.parse_with(input, start, limits[0]),
+    };
+    let expected = shown(expected, input);
     let verdict = |(options, parser): &(Options, Parser)| {
         if remembering && options.memo == Memo::Off {
             return None;
         }
-        let actual = shown(parser.parse_with(input, start, limits[1]), input);
+        let actual = match recovering {
+            true => parser.parse_recovering_with(input, start, limits[1]),
+            false => parser.parse_with(input, start, limits[1]),
+        };
+        let actual = shown(actual, input);
         Some(match (&expected, actual) {
             (Ok(expected), Ok(actual)) if *expected == actual => Verdict::Same,
             (Ok(expected), Ok(actual)) => Verdict::Differ(format!(
@@ -194,12 +204,15 @@ fn case_files_give_the_same_results_on_both_engines() {
                 Ok(Engines::Both(reference, parsers)) => (reference, parsers),
             };
             for check in &case.checks {
-                let CheckKind::Parse { input, .. } = &check.kind else {
+                let CheckKind::Parse { input, recover, .. } = &check.kind else {
                     continue;
                 };
                 let at = format!("{at}, line {}", check.line);
                 let limits = default_limits();
-                for verdict in compare(&reference, &parsers, input, "start", limits, false) {
+                let verdicts = compare(
+                    &reference, &parsers, input, "start", limits, false, *recover,
+                );
+                for verdict in verdicts {
                     tally.count(verdict, &mut failures, &at);
                 }
             }
@@ -252,7 +265,7 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
             // Without a memo the levels of a precedence block take time that doubles with each
             // level, so the samples are parsed only by the parsers that remember them.
             let limits = default_limits();
-            for verdict in compare(&reference, &parsers, &input, "start", limits, true) {
+            for verdict in compare(&reference, &parsers, &input, "start", limits, true, false) {
                 tally.count(verdict, &mut failures, &file.display().to_string());
             }
         }
@@ -285,7 +298,7 @@ fn check_against_reference(seed: u64) -> Option<String> {
     for start in std::iter::once("start").chain(terminal) {
         for input in &inputs {
             let limits = [reference_limits(), machine];
-            for verdict in compare(&reference, &parsers, input, start, limits, false) {
+            for verdict in compare(&reference, &parsers, input, start, limits, false, false) {
                 match verdict {
                     Verdict::Same => COMPARED.fetch_add(1, Ordering::Relaxed),
                     // Inputs this short reach the depth limit only where left recursion is not

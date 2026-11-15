@@ -81,6 +81,10 @@ struct Graph {
     shared: HashMap<*const ir::Expr, u32>,
     /// The node of every expression.
     node_of: HashMap<*const ir::Expr, u32>,
+    /// Whether each label has a recovery, by label id.
+    recovered: Vec<bool>,
+    /// Edges to link to the node of a label's recovery once every recovery has one.
+    label_links: Vec<(u32, ir::LabelId)>,
 }
 
 /// What the compiler needs to know about the rules of a grammar, indexed by rule.
@@ -295,6 +299,8 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
         calls: Vec::new(),
         shared: HashMap::new(),
         node_of: HashMap::new(),
+        recovered: grammar.recoveries.iter().map(Option::is_some).collect(),
+        label_links: Vec::new(),
     };
     for rule in &grammar.rules {
         let body = graph.node(&rule.body);
@@ -303,6 +309,14 @@ pub(crate) fn analyze(grammar: &ir::Grammar) -> Facts {
     // The skip expression and the entries are compiled too.
     for expr in grammar.skip.iter().chain(grammar.entry.values()) {
         graph.node(expr);
+    }
+    let recoveries: Vec<Option<u32>> = (grammar.recoveries.iter())
+        .map(|recovery| recovery.as_ref().map(|expr| graph.node(expr)))
+        .collect();
+    for (edge, label) in std::mem::take(&mut graph.label_links) {
+        if let Some(&Some(node)) = recoveries.get(label.0 as usize) {
+            graph.edges[edge as usize] = node;
+        }
     }
     for (node, rule) in std::mem::take(&mut graph.calls) {
         let call = &mut graph.nodes[node as usize];
@@ -807,9 +821,30 @@ impl Graph {
                 let child = self.node(expr);
                 self.push(Form::Token(*kind), Order::Start, 1, &[child])
             }
-            E::Label { expr, .. } => {
+            // In recovering mode a label with a recovery may succeed by it instead, matched where
+            // the label's expression started, after the skip, so it may match nothing and call
+            // rules there. Its edge is linked once every recovery has its node.
+            E::Label { label, expr, skip } => {
                 let child = self.node(expr);
-                self.push(Form::Label, Order::Start, 1, &[child])
+                if !self
+                    .recovered
+                    .get(label.0 as usize)
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    self.push(Form::Label, Order::Start, 1, &[child])
+                } else if *skip {
+                    let skip = self.push(Form::Skip, Order::Start, 0, &[]);
+                    let after = self.push(Form::Sequence, Order::Sequence, 2, &[skip, 0]);
+                    self.label_links
+                        .push((self.nodes[after as usize].first + 1, *label));
+                    self.push(Form::Label, Order::Start, 1, &[child, after])
+                } else {
+                    let node = self.push(Form::Label, Order::Start, 1, &[child, 0]);
+                    self.label_links
+                        .push((self.nodes[node as usize].first + 1, *label));
+                    node
+                }
             }
             E::FlagOn { expr, .. } | E::FlagOff { expr, .. } => {
                 let child = self.node(expr);
@@ -899,7 +934,10 @@ impl Graph {
         match self.nodes[node as usize].form {
             Form::Sequence => through(&|c| !nullable[c as usize]),
             Form::Alternatives | Form::Call(_) => through(&|c| nullable[c as usize]),
-            Form::Label | Form::Flags => children.to_vec(),
+            // A recovery runs only where the label's expression failed, so its tokens are no
+            // part of that failure.
+            Form::Label => children.iter().take(1).copied().collect(),
+            Form::Flags => children.to_vec(),
             Form::Bytes(_)
             | Form::Empty
             | Form::Skip

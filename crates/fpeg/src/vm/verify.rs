@@ -57,6 +57,7 @@ pub(crate) fn verify(program: &Program) -> Result<(), String> {
     let mut roots: Vec<u32> = program.rules.iter().map(|r| r.pc).collect();
     roots.extend(&program.shared);
     roots.extend(program.skip);
+    roots.extend(program.recoveries.iter().flatten());
     let mut entries: Vec<u32> = program.entries.values().copied().collect();
     entries.sort_unstable();
     roots.extend(entries);
@@ -205,6 +206,15 @@ impl Tables<'_> {
             Inst::Throw(label) => {
                 index(label, p.labels.len(), "label")?;
                 Vec::new()
+            }
+            // A recovery returns before the next instruction, as a call does.
+            Inst::Recover { label, field } => {
+                index(label, p.labels.len(), "label")?;
+                index(u32::from(field.0), p.names.fields.len(), "field")?;
+                match p.recoveries.get(label as usize) {
+                    Some(Some(_)) => vec![(next, shape)],
+                    _ => return Err("recovers a label that has no recovery".into()),
+                }
             }
             Inst::Fail => Vec::new(),
             // A rule on a left cycle needs the frame of `LrCall`, a remembered one that of

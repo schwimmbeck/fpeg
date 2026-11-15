@@ -44,8 +44,9 @@ pub(crate) struct Grammar {
     pub reserved: Reserved,
     pub tab_width: u32,
     pub labels: Vec<Label>,
-    /// The recovery of each label, by label id, where `%recover` gives it one.
-    pub recoveries: Vec<Option<Recovery>>,
+    /// The recovery of each label, by label id, where `%recover` gives it one: the expression a
+    /// parse in recovering mode matches where the label fails.
+    pub recoveries: Vec<Option<Expr>>,
     /// For each kind, the fields of its nodes with how many items each can hold.
     pub kind_fields: Vec<Vec<(FieldId, FieldCount)>>,
     /// For each kind, the value builder of the alternatives that make it.
@@ -101,19 +102,6 @@ pub(crate) enum MemoMark {
 pub(crate) enum Label {
     Message(String),
     Named(String),
-}
-
-/// What `%recover` gives a label: the expression a parse in recovering mode matches where the
-/// label fails.
-#[derive(Debug)]
-pub(crate) struct Recovery {
-    #[cfg_attr(
-        not(feature = "reference"),
-        expect(dead_code, reason = "only the reference interpreter recovers so far")
-    )]
-    pub expr: Expr,
-    /// Where the label's name stands in the `%recover` directive.
-    pub span: Span,
 }
 
 /// The reserved words, compared exactly or, for case-insensitive literals, by ASCII lowercase.

@@ -95,6 +95,15 @@ pub(crate) enum Inst {
     /// Stop the parse with the label with this index at the current position. Inside a
     /// lookahead the error is a failure of the lookahead.
     Throw(u32),
+    /// Where a parse in recovering mode may recover here, run the recovery routine of the
+    /// label with this index with the position as the floor, and make what it matched the
+    /// label's error item, with the field. Otherwise as `Throw`.
+    Recover {
+        /// The label.
+        label: u32,
+        /// The field of the expression that failed.
+        field: FieldId,
+    },
     /// Fail.
     Fail,
     /// Mark the innermost choice or repetition entry of the rule activation, so that a failure
@@ -327,6 +336,8 @@ pub(crate) struct Program {
     pub kind_display: Vec<String>,
     /// The texts of the error labels.
     pub labels: Vec<String>,
+    /// Where the recovery routine of each label starts, for the labels that have one.
+    pub recoveries: Vec<Option<u32>>,
     /// The kind table shown to callers.
     pub kinds: Vec<Kind>,
     /// For each entry, whether a parse from it always leaves one visible item.

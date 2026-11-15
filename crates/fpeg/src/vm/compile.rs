@@ -18,7 +18,7 @@ use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::grammar::{ClassItem, Span};
 use crate::ir::{self, RuleId};
 use crate::resolve::MAX_FLAGS;
-use crate::tree::KindId;
+use crate::tree::{FieldId, KindId};
 
 /// The most expressions a rule may have, counting those of the rules it inlines in turn,
 /// for its calls to compile as its body.
@@ -29,14 +29,6 @@ pub(crate) fn compile(
     grammar: &ir::Grammar,
     options: &Options,
 ) -> Result<Program, Vec<Diagnostic>> {
-    // Only the reference interpreter recovers so far.
-    if let Some(recovery) = grammar.recoveries.iter().flatten().next() {
-        return Err(vec![Diagnostic {
-            code: DiagnosticCode::NotYet,
-            message: "%recover is not supported yet, see the roadmap (M8)".to_owned(),
-            span: recovery.span,
-        }]);
-    }
     let facts = analysis::analyze(grammar);
     let mut c = Compiler {
         has_skip: grammar.skip.is_some(),
@@ -59,6 +51,7 @@ pub(crate) fn compile(
         tests: Vec::new(),
         test_ids: HashMap::new(),
         rules: &grammar.rules,
+        recovered: (grammar.recoveries.iter()).map(Option::is_some).collect(),
         inline: Vec::new(),
         seed_rule: None,
         defines_shared: HashMap::new(),
@@ -173,6 +166,25 @@ pub(crate) fn compile(
         c.emit(Inst::End);
     }
     c.inline = inline;
+    // A recovery is matched as a rule body is, and gives back what it captured, as the
+    // semantics have it.
+    let recoveries = (grammar.recoveries.iter())
+        .map(|recovery| {
+            let recovery = recovery.as_ref()?;
+            let pc = c.here();
+            c.cuttable = false;
+            let defines = c.defines(recovery);
+            if defines {
+                c.emit(Inst::CaptureMark);
+            }
+            c.expr(recovery);
+            if defines {
+                c.emit(Inst::CaptureDrop);
+            }
+            c.emit(Inst::Ret);
+            Some(pc)
+        })
+        .collect();
     while let Some((index, expr)) = c.queue.pop() {
         c.shared_pcs[index] = c.here();
         // A cut passes the call of a shared part, and what stands around its uses is not
@@ -225,6 +237,7 @@ pub(crate) fn compile(
         names: Arc::clone(&grammar.names),
         kind_display: grammar.kind_display.clone(),
         labels,
+        recoveries,
         kinds: grammar.kinds(),
         single_item: grammar.single_item.clone(),
         passes: options.passes,
@@ -309,6 +322,8 @@ struct Compiler<'f> {
     tests: Vec<ByteTest>,
     test_ids: HashMap<ByteTest, u32>,
     rules: &'f [ir::Rule],
+    /// Whether each label has a recovery, by label id.
+    recovered: Vec<bool>,
     /// Whether the calls of each rule compile as its body.
     inline: Vec<bool>,
     /// The rule whose next call compiles as `SeedUse`: the leading call of a recursive
@@ -742,7 +757,21 @@ impl<'f> Compiler<'f> {
                 if *skip && self.has_skip {
                     self.emit(Inst::Skip);
                 }
-                self.emit(Inst::Throw(label.0));
+                match self.recovered.get(label.0 as usize) {
+                    Some(true) => {
+                        let field = match &**expr {
+                            E::Field { field, .. } => *field,
+                            _ => FieldId::NONE,
+                        };
+                        self.emit(Inst::Recover {
+                            label: label.0,
+                            field,
+                        });
+                    }
+                    _ => {
+                        self.emit(Inst::Throw(label.0));
+                    }
+                }
                 self.patch(commit);
             }
             E::ErrorAlternative => {

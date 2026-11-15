@@ -289,7 +289,7 @@ pub(crate) fn resolve_counted(
         entry.insert(name.text.clone(), start);
     }
     // A recovery is matched where its label fails, as the body of a syntactic rule is.
-    let mut recovered: Vec<(LabelId, ir::Recovery)> = Vec::new();
+    let mut recovered: Vec<(LabelId, ir::Expr)> = Vec::new();
     for recover in &grammar.recovers {
         let name = &recover.label;
         let what = format!("%recover {}", name.text);
@@ -302,14 +302,13 @@ pub(crate) fn resolve_counted(
             let message = format!("the recovery of the label {} is defined twice", name.text);
             r.error(DiagnosticCode::Duplicate, message, name.span);
         }
-        let span = name.span;
-        recovered.push((label, ir::Recovery { expr, span }));
+        recovered.push((label, expr));
     }
     while let Some(pending) = r.queue.pop_front() {
         r.lower_rule(pending);
     }
     // The rules lowered last may have named further labels.
-    let mut recoveries: Vec<Option<ir::Recovery>> = (r.labels.iter()).map(|_| None).collect();
+    let mut recoveries: Vec<Option<ir::Expr>> = (r.labels.iter()).map(|_| None).collect();
     for (label, recovery) in recovered {
         recoveries[label.0 as usize] = Some(recovery);
     }

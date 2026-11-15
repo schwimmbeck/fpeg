@@ -23,6 +23,11 @@ impl Display for Program {
         if let Some(pc) = self.skip {
             headings.insert(pc, "skip:".to_owned());
         }
+        for (label, pc) in self.recoveries.iter().enumerate() {
+            if let (Some(pc), Some(text)) = (pc, self.labels.get(label)) {
+                headings.insert(*pc, format!("recover {text}:"));
+            }
+        }
         for (name, &pc) in &self.entries {
             headings.insert(pc, format!("entry {name}:"));
         }
@@ -149,6 +154,16 @@ impl Program {
                 Some(text) => format!("Throw {}", quoted(text)),
                 None => format!("Throw ?{label}"),
             },
+            Inst::Recover { label, field } => {
+                let label = match self.labels.get(label as usize) {
+                    Some(text) => quoted(text),
+                    None => format!("?{label}"),
+                };
+                match self.names.fields.get(usize::from(field.0)) {
+                    Some(name) if field.0 != 0 => format!("Recover {label} {name}"),
+                    _ => format!("Recover {label}"),
+                }
+            }
             Inst::Fail => "Fail".to_owned(),
             Inst::Cut => "Cut".to_owned(),
             Inst::Call(target) => match routines.rules.get(&target) {

@@ -232,7 +232,7 @@ impl Parser {
         input: &str,
         start: &str,
         limits: Limits,
-        profiling: bool,
+        how: Run,
     ) -> (Result<Tree, ParseError>, Option<Profile>) {
         let program = self.program_for(plain, false);
         let budget = (input.len() as u64)
@@ -240,7 +240,7 @@ impl Parser {
             .max(RESTART_MIN_STEPS);
         let restarts = self.options.restart && self.options.memo != Memo::All;
         let budget = if restarts { budget } else { limits.max_steps };
-        let first = attempt(program, input, start, limits, budget, profiling);
+        let first = attempt(program, input, start, limits, budget, how);
         if let Some(result) = first.result {
             return (result, first.profile);
         }
@@ -249,7 +249,7 @@ impl Parser {
             ..limits
         };
         let again = self.program_for(plain, true);
-        let second = attempt(again, input, start, left(first.steps), u64::MAX, profiling);
+        let second = attempt(again, input, start, left(first.steps), u64::MAX, how);
         let mut profile = joined(first.profile, second.profile);
         if let Some(profile) = &mut profile {
             profile.restarts += 1;
@@ -262,7 +262,7 @@ impl Parser {
                 ..
             })) => {
                 let steps = first.steps + second.steps;
-                let third = attempt(program, input, start, left(steps), u64::MAX, profiling);
+                let third = attempt(program, input, start, left(steps), u64::MAX, how);
                 profile = joined(profile, third.profile);
                 third.result
             }
@@ -287,7 +287,29 @@ impl Parser {
     /// A parse that fails is run a second time to collect what was expected at the farthest
     /// failure, so a valid input never pays for it.
     pub fn parse_with(&self, input: &str, start: &str, limits: Limits) -> Result<Tree, ParseError> {
-        self.run(false, input, start, limits, false).0
+        self.run(false, input, start, limits, Run::default()).0
+    }
+
+    /// Parse in recovering mode, with the default limits: where a label that `%recover` gives
+    /// a recovery fails, an error item takes the place of what failed, and the parse goes on.
+    /// The tree lists what the parse recovered from, and a parse that still fails lists those
+    /// on its way to the error.
+    pub fn parse_recovering(&self, input: &str, start: &str) -> Result<Tree, ParseError> {
+        self.parse_recovering_with(input, start, Limits::default())
+    }
+
+    /// Parse in recovering mode as [`Parser::parse_recovering`] does, with the limits given.
+    pub fn parse_recovering_with(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+    ) -> Result<Tree, ParseError> {
+        let how = Run {
+            recovering: true,
+            ..Run::default()
+        };
+        self.run(false, input, start, limits, how).0
     }
 
     /// Parse as [`Parser::parse_with`] does and count what each rule did: how often it was
@@ -306,7 +328,11 @@ impl Parser {
         start: &str,
         limits: Limits,
     ) -> (Result<Tree, ParseError>, Profile) {
-        let (result, profile) = self.run(true, input, start, limits, true);
+        let how = Run {
+            profiling: true,
+            ..Run::default()
+        };
+        let (result, profile) = self.run(true, input, start, limits, how);
         (result, profile.unwrap_or_default())
     }
 
@@ -369,15 +395,23 @@ struct Attempt {
     profile: Option<Profile>,
 }
 
-/// Parse the whole input with a program in at most `budget` steps, counting what each rule
-/// did when `profiling`.
+/// How a parse runs.
+#[derive(Clone, Copy, Debug, Default)]
+struct Run {
+    /// Whether it counts what each rule did.
+    profiling: bool,
+    /// Whether it recovers from labeled errors.
+    recovering: bool,
+}
+
+/// Parse the whole input with a program in at most `budget` steps, as `how` says.
 fn attempt(
     program: &Program,
     input: &str,
     start: &str,
     limits: Limits,
     budget: u64,
-    profiling: bool,
+    how: Run,
 ) -> Attempt {
     let refused = |kind| Attempt {
         result: Some(Err(ParseError {
@@ -394,27 +428,36 @@ fn attempt(
     if u32::try_from(input.len()).is_err() {
         return refused(ParseErrorKind::Limit(Limit::InputSize));
     }
-    let mut machine = Machine::new(program, input, limits, None).budgeted(budget);
-    if profiling {
-        machine = machine.profiling();
+    let machine = |diagnose| {
+        let machine = Machine::new(program, input, limits, diagnose).budgeted(budget);
+        if how.recovering {
+            machine.recovering()
+        } else {
+            machine
+        }
+    };
+    let mut first = machine(None);
+    if how.profiling {
+        first = first.profiling();
     }
-    let outcome = machine.run(entry);
-    let profile = machine.profile();
-    let steps = machine.steps();
-    let farthest = machine.farthest();
+    let outcome = first.run(entry);
+    let profile = first.profile();
+    let steps = first.steps();
+    let farthest = first.farthest();
     let position = farthest.unwrap_or(0) as usize;
+    let recoveries = first.take_recoveries();
     let result = match outcome {
-        Ok(()) => machine.tree().map_err(|limit| ParseError {
+        Ok(()) => first.tree().map_err(|limit| ParseError {
             position,
             kind: ParseErrorKind::Limit(limit),
             recoveries: Vec::new(),
         }),
         Err(Stop::NoMatch) => {
             // The second run holds its own memory, so the first gives its back.
-            drop(machine);
+            drop(first);
             let expected = match farthest {
                 Some(at) => {
-                    let mut again = Machine::new(program, input, limits, Some(at)).budgeted(budget);
+                    let mut again = machine(Some(at));
                     // The second run follows the first exactly, so it ends the same way.
                     let _ = again.run(entry);
                     again.expected()
@@ -424,7 +467,7 @@ fn attempt(
             Err(ParseError {
                 position,
                 kind: ParseErrorKind::NoMatch { expected },
-                recoveries: Vec::new(),
+                recoveries,
             })
         }
         Err(Stop::Error { label, position }) => Err(ParseError {
@@ -434,7 +477,7 @@ fn attempt(
                     .cloned()
                     .unwrap_or_default(),
             ),
-            recoveries: Vec::new(),
+            recoveries,
         }),
         Err(Stop::Limit(limit)) => Err(ParseError {
             position,

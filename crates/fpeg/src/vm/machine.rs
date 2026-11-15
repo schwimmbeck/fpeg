@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use super::profile::{Profile, Profiler};
 use super::program::{Inst, Program};
-use crate::parse::{END_OF_INPUT, INDENTATION, Limit, Limits};
+use crate::parse::{END_OF_INPUT, INDENTATION, Limit, Limits, Recovery};
 use crate::tree::{FieldId, KindId, Tree};
 
 /// Bytes of a literal compared in one step, about the work of one instruction.
@@ -137,6 +137,21 @@ enum Entry {
     Frame,
     /// A loop of left recursion, whose state is the newest of [`Machine::loops`].
     Loop,
+    /// A recovery in progress, whose state is the newest of [`Machine::recovering_frames`].
+    Recovering,
+}
+
+/// A recovery in progress: where it returns to, its label and the field of what failed,
+/// where it started, the height of the items then, and the floor and context it replaced.
+#[derive(Clone, Copy, Debug)]
+struct RecoveryFrame {
+    ret: u32,
+    label: u32,
+    field: FieldId,
+    start: u32,
+    items: u32,
+    floor: Option<u32>,
+    context: u32,
 }
 
 /// A loop of left recursion in progress: the height of the items when it started, and its
@@ -439,6 +454,11 @@ const TREE_ENTRY_STEPS: u64 = 4;
 /// No frame, where an index of [`Machine::frames`] is expected.
 const NO_FRAME: u32 = u32::MAX;
 
+/// Whether an item is a node that holds an error item, as `holds` says for each node.
+fn holding(holds: &[bool], item: &Item) -> bool {
+    item.flags & TOKEN == 0 && holds.get(item.value as usize).copied().unwrap_or(false)
+}
+
 /// The token being matched: where it started, its kind, and how many entries the stack held
 /// when it opened. Tokens never nest, since nothing inside a token makes one.
 #[derive(Clone, Copy, Debug)]
@@ -518,10 +538,23 @@ pub(crate) struct Machine<'p, 'i> {
     /// with it: those of the activation in progress above those of its callers, so that the
     /// last holds the newest text of each capture.
     captures: Vec<u32>,
-    /// The id of the reference column and the visible captures, 0 for column 0 and none.
+    /// The id of the reference column, the visible captures and the floor, 0 for column 0,
+    /// none and none.
     context: u32,
-    /// The ids of the contexts met, by column and the id of the visible captures.
-    contexts: HashMap<(u32, u32), u32>,
+    /// The ids of the contexts met, by column, the id of the visible captures and the floor.
+    contexts: HashMap<(u32, u32, Option<u32>), u32>,
+    /// Whether the parse recovers from labeled errors.
+    recovering: bool,
+    /// Inside a recovery, where it started: a label recovers only past it.
+    floor: Option<u32>,
+    /// The recoveries in progress, one for each `Recovering` entry of the stack.
+    recovering_frames: Vec<RecoveryFrame>,
+    /// The label of each error item made, by the arena index of its node. An index that a
+    /// failure gave back is taken again by the next node, so an entry is current where its
+    /// node is of kind `<error>` or `<missing>`.
+    labels: HashMap<u32, u32>,
+    /// What a parse that stopped without a tree recovered from on its way.
+    ended: Vec<Recovery>,
     /// The ids of the captured texts met, one for equal texts, and the texts by id.
     texts: HashMap<&'i str, u32>,
     text_list: Vec<&'i str>,
@@ -582,6 +615,11 @@ impl<'p, 'i> Machine<'p, 'i> {
             captures: Vec::new(),
             context: 0,
             contexts: HashMap::new(),
+            recovering: false,
+            floor: None,
+            recovering_frames: Vec::new(),
+            labels: HashMap::new(),
+            ended: Vec::new(),
             texts: HashMap::new(),
             text_list: Vec::new(),
             maps: HashMap::new(),
@@ -602,6 +640,18 @@ impl<'p, 'i> Machine<'p, 'i> {
     pub fn profiling(mut self) -> Machine<'p, 'i> {
         self.profiler = Some(Box::new(Profiler::new(self.program)));
         self
+    }
+
+    /// The machine for a parse in recovering mode.
+    pub fn recovering(mut self) -> Machine<'p, 'i> {
+        self.recovering = true;
+        self
+    }
+
+    /// What a parse that stopped without a tree recovered from on its way, in the order of
+    /// the text.
+    pub fn take_recoveries(&mut self) -> Vec<Recovery> {
+        std::mem::take(&mut self.ended)
     }
 
     /// The machine that stops with [`Stop::Budget`] after `budget` steps, where they are
@@ -883,6 +933,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.fail()?;
                 }
                 Inst::Throw(label) => self.throw(label)?,
+                Inst::Recover { label, field } => self.recover(label, field)?,
                 Inst::Fail => self.fail()?,
                 Inst::Cut => {
                     self.cut();
@@ -956,6 +1007,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         self.pc = ret;
                     }
                     Some(Entry::Frame) => self.return_frame()?,
+                    Some(Entry::Recovering) => self.recovered()?,
                     _ => return Err(Stop::NoMatch),
                 },
                 Inst::End => {
@@ -963,6 +1015,9 @@ impl<'p, 'i> Machine<'p, 'i> {
                         return Ok(());
                     }
                     self.record(self.pos, Expected::EndOfInput);
+                    if self.recovering {
+                        self.ended = self.recoveries_among()?;
+                    }
                     return Err(Stop::NoMatch);
                 }
                 Inst::QuietOn => {
@@ -1170,17 +1225,19 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.text_list.get(map[at].1 as usize).copied()
     }
 
-    /// The id of the context of a column and visible captures, made when it is new.
+    /// The id of the context of a column and visible captures with the floor, made when it is
+    /// new.
     fn context_of(&mut self, column: u32, map: u32) -> Result<u32, Stop> {
-        if (column, map) == (0, 0) {
+        let key = (column, map, self.floor);
+        if key == (0, 0, None) {
             return Ok(0);
         }
-        if let Some(&id) = self.contexts.get(&(column, map)) {
+        if let Some(&id) = self.contexts.get(&key) {
             return Ok(id);
         }
         self.memory.room_in(&mut self.contexts)?;
         let id = id_after(self.contexts.len())?;
-        self.contexts.insert((column, map), id);
+        self.contexts.insert(key, id);
         Ok(id)
     }
 
@@ -1759,6 +1816,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.drop_loop();
                     None
                 }
+                Entry::Recovering => return self.recovery_failed(),
             };
             if let Some((alt, saved, quiet)) = caught {
                 self.end_failed_token(Some(self.stack.len()));
@@ -1787,7 +1845,11 @@ impl<'p, 'i> Machine<'p, 'i> {
                     *cut = true;
                     break;
                 }
-                Entry::Call { .. } | Entry::Frame | Entry::Loop | Entry::Predicate { .. } => break,
+                Entry::Call { .. }
+                | Entry::Frame
+                | Entry::Loop
+                | Entry::Predicate { .. }
+                | Entry::Recovering => break,
                 Entry::Label { .. }
                 | Entry::Sub { .. }
                 | Entry::Open { .. }
@@ -1844,6 +1906,12 @@ impl<'p, 'i> Machine<'p, 'i> {
                 Entry::Column { column } => self.end_column(column)?,
                 Entry::Captures { height, context } => self.give_back(height, context),
                 Entry::Loop => self.drop_loop(),
+                Entry::Recovering => {
+                    if let Some(frame) = self.recovering_frames.pop() {
+                        self.floor = frame.floor;
+                        self.context = frame.context;
+                    }
+                }
                 // The skip routine, which a `Skip` before its return called, ends here too.
                 Entry::Sub { ret } => {
                     let called = ret
@@ -1858,7 +1926,143 @@ impl<'p, 'i> Machine<'p, 'i> {
                 _ => {}
             }
         }
+        if self.recovering {
+            self.ended = self.recoveries_among()?;
+        }
         Err(Stop::Error { label, position })
+    }
+
+    /// Recover from the labeled error with this index where the parse recovers: outside a
+    /// lookahead and the skip routine, which raise the quiet count, outside a token, and past
+    /// the floor, run the label's recovery routine with the position as the floor. Otherwise
+    /// stop the parse as `Throw` does. Cold, as every path of recovery, so that the loop of the
+    /// machine keeps its shape for a parse in normal mode.
+    #[cold]
+    fn recover(&mut self, label: u32, field: FieldId) -> Result<(), Stop> {
+        let start = self.pos;
+        let normal = !self.recovering || self.quiet > 0 || self.token.is_some();
+        let past_floor = self.floor.is_none_or(|floor| start > floor);
+        let routine = (self.program.recoveries.get(label as usize)).copied();
+        let Some(routine) = routine.flatten().filter(|_| !normal && past_floor) else {
+            return self.throw(label);
+        };
+        self.memory.room(&mut self.recovering_frames, 1)?;
+        self.recovering_frames.push(RecoveryFrame {
+            ret: self.pc + 1,
+            label,
+            field,
+            start,
+            items: self.items.len() as u32,
+            floor: self.floor,
+            context: self.context,
+        });
+        self.entry(Entry::Recovering)?;
+        self.floor = Some(start);
+        self.context = self.context_of(self.column, self.map())?;
+        self.pc = routine;
+        Ok(())
+    }
+
+    /// End a recovery that matched: what it made becomes the error item of its label, a node
+    /// of kind `<error>` from where it started to the position, or of kind `<missing>` where it
+    /// matched nothing, which has no children and becomes a token when the tree is laid out.
+    #[cold]
+    fn recovered(&mut self) -> Result<(), Stop> {
+        let Some(frame) = self.recovering_frames.pop() else {
+            return Err(Stop::NoMatch);
+        };
+        self.floor = frame.floor;
+        self.context = frame.context;
+        let kind = if self.pos == frame.start {
+            self.items.truncate(frame.items as usize);
+            KindId::MISSING
+        } else {
+            KindId::ERROR
+        };
+        self.close_node(kind, frame.start, frame.items as usize)?;
+        let node = (self.nodes.len() - 1) as u32;
+        if let Some(item) = self.items.last_mut() {
+            item.start = frame.start;
+            item.end = self.pos;
+            item.field = frame.field;
+            // It counts for the span of its parent as a token does.
+            item.flags = HAS_TOKEN;
+        }
+        self.memory.room_in(&mut self.labels)?;
+        self.labels.insert(node, frame.label);
+        self.pc = frame.ret;
+        Ok(())
+    }
+
+    /// A recovery that failed leaves the error of its label, which ends the parse.
+    #[cold]
+    fn recovery_failed(&mut self) -> Result<(), Stop> {
+        let Some(frame) = self.recovering_frames.pop() else {
+            return Err(Stop::NoMatch);
+        };
+        self.end_failed_token(Some(self.stack.len()));
+        self.floor = frame.floor;
+        self.context = frame.context;
+        self.items.truncate(frame.items as usize);
+        self.pos = frame.start;
+        self.throw(frame.label)
+    }
+
+    /// The error items among the items of the parse at any depth, in the order of the text, or
+    /// a limit where listing those that shared nodes repeat takes more steps than are left. Its
+    /// stack holds at most the items the machine holds already.
+    #[cold]
+    fn recoveries_among(&self) -> Result<Vec<Recovery>, Stop> {
+        let mut found = Vec::new();
+        // Only a recovery makes an error item.
+        if self.labels.is_empty() {
+            return Ok(found);
+        }
+        let mut memory = self.memory;
+        // Which nodes hold an error item at any depth. Children lie before their parents.
+        let mut holds: Vec<bool> = Vec::new();
+        memory.room(&mut holds, self.nodes.len())?;
+        for node in &self.nodes {
+            let error = node.kind == KindId::ERROR || node.kind == KindId::MISSING;
+            let mut children = (node.first as usize..(node.first + node.count) as usize)
+                .filter_map(|index| self.children.get(index));
+            let held = error || children.any(|child| holding(&holds, child));
+            holds.push(held);
+        }
+        // A node given to several parents counts under each, as in the tree, so a visit beyond
+        // one per node costs what an entry repeating it costs the tree.
+        let left = self.limits.max_steps.saturating_sub(self.steps);
+        let mut visits = (self.nodes.len() as u64).saturating_add(left / TREE_ENTRY_STEPS);
+        let roots = self.items.iter().rev().filter(|item| holding(&holds, item));
+        let mut pending: Vec<Item> = roots.copied().collect();
+        while let Some(item) = pending.pop() {
+            visits = visits.checked_sub(1).ok_or(Stop::Limit(Limit::Steps))?;
+            let Some(node) = self.nodes.get(item.value as usize) else {
+                continue;
+            };
+            if node.kind == KindId::ERROR || node.kind == KindId::MISSING {
+                memory.room(&mut found, 1)?;
+                found.push(self.recovery_of(&item));
+            }
+            let children = (node.first as usize..(node.first + node.count) as usize)
+                .filter_map(|index| self.children.get(index))
+                .filter(|child| holding(&holds, child));
+            let at = pending.len();
+            pending.extend(children.copied());
+            pending[at..].reverse();
+        }
+        Ok(found)
+    }
+
+    /// An error item as a recovery, with the name of its label.
+    fn recovery_of(&self, item: &Item) -> Recovery {
+        let label = (self.labels.get(&item.value))
+            .and_then(|&label| self.program.labels.get(label as usize));
+        Recovery {
+            label: label.cloned().unwrap_or_default(),
+            start: item.start as usize,
+            end: item.end as usize,
+        }
     }
 
     fn record(&mut self, pos: u32, what: Expected) {
@@ -1969,6 +2173,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         memory.take(columns).map_err(|_| Limit::Memory)?;
         let mut tree = Tree::empty(Arc::clone(&self.program.names));
         tree.reserve(entries as usize);
+        let mut recoveries = Vec::new();
         // The nodes being laid out, with the index of the next child of each and the length of
         // the tree when it started. An explicit stack, since trees can be as deep as long.
         let mut open: Vec<(Item, u32, usize)> = Vec::new();
@@ -1986,6 +2191,16 @@ impl<'p, 'i> Machine<'p, 'i> {
                     open.pop();
                     continue;
                 };
+                // Only a parse that recovers makes error items, listed as they are entered.
+                if next == 0 && node.kind.0 < KindId::RESERVED {
+                    memory.room(&mut recoveries, 1).map_err(|_| Limit::Memory)?;
+                    recoveries.push(self.recovery_of(&item));
+                    if node.kind == KindId::MISSING {
+                        open.pop();
+                        tree.push_token(KindId::MISSING, false, item.start, item.end, item.field);
+                        continue;
+                    }
+                }
                 if next < node.count {
                     if let Some(last) = open.last_mut() {
                         last.1 += 1;
@@ -2001,6 +2216,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
             }
         }
+        tree.set_recoveries(recoveries);
         Ok(tree)
     }
 }

@@ -1073,7 +1073,7 @@ impl<'a> Interp<'a> {
             floor: Some(position),
             ..ctx.clone()
         };
-        match self.eval(&recovery.expr, position, &inner)? {
+        match self.eval(recovery, position, &inner)? {
             Outcome::Ok(success) => Ok(Outcome::Ok(Success {
                 end: success.end,
                 items: vec![Item::Error {
