@@ -269,6 +269,9 @@ def test_parse_takes_limits_and_refuses_a_literal_that_python_cannot_read() -> N
     for source in [*escapes, '"a' + chr(0) + 'b"', "1" * 5000]:
         with pytest.raises(SyntaxError):
             python.parse(source + "\n")
+    # The grammar refuses an incomplete escape in a format spec, as in a string.
+    with pytest.raises(fpeg.ParseError):
+        python.parse(f'f"{{x:{backslash}x1}}"\n')
 
 
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])

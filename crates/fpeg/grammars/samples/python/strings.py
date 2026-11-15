@@ -28,3 +28,4 @@ spaced = f"{name!r }"
 specs = f"{x:\{y}}", f"{x:a\}", f"""{x:>
 10}""", f"""{x:
 {y}}"""
+escaped_specs = f"{name:\x3e10}", f"{width:\N{DIGIT ONE}}", rf"{name:\x3e}"

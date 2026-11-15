@@ -295,23 +295,23 @@ fstring<raw, plain>: prefix=raw (
         | %off(long_string, !"\"\"\"" _f_body<"\"", NEVER, F_ESCAPE> | !"'''" _f_body<"'", NEVER, F_ESCAPE>))
 
 @lexical
-_f_body<quote, line_break, escape>: quote %off(bracket, %off(spec, %off(nested_spec, parts=(F_TEXT<quote, line_break, escape> | replacement_field<quote>)*))) quote
+_f_body<quote, line_break, escape>: quote %off(bracket, %off(spec, %off(nested_spec, parts=(F_TEXT<quote, line_break, escape> | replacement_field<quote, escape>)*))) quote
 
 // After a format spec the closing brace follows it directly, with no line break skipped. The
 // quote that closes the string ends a format spec too.
-replacement_field<quote>: "{" %on(bracket, value=%on(replacement, yield_expression | star_expressions) debug="="? conversion=conversion? (format=format_spec<quote> %off(bracket, "}") | "}"))
+replacement_field<quote, escape>: "{" %on(bracket, value=%on(replacement, yield_expression | star_expressions) debug="="? conversion=conversion? (format=format_spec<quote, escape> %off(bracket, "}") | "}"))
 
 @lexical
 conversion: "!" name=CONVERSION
 
 // A replacement field may stand in two nested format specs at most.
 @lexical
-format_spec<quote>: ":" %off(bracket, %if(nested_spec) parts=F_SPEC_TEXT<quote>*
-                             | %if(spec) %on(nested_spec, parts=(F_SPEC_TEXT<quote> | replacement_field<quote>)*)
-                             | %on(spec, parts=(F_SPEC_TEXT<quote> | replacement_field<quote>)*))
+format_spec<quote, escape>: ":" %off(bracket, %if(nested_spec) parts=F_SPEC_TEXT<quote, escape>*
+                                     | %if(spec) %on(nested_spec, parts=(F_SPEC_TEXT<quote, escape> | replacement_field<quote, escape>)*)
+                                     | %on(spec, parts=(F_SPEC_TEXT<quote, escape> | replacement_field<quote, escape>)*))
 
 F_TEXT<quote, line_break, escape> "text": (!quote ([^{}\\\r\n] | line_break | "{{" | "}}" | escape))+
-F_SPEC_TEXT<quote> "format specification": (!quote ([^{}\\\r\n] | %if(long_string) _LINE_BREAK | "\\" (&[{}] | ![{}] .)))+
+F_SPEC_TEXT<quote, escape> "format specification": (!quote ([^{}\\\r\n] | %if(long_string) _LINE_BREAK | escape))+
 // A backslash before a brace stays text, and the brace opens or closes a replacement field.
 F_ESCAPE "escape": "\\" (&[{}] | ![{}] ESCAPED)
 F_RAW_ESCAPE "escape": "\\" (&[{}] | ![{}] (_LINE_BREAK | .))
