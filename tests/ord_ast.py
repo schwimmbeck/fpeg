@@ -67,9 +67,14 @@ def path(target: Any) -> list[Any]:
 
 
 def stored(target: Any) -> Any:
-    """A copy of a target to assign to."""
-    copy = ast.Name(target.id, ast.Store()) if isinstance(target, ast.Name) else target
-    return copy
+    """A copy of a target to assign to: a name, an attribute or an item."""
+    if isinstance(target, ast.Name):
+        copy = ast.Name(target.id, ast.Store())
+    elif isinstance(target, ast.Attribute):
+        copy = ast.Attribute(target.value, target.attr, ast.Store())
+    else:
+        copy = ast.Subscript(target.value, target.slice, ast.Store())
+    return ast.copy_location(copy, target)
 
 
 class ToAst(python.ToAst):

@@ -14,7 +14,7 @@ cell Ring:
         path wires:
             .length = 2.5u
         for i in range(stages):
-            anonymous Inv stage: .pos=(4 * i, 0)
+            anonymous Inv stages[i]: .pos=(4 * i, 0)
         Inv first: .a -- c; .y -- a
         Inv second: .a -- a; .y -- b
         .done = True

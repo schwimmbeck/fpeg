@@ -61,19 +61,25 @@ def dumped(module: ast.AST) -> str:
 
 
 @pytest.mark.corpus
-def test_every_ord_file_gives_the_tree_of_the_language_s_own_parser() -> None:
+def test_every_ord_file_gives_the_tree_of_the_language_s_own_parser_and_compiles() -> None:
     parser = own_parser()
     paths = sorted(corpus.ORD_FILES.rglob("*.ord"))
     differ: list[str] = []
     for path in paths:
         source = path.read_text(encoding="utf-8")
+        shown = path.relative_to(corpus.ORD_FILES)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SyntaxWarning)
             theirs = dumped(parser.ord_to_py(source))
-        mine = dumped(ord_ast.parse(source))
+        module = ord_ast.parse(source)
+        mine = dumped(module)
         if mine != theirs:
             pairs = zip([*mine.splitlines(), ""], [*theirs.splitlines(), ""], strict=False)
             line = next(i for i, (a, b) in enumerate(pairs) if a != b)
-            differ.append(f"{path.relative_to(corpus.ORD_FILES)}: line {line} of the dump")
+            differ.append(f"{shown}: line {line} of the dump")
+        try:
+            compile(ast.fix_missing_locations(module), str(path), "exec")
+        except (SyntaxError, ValueError, TypeError) as error:
+            differ.append(f"{shown}: does not compile: {error}")
     assert len(paths) == 76, f"{len(paths)} ORD files"
     assert not differ, f"{len(differ)} of {len(paths)} files differ:\n" + "\n".join(differ)
