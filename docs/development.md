@@ -109,7 +109,7 @@ A form that the front end at hand cannot read takes two rounds: add it to the gr
 
 The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Markdown file per page in `docs/`. The build runs every Python code block of a page in order, and a block that raises fails the build. A block in the language `output` right after a Python block shows what that block printed, and the build fails when it differs. `tests/test_readme.py` holds the Python blocks of `README.md` to the same rules. `cargo test` reads every `fpeg` grammar block, and checks the ones that define a `start` rule, which must give no warning. The build output lands in `docs/_build/html`.
 
-The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for light and dark pages, used by the documentation and by `README.md`, and `favicon.svg`, a heavier cut of the mark that follows the browser's colour scheme by itself.
+The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for light and dark pages, used by the documentation and by `README.md`, which loads them by absolute URLs since PyPI resolves no relative path, and `favicon.svg`, a heavier cut of the mark that follows the browser's colour scheme by itself.
 
 ## Benchmarks
 

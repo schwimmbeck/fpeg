@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/logo-dark.svg">
-    <img alt="fpeg" src="docs/_static/logo-light.svg" width="300">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/schwimmbeck/fpeg/raw/main/docs/_static/logo-dark.svg">
+    <img alt="fpeg" src="https://github.com/schwimmbeck/fpeg/raw/main/docs/_static/logo-light.svg" width="300">
   </picture>
 </h1>
 
