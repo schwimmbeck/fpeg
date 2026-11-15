@@ -116,4 +116,5 @@ LONG_BRACKET: "[" %def(level, "="*) "[" (!("]" %ref(level) "]") .)* "]" %ref(lev
 // What opens a long bracket after "--" is a long comment, closed or an error.
 COMMENT: "--" (LONG_BRACKET | !("[" "="* "[") [^\r\n]*)
 
-%ignore [ \t\r\n]+ | COMMENT
+// Lua's lexer takes form feed and vertical tab for spaces too.
+%ignore [ \t\r\n\x0B\x0C]+ | COMMENT
