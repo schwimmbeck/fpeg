@@ -18,6 +18,7 @@ pub(crate) fn grammar() -> Grammar {
         r("COMMENT"),
         seq([if_flag("nested"), r("_NL")]),
     ]));
+    g.word(class([range('A', 'Z'), range('a', 'z'), range('0', '9'), ch('_')]));
     g.rule(
         "start",
         seq([
@@ -100,7 +101,7 @@ pub(crate) fn grammar() -> Grammar {
         "separated",
         seq([
             field("op", choice([lit("**"), lit("++")])),
-            label_message(field("separator", r("primary")), "a separator after ** or ++"),
+            label(field("separator", r("primary")), "separator"),
         ]),
     );
     g.rule("optional", lit("?"));
@@ -111,8 +112,7 @@ pub(crate) fn grammar() -> Grammar {
         seq([
             lit("{"),
             field("min", r("INTEGER")),
-            field("comma", opt(lit(","))),
-            field("max", opt(r("INTEGER"))),
+            opt(seq([field("comma", lit(",")), field("max", opt(r("INTEGER")))])),
             lit("}"),
         ]),
     );
@@ -355,5 +355,6 @@ pub(crate) fn grammar() -> Grammar {
     );
     g.recover("item", seq([many(seq([not(r("_ITEM_START")), any()])), opt(r("_NL"))]));
     g.recover("line", seq([many(seq([not(r("_ITEM_START")), any()])), opt(r("_NL"))]));
+    g.recover("separator", empty());
     g.build()
 }

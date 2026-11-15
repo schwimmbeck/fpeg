@@ -402,6 +402,7 @@ The syntax above, written in the language itself. The text front end is built fr
 ```fpeg
 %flag nested
 %ignore [ \t]+ | COMMENT | %if(nested) _NL
+%word [A-Za-z0-9_]
 
 start: _NL? (&. ((item ((_NL | !.) ^ line)) ^ item))*
 ?item: rule | directive
@@ -428,11 +429,11 @@ lookahead: op=("&" | "!") expr=prefix
 field: name=NAME "=" !">" expr=suffix
 suffix: base=primary ops=suffix_op*
 ?suffix_op: separated | optional | many | some | bounds
-separated: op=("**" | "++") separator=primary ^ "a separator after ** or ++"
+separated: op=("**" | "++") separator=primary ^ separator
 optional: "?"
 many: "*"
 some: "+"
-bounds: "{" min=INTEGER comma=","? max=INTEGER? "}"
+bounds: "{" min=INTEGER (comma="," max=INTEGER?)? "}"
 
 ?primary: group | LITERAL | CLASS | PROPERTY | inherited | any | cut | special | reference
 group: "(" %on(nested, expr=choice? ")")
@@ -482,7 +483,9 @@ _NL "line break": (("\r\n" | "\n" | "\r") [ \t]* COMMENT?)+
 _ITEM_START: ("\r\n" | "\n" | "\r") [A-Za-z_?@%]
 
 // A grammar with a mistake goes on at the next line that starts a rule or a directive, so that
-// reading it reports each mistake.
+// reading it reports each mistake. A separator that does not come is missing, and the front end
+// names it in words.
 %recover item: (!_ITEM_START .)* _NL?
 %recover line: (!_ITEM_START .)* _NL?
+%recover separator: ()
 ```

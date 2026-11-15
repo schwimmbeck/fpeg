@@ -34,6 +34,10 @@ impl Grammar {
     }
 }
 
+/// The label of the grammar of grammars for a separator that does not come after `**` or `++`,
+/// whose error says in words what must follow, since anything could start the separator.
+const SEPARATOR_LABEL: &str = "separator";
+
 /// A syntax error of a grammar text at a position, with what could have followed there.
 fn syntax_error(position: usize, expected: &[String], base: u32) -> Diagnostic {
     let at = position as u32 + base;
@@ -44,6 +48,19 @@ fn syntax_error(position: usize, expected: &[String], base: u32) -> Diagnostic {
     }
 }
 
+/// The syntax error of a mistake that reading recovered from.
+fn recovered_error(recovery: &Recovery, base: u32) -> Diagnostic {
+    if recovery.label == SEPARATOR_LABEL {
+        let at = recovery.position as u32 + base;
+        return Diagnostic {
+            code: DiagnosticCode::Syntax,
+            message: "expected a separator after ** or ++".to_owned(),
+            span: Span { start: at, end: at },
+        };
+    }
+    syntax_error(recovery.position, &recovery.expected, base)
+}
+
 /// Read a grammar from its text with `meta`, a parser of the grammar of grammars, its spans
 /// counted from `base`, where a module's text lies among the spans of a grammar that uses it.
 /// The parse recovers at the next rule or directive, so that each mistake is reported, up to the
@@ -51,7 +68,7 @@ fn syntax_error(position: usize, expected: &[String], base: u32) -> Diagnostic {
 pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<Diagnostic>> {
     let recovered = |recoveries: &[Recovery]| -> Vec<Diagnostic> {
         (recoveries.iter().take(MAX_ERRORS))
-            .map(|recovery| syntax_error(recovery.position, &recovery.expected, base))
+            .map(|recovery| recovered_error(recovery, base))
             .collect()
     };
     let tree = match meta.parse_recovering(text, "start") {
