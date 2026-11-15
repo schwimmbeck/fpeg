@@ -20,6 +20,7 @@ from fpeg._transformer import (
     FIELDS,
     INLINE,
     NOTHING,
+    answered,
     check_strict,
     function_of,
     handler,
@@ -90,10 +91,12 @@ def _make_plan(
     if getattr(cls, "__fpeg_strict__", False):
         check_strict(cls, {name for name, _, _ in kinds})
     plan: dict[str, _Handler] = {}
+    answering: dict[str, str] = {}
     for name, token, fields in kinds:
         method = handler(cls, name)
         if method is None:
             continue
+        answered(cls, method, name, answering)
         if not token and name not in plan:
             plan[name] = (method, _convention(cls, method, dict(fields)))
         elif token and issubclass(cls, Visitor):

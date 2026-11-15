@@ -366,12 +366,28 @@ def handler(cls: type, name: str) -> str | None:
     writes such names. A rule that an import brings in for the rules it takes, `m.r`, has its
     method under `m__r`.
     """
-    name = name.replace(".", "__")
+    name = method_name(name)
     if is_handler(cls, name):
         return name
     if _taken(cls, name) and is_handler(cls, name + "_"):
         return name + "_"
     return None
+
+
+def method_name(name: str) -> str:
+    """Return the method name of the rule or terminal `name`, `m__r` for an import's `m.r`."""
+    if "." in name and all(part.isidentifier() for part in name.split(".")):
+        return name.replace(".", "__")
+    return name
+
+
+def answered(cls: type, method: str, name: str, answering: dict[str, str]) -> None:
+    """Refuse a method that two rules or terminals reach, whose calls one way cannot serve."""
+    other = answering.setdefault(method, name)
+    if other != name:
+        raise TypeError(
+            f"{cls.__qualname__}.{method} answers both {other} and {name}, rename one of them"
+        )
 
 
 def _taken(cls: type, name: str) -> bool:
@@ -534,10 +550,12 @@ def _make_plan(
         check_strict(cls, names)
     entries: list[tuple[int, str, int, tuple[str, ...], int]] = []
     conventions: dict[tuple[str, bool], tuple[int, tuple[str, ...], int]] = {}
+    answering: dict[str, str] = {}
     for kind, (name, token, fields) in enumerate(kinds):
         method = handler(cls, name)
         if method is None:
             continue
+        answered(cls, method, name, answering)
         if (method, token) not in conventions:
             if token:
                 conventions[(method, token)] = (token_convention(cls, method), (), 0)
@@ -561,7 +579,7 @@ def _make_plan(
 
 
 def check_strict(cls: type, names: Iterable[str]) -> None:
-    known = {name.replace(".", "__") for name in names}
+    known = {method_name(name) for name in names}
     known |= {name + "_" for name in known if _taken(cls, name)}
     # An override of a method of the base class names no rule, and needs none.
     reserved: frozenset[str] = getattr(cls, "__fpeg_reserved__", frozenset[str]())

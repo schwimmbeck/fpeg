@@ -373,15 +373,23 @@ impl Grammar {
         let mut seen = std::collections::HashSet::new();
         for (id, kind) in kinds.iter().enumerate() {
             let kind_name = kind.name.as_str();
-            // A rule an import brings in for the rules it takes, `m.r`, has its method `m__r`.
-            let method_name = kind_name.replace('.', "__");
+            // A rule an import brings in for the rules it takes, `m.r`, has its method `m__r`,
+            // which the kind `.` of any character does not.
+            let mut parts = kind_name.split('.');
+            let imported =
+                kind_name.contains('.') && parts.all(|p| is_identifier(p).unwrap_or(false));
+            let method_name = match imported {
+                true => kind_name.replace('.', "__"),
+                false => kind_name.to_owned(),
+            };
+            let own = kind_name.rsplit('.').next().unwrap_or(kind_name);
             // Rules `_name` make no node, and hidden terminals no visible token. Nor does a
             // transparent rule that always gives way to its one child.
             let made = kinds.iter().any(|k| k.name == kind_name && k.made);
-            if kind_name.starts_with('_')
+            if own.starts_with('_')
                 || !made
                 || !is_identifier(&method_name)?
-                || !seen.insert(kind_name)
+                || !seen.insert(method_name.clone())
             {
                 continue;
             }

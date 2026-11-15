@@ -500,6 +500,19 @@ def test_a_rule_an_import_brings_in_has_its_method_under_its_grammar_and_two_und
 
     assert Imported().transform(grammar.parse("[1,[2]]")) == ("int 1", ("int 2",))
     assert "    def json__array(self, *children: Any) -> Any:" in grammar.transformer_template()
+    # The kind of any character, `.`, is no name of a module and a rule.
+    assert "def __(" not in fpeg.Grammar("start: x=. NAME\nNAME: [a-z]+").transformer_template()
+
+
+def test_a_method_that_two_rules_reach_is_refused() -> None:
+    grammar = fpeg.Grammar('start: if if_\nif: x="a"\nif_: y="b"\n')
+
+    class Both(fpeg.Transformer):
+        def if_(self, x: Any) -> Any:
+            return x
+
+    with pytest.raises(TypeError, match=r"Both\.if_ answers both if and if_"):
+        Both().transform(grammar.parse("ab"))
 
 
 def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
