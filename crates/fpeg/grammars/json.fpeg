@@ -5,10 +5,12 @@
 // json.loads gives them: an int without a fraction or an exponent, a float with one.
 //
 // Each label stands where a failure can only be a mistake of the text, so that the labels change
-// nothing the grammar accepts. A parse with recovery skips a member or value that does not parse
-// up to the next comma or closing bracket, parsing the members and values on its way, takes a
-// missing colon as missing, skips to a closing bracket that does not come where it should, and
-// takes text after the value as one error.
+// nothing the grammar accepts. They commit an object or an array after its bracket, so a grammar
+// that extends this one and gives value an alternative that starts with a bracket puts it before
+// the inherited ones. A parse with recovery skips a member or value that does not parse up to
+// the next comma or closing bracket, parsing the members and values on its way, takes a missing
+// colon as missing, skips to a closing bracket that does not come where it should, and takes
+// text after the value as one error.
 
 ?start: value (!. ^ trailing)
 

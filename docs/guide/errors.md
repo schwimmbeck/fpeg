@@ -167,4 +167,4 @@ except fpeg.ParseError as error:
 line 1, column 8: trailing: expected end of input
 ```
 
-The grammars that come with fpeg do the same: `json` and `python` name their mistakes and recover from them, and a grammar that extends one takes its recoveries along. `fpeg check` warns about a recovery whose label no expression raises ([W403](../reference/diagnostics/W403.md)), mostly a name written two ways.
+The grammars that come with fpeg do the same: `json` and `python` name their mistakes and recover from them, and a grammar that extends one takes its labels and recoveries along. A label commits where it stands, so an alternative of its own for text that starts as an inherited one does goes before `...`. `fpeg check` warns about a recovery whose label no expression raises ([W403](../reference/diagnostics/W403.md)), mostly a name written two ways.

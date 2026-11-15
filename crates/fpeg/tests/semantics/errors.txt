@@ -16,11 +16,9 @@ start: "a" ("b" ^ "need b") | "a" "c"
 error at 1: need b
 
 === a cut inside a labeled expression does not cancel the label
-start: ("if" ~ "(" "x" ")") ^ "bad if" | "if" "y"
---- "if(z)"
-error at 3: expected "x"
---- "ify"
-error at 2: expected "("
+start: ("if" ~ !"z" "(") ^ "bad if" | "if" "z"
+--- "ifz"
+error at 0: bad if
 
 === a labeled error gives way to the farthest failure, where the parse got further than the label
 start: ("a" "b" "c") ^ abc

@@ -445,7 +445,7 @@ error[close]: expected ",", "]"
   |         ^
 ```
 
-In the recovered tree an `<error>` node holds what the recovery took, which its `text` gives, and a `<missing>` token stands where the recovery took nothing. A `Transformer` gives them to its methods `__error__` and `__missing__`, which take what the methods of nodes and tokens take, and keeps them as they are where a class defines neither. A field that only the failed expression held is `None`.
+In the recovered tree an `<error>` node holds what the recovery took, which its `text` gives, and a `<missing>` token stands where the recovery took nothing. A `Transformer` gives them to its methods `__error__` and `__missing__`, which take what the methods of nodes and tokens take, and keeps them as they are where a class defines neither. A field inside the failed expression is `None`, but where the failed expression is a field `name=e`, the error item takes the field `name`.
 
 ```python
 class Numbers(fpeg.Transformer):

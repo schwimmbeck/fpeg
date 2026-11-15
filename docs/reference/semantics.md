@@ -53,7 +53,7 @@ A grammar with `%import m (a, b)` then adds rules of `m`, joined with what it ex
 
 - `a` and `b` under their names, and every rule they need, directly or through others, under `m.r` for its name `r`, a name no grammar text can write. The levels of a precedence block come under `m.l`, and the aliases `x` of a rule under a private name under `m.x`. References in the rules added follow the new names. A reference to a name that `m` lacks is an error.
 - A name keeps the kind of the name it replaces: `m.R` is a terminal as `R` is, and `m._r` makes no node as `_r` makes none.
-- The flags of `m` that the rules added set or test join the grammar's. Its other directives do not count.
+- The flags of `m` that the rules added set or test join the grammar's. Its other directives do not count, its recoveries among them: labels keep their names, so the labels of the rules added recover where the grammar gives them a `%recover` of its own.
 - All imports of one grammar `m` add one set of rules, and one without names takes every rule of `m` whose name has no dot. A rule under a private name that the grammar has already, through what it extends or another import, is the same rule and is added once.
 
 ## Translation into the core
@@ -140,7 +140,7 @@ Where what an expression produces is dropped, in a token, the skip expression an
 | `def(x, e, s)` | with `p` as above: the result of `e`. On success, the captures it leaves map `x` to the text from `p` to the end of the match, in place of any text before, and at most the end of the match |
 | `ref(x)` | success after the text `x` maps to if the input continues with it at `i`. Failure if it does not, or if `x` maps to nothing |
 
-Where `indent`, `same`, `end` and `def` take `p` from where `skip` ends, before anything else, an error that `skip` ends in is their result.
+Where `indent`, `same`, `end` and `def` take `p` from where `skip` ends, before anything else, and `label` after `e` failed, an error that `skip` ends in is their result.
 
 Flags and the reference column hold for the extent of their expression, including the rules it calls. Captures hold until the rule activation that made them ends.
 

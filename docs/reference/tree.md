@@ -32,6 +32,7 @@ start
 - A **hidden** token is kept in the tree but skipped by views: anonymous tokens and hidden terminals `_NAME` are hidden, unless a field captures them.
 - A **field** gives a visible item a name in its node, such as `key` and `value` above. Hidden tokens never carry a field.
 - Rules that are inlined `_name`, and transparent rules `?name` with one visible child, leave no node of their own: their children join their parent's.
+- A parse in recovering mode puts an **error item** where a label with a recovery failed ([Errors](grammar.md#errors)): a node of kind `<error>` over what the recovery matched, with its items as children, or a token of kind `<missing>` with an empty span where it matched nothing. An error item is never hidden, takes the field of a failed field, and counts as a token for the span of its parent.
 
 ## Spans
 

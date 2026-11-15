@@ -42,6 +42,8 @@ for value in ("NAME | ...", "... | NAME"):
 
 With the new alternative first, `true` is a name. With the inherited ones first, it is JSON's `true` with its builder, and only `maybe` is a name.
 
+The labels of an inherited rule commit where they stand: after `{` JSON's `object` takes the text, and a `}` that does not come is an error, not a reason to try the next alternative. So an alternative for text that starts as an inherited one does goes before `...`.
+
 ## Taking single rules
 
 `%import` takes rules by name. The rules they need come along under the name of their grammar and a dot, so that they never clash with the rules of the grammar that imports them:
