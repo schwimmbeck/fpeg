@@ -16,7 +16,8 @@ use common::generator::{check_seeds, generate, reference_limits as limits};
 use fpeg::{FieldCount, FieldId, ParseError, ParseErrorKind, Reference, RuleBody, Tree};
 
 /// Resolving and parsing do not panic, and the grammar prints to text that reads back the same.
-fn check_robust(seed: u64) -> Option<String> {
+/// A few grammars are broken on purpose, and `differential.rs` holds how few.
+fn check_resolving_parsing_printing(seed: u64) -> Option<String> {
     let (grammar, inputs) = generate(seed);
     // The text front end runs on the reference interpreter too.
     match catch_unwind(|| check_printing(&grammar)) {
@@ -198,7 +199,7 @@ fn check_item_counts(seed: u64) -> Option<String> {
 
 #[test]
 fn generated_grammars_resolve_parse_and_print_without_failing() {
-    check_seeds(check_robust);
+    check_seeds(check_resolving_parsing_printing);
 }
 
 #[test]

@@ -7,7 +7,8 @@
 //! remembers and whichever passes of the optimizer run.
 //!
 //! Each test reports how many parses it compared and holds the count above a floor, so that a
-//! shrinking count shows. The case files and the
+//! shrinking count shows: every parse of a case file on every setting, the sample files, and
+//! the share of generated grammars that both engines reject. The case files and the
 //! acceptance grammars stay far below the limits. Generated grammars can reach them, and since
 //! the engines count steps differently and only the reference interpreter remembers results,
 //! those parses are skipped too, but a parse where only the machine hits a limit is counted
@@ -28,6 +29,18 @@ use fpeg::{
 /// Steps a parse of a generated grammar may take on the machine. Each instruction is a step,
 /// and an instruction does less than a step of the interpreter.
 const MACHINE_MAX_STEPS: u64 = 200_000;
+
+/// Parses of the case files compared at least, a little below their count, so that a case
+/// file that goes missing shows.
+const MIN_CASE_COMPARISONS: u64 = 600;
+
+/// Sample files of the acceptance grammars compared at least, a little below their count.
+const MIN_SAMPLE_FILES: usize = 110;
+
+/// Generated grammars that both engines may reject, with the same errors, at most one in this
+/// many. The generator makes a few broken on purpose, about one in six, and a share near all
+/// would leave the comparison of parses with nothing to compare.
+const REJECTED_ONE_IN: u64 = 3;
 
 /// What the machine remembers in each of the parsers a grammar is compared with.
 const MEMO: [Memo; 3] = [Memo::Grammar, Memo::Off, Memo::All];
@@ -187,6 +200,8 @@ fn case_files_give_the_same_results_on_both_engines() {
     let mut tally = Tally::default();
     let mut failures = Vec::new();
     let mut sample = 0;
+    // Each parse of a case file is compared on every setting of the machine.
+    let mut expected = 0;
     for path in case_files() {
         let text = std::fs::read_to_string(&path).expect("the case file is readable");
         for case in parse_cases(&text) {
@@ -207,6 +222,7 @@ fn case_files_give_the_same_results_on_both_engines() {
                 let CheckKind::Parse { input, recover, .. } = &check.kind else {
                     continue;
                 };
+                expected += parsers.len() as u64;
                 let at = format!("{at}, line {}", check.line);
                 let limits = default_limits();
                 let verdicts = compare(
@@ -220,8 +236,12 @@ fn case_files_give_the_same_results_on_both_engines() {
     }
     tally.report("case files");
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+    assert_eq!(
+        tally.compared, expected,
+        "parses compared of those there are"
+    );
     assert!(
-        tally.compared >= 3 * 95,
+        tally.compared >= MIN_CASE_COMPARISONS,
         "only {} parses compared",
         tally.compared
     );
@@ -239,6 +259,7 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
     let mut tally = Tally::default();
     let mut failures = Vec::new();
     let mut run = Vec::new();
+    let mut sample_files = 0;
     for (sample, path) in (0..).zip(&paths) {
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let text = std::fs::read_to_string(path).expect("the grammar is readable");
@@ -260,6 +281,7 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
             .filter(|path| path.is_file() && path.extension().is_none_or(|e| e != "tree"))
             .collect();
         run.push(name);
+        sample_files += files.len();
         for file in files {
             let input = std::fs::read_to_string(&file).expect("the sample is readable");
             // Without a memo the levels of a precedence block take time that doubles with each
@@ -284,7 +306,10 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
     }
     tally.report(&format!("acceptance grammars ({} run)", run.join(", ")));
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
-    assert!(run.len() >= 10, "only {} grammars run", run.len());
+    assert!(
+        sample_files >= MIN_SAMPLE_FILES,
+        "only {sample_files} sample files compared"
+    );
 }
 
 /// A text with one of a few edits each, as people make them: a character left out a quarter
@@ -310,12 +335,18 @@ fn edited(text: &str) -> Vec<String> {
 static COMPARED: AtomicU64 = AtomicU64::new(0);
 static MACHINE_LIMITS: AtomicU64 = AtomicU64::new(0);
 static REFERENCE_LIMITS: AtomicU64 = AtomicU64::new(0);
+static GRAMMARS: AtomicU64 = AtomicU64::new(0);
+static REJECTED: AtomicU64 = AtomicU64::new(0);
 
 fn check_against_reference(seed: u64) -> Option<String> {
     let (grammar, inputs) = generate(seed);
+    GRAMMARS.fetch_add(1, Ordering::Relaxed);
     let (reference, parsers) = match engines(&grammar, seed) {
         Err(problem) => return Some(format!("{problem}\n{grammar}")),
-        Ok(Engines::Rejected) => return None,
+        Ok(Engines::Rejected) => {
+            REJECTED.fetch_add(1, Ordering::Relaxed);
+            return None;
+        }
         Ok(Engines::Both(reference, parsers)) => (reference, parsers),
     };
     let machine = Limits {
@@ -371,6 +402,14 @@ fn generated_grammars_give_the_same_results_on_both_engines() {
         reference_limits: REFERENCE_LIMITS.load(Ordering::Relaxed),
     };
     tally.report("generated grammars");
+    let (grammars, rejected) = (
+        GRAMMARS.load(Ordering::Relaxed),
+        REJECTED.load(Ordering::Relaxed),
+    );
+    assert!(
+        rejected * REJECTED_ONE_IN <= grammars,
+        "{rejected} of {grammars} grammars rejected"
+    );
     let all = tally.compared + tally.machine_limits + tally.reference_limits;
     assert!(
         tally.compared * 2 >= all,
