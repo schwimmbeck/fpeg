@@ -12,7 +12,7 @@ use super::{
     RuleBody, Span, Text, ValueBuilder, meta,
 };
 use crate::diag::{Diagnostic, DiagnosticCode};
-use crate::parse::{Limit, ParseErrorKind};
+use crate::parse::{Limit, ParseErrorKind, Recovery};
 use crate::tree::NodeRef;
 use crate::vm::Parser;
 
@@ -33,40 +33,67 @@ impl Grammar {
     }
 }
 
+/// A syntax error of a grammar text at a position, with what could have followed there.
+fn syntax_error(position: usize, expected: &[String], base: u32) -> Diagnostic {
+    let at = position as u32 + base;
+    Diagnostic {
+        code: DiagnosticCode::Syntax,
+        message: format!("expected {}", expected.join(", ")),
+        span: Span { start: at, end: at },
+    }
+}
+
 /// Read a grammar from its text with `meta`, a parser of the grammar of grammars, its spans
 /// counted from `base`, where a module's text lies among the spans of a grammar that uses it.
+/// The parse recovers at the next rule or directive, so that each mistake is reported.
 pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<Diagnostic>> {
-    let tree = meta.parse(text, "start").map_err(|error| {
-        let (code, message) = match error.kind {
-            ParseErrorKind::NoMatch { expected } => (
-                DiagnosticCode::Syntax,
-                format!("expected {}", expected.join(", ")),
-            ),
-            // The grammar of grammars labels what must follow, such as a separator.
-            ParseErrorKind::Label { label, .. } => {
-                (DiagnosticCode::Syntax, format!("expected {label}"))
-            }
-            ParseErrorKind::Limit(Limit::Depth) => (
-                DiagnosticCode::TooDeep,
-                "the grammar text nests too deeply to read".to_owned(),
-            ),
-            ParseErrorKind::Limit(limit) => {
-                let what = match limit {
-                    Limit::InputSize => "is too large",
-                    _ => "takes too long",
-                };
-                let message = format!("the grammar text {what} to read");
-                (DiagnosticCode::TooLarge, message)
-            }
-            other => (DiagnosticCode::Internal, format!("{other:?}")),
-        };
-        let at = error.position as u32 + base;
-        vec![Diagnostic {
-            code,
-            message,
-            span: Span { start: at, end: at },
-        }]
-    })?;
+    let recovered = |recoveries: &[Recovery]| -> Vec<Diagnostic> {
+        (recoveries.iter())
+            .map(|recovery| syntax_error(recovery.position, &recovery.expected, base))
+            .collect()
+    };
+    let tree = match meta.parse_recovering(text, "start") {
+        Ok(tree) if tree.recoveries().is_empty() => tree,
+        Ok(tree) => return Err(recovered(tree.recoveries())),
+        Err(error) => {
+            let mut found = recovered(&error.recoveries);
+            let at = error.position as u32 + base;
+            let (code, message) = match error.kind {
+                ParseErrorKind::NoMatch { expected }
+                | ParseErrorKind::Label {
+                    named: true,
+                    expected,
+                    ..
+                } => (
+                    DiagnosticCode::Syntax,
+                    format!("expected {}", expected.join(", ")),
+                ),
+                // The grammar of grammars says in words what must follow, such as a separator.
+                ParseErrorKind::Label { label, .. } => {
+                    (DiagnosticCode::Syntax, format!("expected {label}"))
+                }
+                ParseErrorKind::Limit(Limit::Depth) => (
+                    DiagnosticCode::TooDeep,
+                    "the grammar text nests too deeply to read".to_owned(),
+                ),
+                ParseErrorKind::Limit(limit) => {
+                    let what = match limit {
+                        Limit::InputSize => "is too large",
+                        _ => "takes too long",
+                    };
+                    let message = format!("the grammar text {what} to read");
+                    (DiagnosticCode::TooLarge, message)
+                }
+                other => (DiagnosticCode::Internal, format!("{other:?}")),
+            };
+            found.push(Diagnostic {
+                code,
+                message,
+                span: Span { start: at, end: at },
+            });
+            return Err(found);
+        }
+    };
     let mut converter = Converter {
         text,
         base,

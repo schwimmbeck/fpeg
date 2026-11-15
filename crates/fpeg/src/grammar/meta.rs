@@ -22,8 +22,10 @@ pub(crate) fn grammar() -> Grammar {
         "start",
         seq([
             opt(r("_NL")),
-            opt(seq([r("item"), many(seq([r("_NL"), r("item")]))])),
-            opt(r("_NL")),
+            many(seq([
+                and(any()),
+                label(seq([r("item"), label(choice([r("_NL"), not(any())]), "line")]), "item"),
+            ])),
         ]),
     );
     g.rule("item", choice([r("rule"), r("directive")])).transparent();
@@ -344,5 +346,14 @@ pub(crate) fn grammar() -> Grammar {
             opt(r("COMMENT")),
         ])),
     );
+    g.rule(
+        "_ITEM_START",
+        seq([
+            choice([lit("\r\n"), lit("\n"), lit("\r")]),
+            class([range('A', 'Z'), range('a', 'z'), ch('_'), ch('?'), ch('@'), ch('%')]),
+        ]),
+    );
+    g.recover("item", seq([many(seq([not(r("_ITEM_START")), any()])), opt(r("_NL"))]));
+    g.recover("line", seq([many(seq([not(r("_ITEM_START")), any()])), opt(r("_NL"))]));
     g.build()
 }

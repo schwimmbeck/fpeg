@@ -165,6 +165,18 @@ start: "a" |
 error[E101]: expected "!", "%def", "%error"
 at 12..12
 
+=== a grammar text with three syntax errors gives three, each where reading stopped
+start: "a" |
+other: "b" )
+%flag
+last: "c"
+--- grammar
+error[E101]: expected "!", "%def", "%error", "%if", "%indent", "%off", "%on", "%ref", "%same", "&", "(", ".", "...", "~", CLASS, LITERAL, NAME, PROPERTY
+at 12..12
+at 24..24
+error[E101]: expected NAME
+at 31..31
+
 === a separator must follow ** and ++, and two stars apart repeat twice
 start: "a"**
 --- grammar

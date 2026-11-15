@@ -403,7 +403,7 @@ The syntax above, written in the language itself. The text front end is built fr
 %flag nested
 %ignore [ \t]+ | COMMENT | %if(nested) _NL
 
-start: _NL? (item (_NL item)*)? _NL?
+start: _NL? (&. ((item ((_NL | !.) ^ line)) ^ item))*
 ?item: rule | directive
 
 rule: attributes=attribute* transparent="?"? name=NAME params=params? display=STRING? ":" body=rule_body
@@ -479,4 +479,10 @@ CLASS: "[" ("\\" . | [^\]\\\r\n])+ "]"
 PROPERTY: "\\" [pP] "{" [A-Za-z_]+ "}"
 COMMENT: "//" [^\r\n]*
 _NL: (("\r\n" | "\n" | "\r") [ \t]* COMMENT?)+
+_ITEM_START: ("\r\n" | "\n" | "\r") [A-Za-z_?@%]
+
+// A grammar with a mistake goes on at the next line that starts a rule or a directive, so that
+// reading it reports each mistake.
+%recover item: (!_ITEM_START .)* _NL?
+%recover line: (!_ITEM_START .)* _NL?
 ```

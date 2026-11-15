@@ -193,7 +193,10 @@ fn expr(expr: &Expr) -> Code {
             "label_message",
             vec![self::expr(expr), Code::string(&message.value)],
         ),
-        ExprKind::Label { .. } => unknown("an error label by name"),
+        ExprKind::Label {
+            expr,
+            label: ErrorLabel::Named(name),
+        } => Code::call("label", vec![self::expr(expr), Code::string(&name.text)]),
         ExprKind::FlagOn { flag, expr } => {
             Code::call("on", vec![Code::string(&flag.text), self::expr(expr)])
         }
@@ -280,11 +283,9 @@ fn rule(rule: &Rule) -> Code {
 fn builder_code(text: &str, grammar: &Grammar) -> String {
     if grammar.tabs.is_some()
         || grammar.extends.is_some()
-        || !(grammar.soft_keywords.is_empty()
-            && grammar.imports.is_empty()
-            && grammar.recovers.is_empty())
+        || !(grammar.soft_keywords.is_empty() && grammar.imports.is_empty())
     {
-        unknown("a directive other than %flag, %ignore and %word");
+        unknown("a directive other than %flag, %ignore, %word and %recover");
     }
     let mut statements = Vec::new();
     for flag in &grammar.flags {
@@ -297,6 +298,10 @@ fn builder_code(text: &str, grammar: &Grammar) -> String {
         statements.push(Code::call("g.word", vec![expr(word)]));
     }
     statements.extend(grammar.rules.iter().map(rule));
+    for recover in &grammar.recovers {
+        let args = vec![Code::string(&recover.label.text), expr(&recover.expr)];
+        statements.push(Code::call("g.recover", args));
+    }
     let mut out = String::new();
     for line in text.lines().take_while(|line| line.starts_with("// SPDX-")) {
         out.push_str(line);
