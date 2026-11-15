@@ -250,8 +250,16 @@ def test_the_transformer_refuses_a_python_older_than_its_ast(
         python.ToAst()
 
 
+def test_the_default_depth_takes_the_deepest_nesting_cpython_takes() -> None:
+    fstring = "1"
+    for _ in range(149):
+        fstring = 'f"{' + fstring + '}"'
+    for source in ("x = " + "(" * 200 + "1" + ")" * 200, "y = " + "f(" * 200 + ")" * 200, fstring):
+        assert ast.dump(python.parse(source + "\n")) == ast.dump(ast.parse(source + "\n"))
+
+
 def test_parse_takes_limits_and_refuses_a_literal_that_python_cannot_read() -> None:
-    deep = "(" * 150 + "1" + ")" * 150 + "\n"
+    deep = "(" * 300 + "1" + ")" * 300 + "\n"
     with pytest.raises(fpeg.LimitError):
         python.parse(deep)
     assert isinstance(python.parse(deep, max_depth=100_000), ast.Module)

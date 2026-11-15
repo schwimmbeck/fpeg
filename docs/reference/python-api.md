@@ -497,7 +497,7 @@ print(ast.dump(module.body[0].value))
 BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=Add(), right=Name(id='rate')))
 ```
 
-`parse` takes the limits of `Grammar.parse`, as `max_depth` for brackets nested deeper than the default allows. It reads what the Python grammar reads, which takes a few forms that CPython refuses only after parsing, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
+`parse` takes the limits of `Grammar.parse`. The default depth takes the deepest nesting that CPython takes, 200 brackets or 149 f-strings, and `max_depth` allows more. It reads what the Python grammar reads, which takes a few forms that CPython refuses only after parsing, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
 
 The grammar names its mistakes where a failure can only be one: `colon` for the colon of a compound statement, `newline` for the end of a simple statement, `indent` for a block that does not come, `statement` for a line that is no statement, and `indented` for a line indented further than its block. A parse with `recover=True` goes on past each, so that a file with mistakes gives a tree that keeps the statements around them:
 

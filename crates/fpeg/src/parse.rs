@@ -5,8 +5,9 @@
 
 use std::fmt;
 
-/// Rule activations that may be nested before a parse stops.
-pub const DEFAULT_MAX_DEPTH: u32 = 2_000;
+/// Rule activations that may be nested before a parse stops. The deepest nesting that CPython
+/// takes, 200 brackets, needs about 4,000 in the Python grammar.
+pub const DEFAULT_MAX_DEPTH: u32 = 5_000;
 
 /// Steps a parse may take before it stops. A step is an instruction of the parsing machine,
 /// and work beyond one counts too, so that the limit bounds the time a parse takes: closing a
