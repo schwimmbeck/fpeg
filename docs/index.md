@@ -23,6 +23,7 @@ Complete programs for common tasks, each a grammar and a `Transformer`, to copy 
 - [A configuration file](examples/configuration.md): sections, comments and typed values, read into dictionaries.
 - [CSV](examples/csv.md): a header and rows of quoted and bare fields, into a dictionary for each row.
 - [JSON to Python objects](examples/json.md): the values `json.loads` gives, with a grammar of your own or the one that comes with fpeg.
+- [A filter language](examples/filter-language.md): conditions parsed into a syntax tree of dataclasses and evaluated against records.
 
 ## Tutorials
 
@@ -59,6 +60,7 @@ examples/calculator
 examples/configuration
 examples/csv
 examples/json
+examples/filter-language
 roadmap
 tutorial/first-grammar
 tutorial/transformer
