@@ -107,11 +107,14 @@ pub(crate) fn profile(args: &[OsString]) -> Result<(), Failure> {
 }
 
 /// The names that `@memo` cannot stand on, or where it would contradict the rule's mark: the
-/// levels of precedence blocks, the blocks, whose marks are for their levels, and the rules
-/// marked `@nomemo`.
+/// levels of precedence blocks, the blocks, whose marks are for their levels, the rules marked
+/// `@nomemo`, and the rules an import brings in under private names, which no grammar can write.
 fn unmarkable(grammar: &Grammar) -> HashSet<&str> {
     let mut names = HashSet::new();
     for rule in &grammar.rules {
+        if rule.name.text.contains('.') {
+            names.insert(rule.name.text.as_str());
+        }
         match &rule.body {
             RuleBody::Precedence(levels) => {
                 names.insert(rule.name.text.as_str());

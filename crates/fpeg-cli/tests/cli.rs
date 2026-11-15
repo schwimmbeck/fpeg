@@ -377,6 +377,26 @@ fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
             );
         }
     }
+    // Nor is a rule that an import brings in under a private name, which no grammar can write.
+    let paths = files(
+        "imported",
+        &[
+            ("again.fpeg", "%import rep (start)\n"),
+            ("input.txt", "((((((x))))))"),
+            ("rep.fpeg", grammar),
+        ],
+    );
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        !text(&out.stdout).contains("@memo on rep.item:"),
+        "{}",
+        text(&out.stdout)
+    );
 }
 
 #[test]
