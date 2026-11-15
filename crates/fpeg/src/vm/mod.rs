@@ -548,6 +548,24 @@ fn attempt(
         }) => {
             drop(first);
             let mut positions = asked(&ended);
+            // The parse got further than the label, so the farthest failure says more.
+            let further = farthest.filter(|&at| floor.is_none() && at > position);
+            if let Some(at) = further {
+                positions.push((at, None));
+                let again = diagnosed(&positions, true);
+                let error = ParseError {
+                    position: at as usize,
+                    kind: ParseErrorKind::NoMatch {
+                        expected: again.expected(at, None),
+                    },
+                    recoveries: explained(&again, &ended),
+                };
+                return Attempt {
+                    result: Some(Err(explain(&again, error, None))),
+                    steps,
+                    profile,
+                };
+            }
             positions.push((position, floor));
             let again = diagnosed(&positions, true);
             let (label, named) = match program.labels.get(label as usize) {

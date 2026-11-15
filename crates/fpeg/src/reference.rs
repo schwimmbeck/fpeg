@@ -559,6 +559,17 @@ impl<'a> Interp<'a> {
                 (error, None)
             }
             Ok(None) => (self.no_match(), None),
+            // The parse got further than the label, so the farthest failure says more.
+            Err(Abort::Error {
+                position,
+                floor: None,
+                recoveries,
+                ..
+            }) if self.farthest.is_some_and(|farthest| farthest > position) => {
+                let mut error = self.no_match();
+                error.recoveries = self.explained(&recoveries);
+                (error, None)
+            }
             Err(Abort::Error {
                 label,
                 position,

@@ -88,10 +88,12 @@ NAME: [a-z]+
 error at 4: expected %ref(tag)
 
 === a label skips to the error's position with the captures of before its failed part
-start: (%def(c, ()) "a") ^ "oops" | "b"
+start: (%def(c, ()) "a") ^ oops | "b"
 %ignore " " | "\n" %ref(c)
---- "\n b"
-error at 0: oops
+%recover oops: ()
+--- recover "\n b"
+error at 2: expected "a"
+errors: oops: expected end of input at 0
 
 === a capture made inside a block outlives the block, so a call after it is no left recursion
 start: %indent(%def(c, ())) start | "a"
