@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 to M6 are done. Work continues with M7.
+M0 to M7 are done. Work continues with M8.
 
 ## M0 Foundations
 
@@ -54,8 +54,11 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## M7 Modules
 
-- `%import` and `%extends`, with the bundled grammars as a base for your own.
-- Two grammar extensions as acceptance tests: JSON with comments, and the first real application over the Python grammar, with its benchmark from source text to `ast`.
+- `%extends` with `...` for the inherited alternatives, and `%import` of single rules, with what they need under private names.
+- The grammars `common`, `json` and `python` as bases for your own, and modules of your own given by name or read from the files beside a grammar.
+- The Python grammar's transformer to `ast` in the package as `fpeg.python`, to extend together with the grammar.
+- Two grammar extensions as acceptance tests: JSON with comments, and the first real application over the Python grammar, which gives its own parser's `ast` on all its 76 files, with its benchmark from source text to `ast`.
+- A guide to composing grammars and a case study of a language over Python.
 
 ## M8 Errors, complete
 
