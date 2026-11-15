@@ -15,7 +15,7 @@ use fpeg::{
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyUnicodeDecodeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::pybacked::PyBackedStr;
-use pyo3::types::{PyString, PyType};
+use pyo3::types::{PyBytes, PyString, PyType};
 
 use crate::builders::{self, Builder};
 use crate::errors::{Diagnostic, diagnostics, grammar_error, parse_error, recovered_error};
@@ -285,12 +285,16 @@ impl Grammar {
         functions: Option<&Bound<'_, PyAny>>,
         modules: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Grammar> {
-        let bytes = std::fs::read(&path)?;
-        let text = match std::str::from_utf8(&bytes) {
+        // Python reads the file, so that an error names it as Python's own reading does.
+        let bytes = (py.import("pathlib")?.getattr("Path")?.call1((&path,))?)
+            .call_method0("read_bytes")?
+            .cast_into::<PyBytes>()?;
+        let bytes = bytes.as_bytes();
+        let text = match std::str::from_utf8(bytes) {
             Ok(text) => text,
             Err(error) => {
                 return Err(PyErr::from_value(
-                    PyUnicodeDecodeError::new_utf8(py, &bytes, error)?.into_any(),
+                    PyUnicodeDecodeError::new_utf8(py, bytes, error)?.into_any(),
                 ));
             }
         };

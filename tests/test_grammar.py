@@ -94,6 +94,10 @@ def test_open_reads_a_file_with_a_byte_order_mark_and_names_it_in_messages(
         fpeg.Grammar.open(bad)
     assert raised.value.diagnostics[0].path == str(bad)
     assert str(raised.value).startswith(f"{bad}:1:8: error[E201]")
+    missing = tmp_path / "missing.fpeg"
+    with pytest.raises(FileNotFoundError) as gone:
+        fpeg.Grammar.open(missing)
+    assert gone.value.filename == str(missing)
 
 
 def test_a_grammar_takes_its_modules_from_those_given_then_from_the_files_beside_it(
