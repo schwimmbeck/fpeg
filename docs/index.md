@@ -11,44 +11,9 @@ fpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
 fpeg is at an early stage. The [command line](reference/cli.md) and the [Python package](reference/python-api.md) parse with every grammar but those that use a form of a later release ([E501](reference/diagnostics/E501.md)), and warn about grammars that likely do not do what they seem to. The Python package turns trees into Python values through a `Transformer`, an `Interpreter` or the value builders written in the grammar. The [roadmap](roadmap.md) says what comes next.
 ```
 
-## Install
+## Getting started
 
-fpeg is not on PyPI yet. To build it from a checkout, follow [Development](development.md). Then check that the native module loads:
-
-```python
-import fpeg
-
-print(fpeg.__version__)
-```
-
-## A first parse
-
-A grammar is a string, and `parse` returns the tree of an input:
-
-```python
-grammar = fpeg.Grammar(r"""
-start: (pair ** ",")
-pair: key=NAME "=" value=NUMBER
-NAME: [a-z]+
-NUMBER: [0-9]+
-%ignore " "+
-""")
-
-tree = grammar.parse("x = 1, y = 22")
-print(tree.pretty())
-```
-
-```output
-start
-  pair
-    key=x
-    value=1
-  pair
-    key=y
-    value=22
-```
-
-Lowercase names are rules and uppercase names terminals, `**` separates repetitions, `key=` and `value=` name the parts of a pair, and `%ignore` skips the spaces. The tutorials go on from here.
+[Getting started](start.md) installs fpeg, writes a first grammar and turns the tree of a parse into Python values, in about five minutes.
 
 ## Tutorials
 
@@ -80,6 +45,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 ```{toctree}
 :hidden:
 
+start
 roadmap
 tutorial/first-grammar
 tutorial/transformer

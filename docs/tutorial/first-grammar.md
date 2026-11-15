@@ -1,6 +1,6 @@
 # Your first grammar
 
-This tutorial writes a grammar for JSON, one step at a time: it parses documents with it, reads the tree, and at the end turns documents into Python objects. It needs the `fpeg` package, installed as the [start page](../index.md#install) describes.
+This tutorial writes a grammar for JSON, one step at a time: it parses documents with it, reads the tree, and at the end turns documents into Python objects. It needs the `fpeg` package, installed as [Getting started](../start.md#install) describes.
 
 ## Terminals and rules
 
