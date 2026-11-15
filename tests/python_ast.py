@@ -638,7 +638,8 @@ class ToAstBase(fpeg.Transformer):
         return ast.Constant(Ellipsis)
 
     def NAME(self, token: fpeg.Token) -> Any:
-        return ast.Name(str(token), ast.Load())
+        # Python reads identifiers in NFKC.
+        return ast.Name(unicodedata.normalize("NFKC", token), ast.Load())
 
     def NUMBER(self, token: fpeg.Token) -> Any:
         return ast.Constant(ast.literal_eval(str(token)))

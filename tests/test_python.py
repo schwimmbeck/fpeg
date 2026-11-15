@@ -44,6 +44,7 @@ await a
 f((yield)), f((yield a, b)), f((yield from a))
 1, 1.5, 1j, 0x1F, 0o17, 0b101, 1_000, 1e10, .5, 5.
 True, False, None, ...
+\ufb01, \u212bngstr\u00f6m.\u2168
 (a)
 (
     a  # a comment
