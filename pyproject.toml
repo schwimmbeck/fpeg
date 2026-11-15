@@ -58,12 +58,13 @@ module-name = "fpeg._fpeg"
 # One uv range for development and CI, where setup-uv installs the highest version in it, so
 # that the lock file does not drift between them.
 required-version = ">=0.13.8,<0.14"
-# Rebuild the native module when the Rust sources change.
+# Rebuild the native module when the Rust sources or the grammars compiled into it change.
 cache-keys = [
     { file = "pyproject.toml" },
     { file = "Cargo.toml" },
     { file = "Cargo.lock" },
     { file = "crates/**/*.rs" },
+    { file = "crates/**/*.fpeg" },
     { file = "crates/**/Cargo.toml" },
 ]
 
