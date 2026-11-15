@@ -21,18 +21,29 @@ NAME: [a-z\u{e4}]+
 %ignore " "+
 """
 
-# Writes a text 5 GB long with a limit of 1 GB above what the interpreter uses.
+# Under a limit of 100 MB above what the interpreter uses: writes a text 5 GB long, and takes the
+# text and the token of a word of 400 MB parsed before, and the value of each builder of it,
+# whose underscores send int and float to Python.
 TOO_LARGE = """
 import os, resource
 import fpeg
 tree = fpeg.Tree("a", ["x" * 10**8] * 50)
+text = "1_" * 2 * 10**8 + "1"
+words = [
+    fpeg.Grammar(f"start: WORD\\nWORD: [0-9_]+ => {builder}", functions=functions).parse(text)
+    for builder, functions in [("text", {}), ("int", {}), ("float", {}), ("f", {"f": len})]
+]
 used = int(open("/proc/self/statm").read().split()[0]) * os.sysconf("SC_PAGE_SIZE")
-limit = used + 2**30
+limit = used + 10**8
 resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-try:
-    tree.pretty()
-except MemoryError:
-    print("MemoryError")
+transformer = fpeg.Transformer()
+cases = [lambda: words[0].text, lambda: words[0].children[0]]
+cases += [lambda word=word: transformer.transform(word) for word in words]
+for case in [tree.pretty, *cases]:
+    try:
+        case()
+    except MemoryError:
+        print("MemoryError")
 """
 
 
@@ -196,7 +207,7 @@ def test_a_text_too_large_for_memory_raises_memory_error() -> None:
     result = subprocess.run(
         [sys.executable, "-I", "-c", TOO_LARGE], capture_output=True, text=True, timeout=60
     )
-    assert result.stdout == "MemoryError\n", result.stderr
+    assert result.stdout == "MemoryError\n" * 7, result.stderr
 
 
 def test_a_tree_that_contains_itself_is_refused() -> None:

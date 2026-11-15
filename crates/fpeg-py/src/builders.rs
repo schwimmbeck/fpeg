@@ -93,7 +93,7 @@ fn constant(py: Python<'_>, value: &Constant) -> PyResult<Py<PyAny>> {
             PyFloat::type_object(py).call1((text,))?.unbind()
         }
         Constant::Number(text) => PyInt::type_object(py).call1((text,))?.unbind(),
-        Constant::String(text) => PyString::new(py, text).into_any().unbind(),
+        Constant::String(text) => crate::string(py, text)?.into_any().unbind(),
     })
 }
 
@@ -166,7 +166,7 @@ fn int<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
     {
         return Ok(value.into_pyobject(py)?.into_any());
     }
-    PyInt::type_object(py).call1((text,))
+    PyInt::type_object(py).call1((crate::string(py, text)?,))
 }
 
 /// A float of a text, as Python's `float` reads it, without Python for a plain decimal number.
@@ -177,7 +177,7 @@ fn float<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
     if plain && let Ok(value) = text.parse::<f64>() {
         return Ok(PyFloat::new(py, value).into_any());
     }
-    PyFloat::type_object(py).call1((text,))
+    PyFloat::type_object(py).call1((crate::string(py, text)?,))
 }
 
 /// The four hexadecimal digits of a `\u` escape.
@@ -199,7 +199,7 @@ fn unquote<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
     };
     let inner = quoted.as_str();
     if !inner.contains('\\') {
-        return Ok(PyString::new(py, inner).into_any());
+        return Ok(crate::string(py, inner)?.into_any());
     }
     let mut points: Vec<u32> = Vec::with_capacity(inner.len());
     let mut chars = inner.chars();
@@ -256,7 +256,7 @@ fn unquote<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
         .map(|&p| char::from_u32(p))
         .collect::<Option<String>>()
     {
-        return Ok(PyString::new(py, &decoded).into_any());
+        return Ok(crate::string(py, &decoded)?.into_any());
     }
     // A lone surrogate, which a Rust string cannot hold, goes through UCS-4.
     // SAFETY: `points` holds code points below 0x110000 for its length, which a str of kind
@@ -280,10 +280,10 @@ pub fn token_value<'py>(
     match builder {
         Builder::Int => int(py, text),
         Builder::Float => float(py, text),
-        Builder::Text => Ok(PyString::new(py, text).into_any()),
+        Builder::Text => Ok(crate::string(py, text)?.into_any()),
         Builder::Unquote => unquote(py, text),
         Builder::Constant(value) => Ok(value.bind(py).clone()),
-        Builder::Bare { function, .. } => function.bind(py).call1((text,)),
+        Builder::Bare { function, .. } => function.bind(py).call1((crate::string(py, text)?,)),
         Builder::Call { function, args, .. } => call(py, function.bind(py), args, &[], &[]),
         // The resolver refuses these on terminals, which have no children.
         Builder::List => Ok(PyList::empty(py).into_any()),
@@ -305,7 +305,7 @@ pub fn node_value<'py>(
     match builder {
         Builder::Int => int(py, text),
         Builder::Float => float(py, text),
-        Builder::Text => Ok(PyString::new(py, text).into_any()),
+        Builder::Text => Ok(crate::string(py, text)?.into_any()),
         Builder::Unquote => unquote(py, text),
         Builder::Constant(value) => Ok(value.bind(py).clone()),
         Builder::List => Ok(PyList::new(py, values())?.into_any()),

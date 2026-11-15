@@ -133,7 +133,7 @@ pub fn make<'py>(
     kind: u32,
 ) -> PyResult<Bound<'py, PyAny>> {
     let ty = TOKEN_TYPE.load(Ordering::Relaxed);
-    let obj = new_str_subtype(py, ty, PyString::new(py, text).into_any())?;
+    let obj = new_str_subtype(py, ty, crate::string(py, text)?.into_any())?;
     fill(&obj, kind_name.clone().into_any(), positions, serial, kind);
     Ok(obj)
 }
@@ -273,7 +273,10 @@ fn construct<'py>(
         end_pos: position_from(value(7))?,
     };
     let kind_name = value(0).map_or_else(|| py.None().into_bound(py), Clone::clone);
-    let text = value(1).map_or_else(|| PyString::new(py, "").into_any(), Clone::clone);
+    let text = match value(1) {
+        Some(text) => text.clone(),
+        None => crate::string(py, "")?.into_any(),
+    };
     let obj = new_str_subtype(py, subtype, text)?;
     fill(&obj, kind_name, positions, 0, 0);
     Ok(obj)
@@ -591,7 +594,7 @@ pub fn create_type(py: Python<'_>) -> PyResult<Bound<'_, PyType>> {
     let ty = KEPT_TYPE.get_or_init(py, || ty.unbind()).bind(py).clone();
     TOKEN_TYPE.store(ty.as_type_ptr(), Ordering::Relaxed);
     // Find where the fields start from one instance, whose fields are still zero.
-    let sample = new_str_subtype(py, ty.as_type_ptr(), PyString::new(py, "x").into_any())?;
+    let sample = new_str_subtype(py, ty.as_type_ptr(), crate::string(py, "x")?.into_any())?;
     #[cfg(Py_3_12)]
     // SAFETY: `sample` is an instance of `ty`, whose type data PEP 697 places.
     let at = unsafe { ffi::PyObject_GetTypeData(sample.as_ptr(), ty.as_type_ptr()) };

@@ -378,7 +378,7 @@ impl Grammar {
     fn transformer_template(&self, py: Python<'_>, name: &str) -> PyResult<String> {
         let keywords: Vec<String> = py.import("keyword")?.getattr("kwlist")?.extract()?;
         let is_identifier = |text: &str| -> PyResult<bool> {
-            PyString::new(py, text)
+            crate::string(py, text)?
                 .call_method0("isidentifier")?
                 .extract()
         };

@@ -339,7 +339,7 @@ fn token_text<'py>(item: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyString>> {
             .extract::<&str>()
             .is_ok_and(|kind| kind == MISSING_KIND)
     {
-        return Ok(PyString::new(py, MISSING_KIND));
+        return crate::string(py, MISSING_KIND);
     }
     item.str()
 }
@@ -418,10 +418,15 @@ impl Tree {
 
     /// The text of the node in its input, or `None` for a tree built in Python.
     #[getter]
-    fn text<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyString>> {
-        let (parsed, index) = self.origin()?;
-        let (start, end) = parsed.tree.node(index as usize)?.span();
-        Some(PyString::new(py, parsed.text(start, end)))
+    fn text<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyString>>> {
+        let Some((parsed, index)) = self.origin() else {
+            return Ok(None);
+        };
+        let Some(node) = parsed.tree.node(index as usize) else {
+            return Ok(None);
+        };
+        let (start, end) = node.span();
+        crate::string(py, parsed.text(start, end)).map(Some)
     }
 
     /// The field `name` of the node: its item or `None` for a field of at most one item, a list
@@ -472,7 +477,7 @@ impl Tree {
     #[pyo3(signature = (indent_str = "  "))]
     fn pretty<'py>(slf: &Bound<'py, Self>, indent_str: &str) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
-        let indent = PyString::new(py, indent_str);
+        let indent = crate::string(py, indent_str)?;
         // The lines of one level share one string of indentation.
         let mut indents: Vec<Bound<'py, PyAny>> = Vec::new();
         let parts = PyList::empty(py);
@@ -513,7 +518,7 @@ impl Tree {
             let children = tree.get().children_list(py)?;
             if children.is_empty()
                 && data.to_str().is_ok_and(|data| data == ERROR_KIND)
-                && let Some(text) = tree.get().text(py)
+                && let Some(text) = tree.get().text(py)?
             {
                 parts.append(intern!(py, "\t"))?;
                 parts.append(text.repr()?)?;

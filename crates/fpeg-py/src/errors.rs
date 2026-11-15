@@ -34,10 +34,11 @@ impl ParseError {
     /// where it lists none. `path` names the text. An error that no parse raised shows its first
     /// line alone.
     #[pyo3(signature = (path = None))]
-    fn render(slf: &Bound<'_, Self>, path: Option<&str>) -> PyResult<String> {
+    fn render<'py>(slf: &Bound<'py, Self>, path: Option<&str>) -> PyResult<Bound<'py, PyString>> {
         let py = slf.py();
         let Some(text) = slf.getattr_opt(intern!(py, "_text"))? else {
-            return Ok(fpeg::error_title(None, &slf.str()?.to_string_lossy()));
+            let title = fpeg::error_title(None, &slf.str()?.to_string_lossy());
+            return crate::string(py, &title);
         };
         let text = text.cast_into::<Text>()?;
         let text = text.get();
@@ -56,7 +57,7 @@ impl ParseError {
                 Ok(source.render(label.as_deref(), &message, start, end))
             })
             .collect::<PyResult<Vec<_>>>()?;
-        Ok(blocks.join("\n\n"))
+        crate::string(py, &blocks.join("\n\n"))
     }
 }
 

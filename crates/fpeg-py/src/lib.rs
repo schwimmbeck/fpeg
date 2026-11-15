@@ -10,7 +10,15 @@ mod token;
 mod transform;
 mod tree;
 
+use pyo3::prelude::*;
 use pyo3::pymodule;
+use pyo3::types::PyString;
+
+/// A Python string of `text`. Where Python cannot allocate it this raises `MemoryError`, where
+/// `PyString::new`, which makes the same call, panics.
+fn string<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyString>> {
+    PyString::from_bytes(py, text.as_bytes())
+}
 
 /// The native part of the fpeg Python package.
 #[pymodule(gil_used = false)]
