@@ -499,7 +499,7 @@ BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=A
 
 `parse` takes the limits of `Grammar.parse`, as `max_depth` for brackets nested deeper than the default allows. It reads what the Python grammar reads, which takes a few forms that CPython refuses only after parsing, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
 
-The grammar names its mistakes where a failure can only be one: `colon` for the colon of a compound statement, `newline` for the end of a simple statement, `indent` for a block that does not come, `statement` for a line that is no statement, `indented` for a line indented further than its block, and `trailing`. A parse with `recover=True` goes on past each, so that a file with mistakes gives a tree that keeps the statements around them:
+The grammar names its mistakes where a failure can only be one: `colon` for the colon of a compound statement, `newline` for the end of a simple statement, `indent` for a block that does not come, `statement` for a line that is no statement, and `indented` for a line indented further than its block. A parse with `recover=True` goes on past each, so that a file with mistakes gives a tree that keeps the statements around them:
 
 ```python
 source = "def f(x)\n    return x\n\ny = = 2\nz = 3\n"

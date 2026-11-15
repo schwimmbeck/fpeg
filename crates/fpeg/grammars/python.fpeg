@@ -18,7 +18,7 @@
 %keywords soft "match" "case" "_" "type" "lazy"
 %ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK &. | %if(bracket) _LINE_BREAK
 
-start: _BLANK_LINES? statements=(%same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented)))* (!. ^ trailing)
+start: _BLANK_LINES? statements=(%same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented)))*
 
 // Statements
 
@@ -361,13 +361,12 @@ _LINE_REST: (!_LINE_BREAK .)* (_NEWLINE | !.)
 // Recovery. A label stands where a failure can only be a mistake of the text, so that the
 // labels change nothing the grammar accepts: the colon of a compound statement, the end of a
 // simple statement, the block after a colon, a line at the column of its block that is no
-// statement, a line indented further than its block, and text after the last statement. A
-// parse with recovery skips the rest of a header or a line, takes a missing block as missing,
-// and parses a run of lines indented too far as statements where it can, so that their trees
-// stay, skipping the lines it cannot.
+// statement, and a line indented further than its block, so that every line is a statement or
+// an error. A parse with recovery skips the rest of a header or a line, takes a missing block
+// as missing, and parses a run of lines indented too far as statements where it can, so that
+// their trees stay, skipping the lines it cannot.
 %recover colon: (!(_LINE_BREAK | ":" &_LINE_BREAK) .)* ":"?
 %recover newline: _LINE_REST
 %recover indent: ()
 %recover statement: _LINE_REST
 %recover indented: ((%same | %indent(())) &. (statement | _LINE_REST))+
-%recover trailing: .*
