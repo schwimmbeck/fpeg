@@ -272,8 +272,8 @@ impl Found {
     /// A labeled error that a parse recovered from.
     fn of_recovery(recovery: &fpeg::Recovery) -> Found {
         Found {
-            start: recovery.start,
-            end: recovery.end,
+            start: recovery.position,
+            end: recovery.end.max(recovery.position),
             message: recovery.message(),
             label: Some(recovery.label.clone()),
             expected: recovery.expected.clone(),

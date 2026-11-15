@@ -171,6 +171,7 @@ fn recovery(label: LabelId, start: u32, end: u32, labels: &[ir::Label]) -> Recov
         label,
         start: start as usize,
         end: end as usize,
+        position: start as usize,
         expected: Vec::new(),
     }
 }
@@ -742,12 +743,25 @@ impl<'a> Interp<'a> {
         shown.into_iter().collect()
     }
 
-    /// The recoveries, each with what failed where its label failed under its floor.
+    /// The recoveries, each explained where the parse got furthest in what it took, under the
+    /// floor its label failed with.
     fn explained(&self, found: &[Found]) -> Vec<Recovery> {
         (found.iter())
-            .map(|found| Recovery {
-                expected: self.expected_at(found.recovery.start, found.floor),
-                ..found.recovery.clone()
+            .map(|found| {
+                // A missing token took its position alone, and what follows an item is not
+                // part of it.
+                let start = found.recovery.start;
+                let taken = start..found.recovery.end.max(start + 1);
+                let position = (self.expected_at.keys())
+                    .filter(|&&(at, floor)| floor == found.floor && taken.contains(&at))
+                    .map(|&(at, _)| at)
+                    .max()
+                    .unwrap_or(start);
+                Recovery {
+                    position,
+                    expected: self.expected_at(position, found.floor),
+                    ..found.recovery.clone()
+                }
             })
             .collect()
     }

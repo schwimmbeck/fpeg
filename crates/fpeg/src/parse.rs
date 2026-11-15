@@ -94,7 +94,11 @@ pub struct Recovery {
     pub start: usize,
     /// The byte offset where the recovery ended, `start` for a missing token.
     pub end: usize,
-    /// What the grammar expected where the label failed, sorted.
+    /// Where the parse got furthest in what the recovery took: the farthest byte offset from
+    /// `start` up to `end`, or at `start` for a missing token, where a failure was recorded under
+    /// the floor the label failed with, or `start` where none was.
+    pub position: usize,
+    /// What the grammar expected at `position`, sorted.
     pub expected: Vec<String>,
 }
 

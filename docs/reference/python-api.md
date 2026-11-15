@@ -390,7 +390,7 @@ except fpeg.LimitError as error:
     assert error.limit == "steps"
 ```
 
-A parse with `recover=True` goes on past an error where the grammar says how: where a label that `%recover` gives a recovery fails, what the recovery matches becomes an `<error>` node, or a `<missing>` token where it matches nothing, and the parse goes on. A valid text gives its tree as without `recover`. A text with errors raises `ParseError` all the same, so that no broken text passes for a valid one. `error.tree` holds the recovered tree, `None` where the parse failed even so, and `error.errors` every error in the order of the text, each a `ParseError` of its own whose span runs from `pos` to `end_pos`. The raised error describes the first and says each on a line of its own.
+A parse with `recover=True` goes on past an error where the grammar says how: where a label that `%recover` gives a recovery fails, what the recovery matches becomes an `<error>` node, or a `<missing>` token where it matches nothing, and the parse goes on. A valid text gives its tree as without `recover`. A text with errors raises `ParseError` all the same, so that no broken text passes for a valid one. `error.tree` holds the recovered tree, `None` where the parse failed even so, and `error.errors` every error in the order of the text, each a `ParseError` of its own: `pos` is where the parse got furthest in what the recovery took, which the message explains, and `end_pos` where what it took ends. The raised error describes the first and says each on a line of its own.
 
 ```python
 numbers = fpeg.Grammar(r"""

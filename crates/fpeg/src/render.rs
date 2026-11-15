@@ -110,9 +110,11 @@ impl ParseError {
 }
 
 impl Recovery {
-    /// The error as [`Source::render`] shows it, with carets under what the recovery took.
+    /// The error as [`Source::render`] shows it, where the parse got furthest, with carets to
+    /// the end of what the recovery took.
     pub fn render(&self, source: &Source<'_>) -> String {
-        source.render(Some(&self.label), &self.message(), self.start, self.end)
+        let end = self.end.max(self.position);
+        source.render(Some(&self.label), &self.message(), self.position, end)
     }
 }
 

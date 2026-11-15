@@ -141,6 +141,15 @@ enum Entry {
     Recovering,
 }
 
+/// What a recovery took, to the end of its error item, and the farthest failure in it with
+/// what failed there.
+#[derive(Clone, Debug)]
+struct Watched {
+    end: u32,
+    furthest: Option<u32>,
+    expected: BTreeSet<Expected>,
+}
+
 /// An error alternative matched outside a lookahead: which, where, and the context there, so
 /// that it can be tested once the parse has failed.
 #[derive(Clone, Copy, Debug)]
@@ -604,6 +613,9 @@ pub(crate) struct Machine<'p, 'i> {
     /// In diagnose mode, the positions the run before asks about, each with the floor of the
     /// error there and what failed at it under that floor.
     diagnose: BTreeMap<(u32, Option<u32>), BTreeSet<Expected>>,
+    /// In diagnose mode, what each recovery took that the run before asks about, by its floor
+    /// and start, with the farthest failure in it. Recoveries of one floor never overlap.
+    watched: BTreeMap<(Option<u32>, u32), Watched>,
     /// The counts of a profiling parse.
     profiler: Option<Box<Profiler>>,
 }
@@ -665,6 +677,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             memory: Memory::new(limits.memory_bytes(input.len())),
             farthest: None,
             diagnose: (diagnose.iter()).map(|&at| (at, BTreeSet::new())).collect(),
+            watched: BTreeMap::new(),
             profiler: None,
         }
     }
@@ -821,12 +834,43 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.nodes.len()
     }
 
+    /// The machine for a run that also finds the farthest failure in what each recovery took,
+    /// given as its start, the end of its error item and the floor its label failed under.
+    pub fn watching(mut self, recoveries: &[(u32, u32, Option<u32>)]) -> Machine<'p, 'i> {
+        for &(start, end, floor) in recoveries {
+            let watched = Watched {
+                end,
+                furthest: None,
+                expected: BTreeSet::new(),
+            };
+            self.watched.insert((floor, start), watched);
+        }
+        self
+    }
+
+    /// In diagnose mode, where the parse got furthest in what the recovery from `start` under
+    /// `floor` took, and what failed there, as an expected set shows it, sorted.
+    pub fn furthest(&self, start: u32, floor: Option<u32>) -> (u32, Vec<String>) {
+        match self.watched.get(&(floor, start)) {
+            Some(watched) => (
+                watched.furthest.unwrap_or(start),
+                self.shown(&watched.expected),
+            ),
+            None => (start, Vec::new()),
+        }
+    }
+
     /// In diagnose mode, what failed at a position it was asked about under a floor, as an
     /// expected set shows it, sorted.
     pub fn expected(&self, at: u32, floor: Option<u32>) -> Vec<String> {
-        let Some(expected) = self.diagnose.get(&(at, floor)) else {
-            return Vec::new();
-        };
+        match self.diagnose.get(&(at, floor)) {
+            Some(expected) => self.shown(expected),
+            None => Vec::new(),
+        }
+    }
+
+    /// What failed, as an expected set shows it, sorted.
+    fn shown(&self, expected: &BTreeSet<Expected>) -> Vec<String> {
         let shown: BTreeSet<String> = (expected.iter())
             .map(|what| match what {
                 Expected::Kind(kind) => (self.program.kind_display)
@@ -2267,6 +2311,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 label: label.map_or_else(String::new, |label| label.text().to_owned()),
                 start: item.start as usize,
                 end: item.end as usize,
+                position: item.start as usize,
                 expected: Vec::new(),
             },
             floor: floor.flatten().map(|floor| floor as usize),
@@ -2282,6 +2327,20 @@ impl<'p, 'i> Machine<'p, 'i> {
         }
         if let Some(expected) = self.diagnose.get_mut(&(pos, self.floor)) {
             expected.insert(what);
+        }
+        // The recovery of this floor that started last before the position, if what it took
+        // reaches it: up to its end, or its start for a missing token.
+        let watched = (self.watched.range_mut(..=(self.floor, pos)).next_back()).filter(
+            |((floor, start), watched)| *floor == self.floor && pos < watched.end.max(start + 1),
+        );
+        if let Some((_, watched)) = watched {
+            if watched.furthest.is_none_or(|furthest| pos > furthest) {
+                watched.furthest = Some(pos);
+                watched.expected.clear();
+            }
+            if watched.furthest == Some(pos) {
+                watched.expected.insert(what);
+            }
         }
     }
 

@@ -67,7 +67,7 @@ fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> 
 /// The line that lists what a parse recovered from, if it recovered.
 fn recovered(recoveries: &[Recovery]) -> Option<String> {
     let each: Vec<String> = (recoveries.iter())
-        .map(|r| format!("{} at {}", r.message(), r.start))
+        .map(|r| format!("{} at {}", r.message(), r.position))
         .collect();
     (!each.is_empty()).then(|| format!("errors: {}", each.join(", ")))
 }
