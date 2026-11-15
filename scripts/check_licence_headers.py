@@ -43,7 +43,10 @@ COMMENT_BY_SUFFIX = {
     ".sh": "#",
     ".ps1": "#",
     ".dict": "#",
+    ".css": "/*",
 }
+# The end of a comment that closes on its own line, as in CSS.
+COMMENT_END = " */"
 EXEMPT_SUFFIXES = {".md", ".lock", ".json", ".txt", ".svg"}
 EXEMPT_NAMES = {
     "LICENSE-MIT",
@@ -70,7 +73,7 @@ def header_problem(path: Path, comment: str) -> str | None:
     for line in lines:
         if not line.startswith(prefix):
             break
-        tags.append(line.removeprefix(f"{comment} "))
+        tags.append(line.removeprefix(f"{comment} ").removesuffix(COMMENT_END))
     holders = [t.removeprefix(COPYRIGHT_TAG) for t in tags if t.startswith(COPYRIGHT_TAG)]
     licences = [t.removeprefix(LICENCE_TAG) for t in tags if t.startswith(LICENCE_TAG)]
     if not holders or len(licences) != 1:

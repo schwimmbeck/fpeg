@@ -2,16 +2,8 @@
 
 What happens between the text of a grammar and the values a program gets, and what each step costs. It explains why the advice of the [performance guide](../guide/performance.md) works, and what a program can expect of a parse.
 
-```text
-grammar text --read, resolve, check, compile--> program
-                                                   |
-input text -------------------------------> parsing machine
-                                                   |
-                                         tree in native memory
-                                                   |
-                    views (Tree, Token) <----------+----------> Transformer
-                                                                     |
-                                                                your values
+```{diagram} pipeline.svg
+Loading a grammar compiles it into a program once. Each parse runs that program in the parsing machine, which builds the tree in native memory: the work in red. Python objects come into being only where code reads the tree or a `Transformer` asks for values.
 ```
 
 ## Loading a grammar

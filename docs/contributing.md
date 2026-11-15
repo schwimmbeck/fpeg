@@ -115,6 +115,14 @@ The documentation is built with Sphinx, MyST Markdown and the Furo theme, one Ma
 
 The logo lives in `docs/_static/`: `logo-light.svg` and `logo-dark.svg` for light and dark pages, used by the documentation and by `README.md`, which loads them by absolute URLs since PyPI resolves no relative path, and `favicon.svg`, a heavier cut of the mark that follows the browser's colour scheme by itself.
 
+Flow charts are SVG files in `docs/_diagrams/`, drawn by hand on a grid with the classes of `docs/_static/diagrams.css`: `box` for a step, `box accent` for the one step the figure is about, `arrow` for a path with the arrowhead marker, `title` and `code` for text. They hold no colour of their own, and the directive `diagram` puts one into its page inline, with its caption, so that the theme colours it in light and dark:
+
+````md
+```{diagram} pipeline.svg
+What the figure shows, in one paragraph.
+```
+````
+
 ## Benchmarks
 
 The Rust suite measures fpeg's parsing machine beside other Rust parsers on JSON, on an expression of twelve operator levels by what the machine remembers, and on ten workloads with every pass of the optimizer and with each one left out, so that each pass shows what it brings, Python, Lua and the outline language among them. The `json` suite measures fpeg's Python package beside other Python parsers, and the `binding` suite measures what the binding adds to a parse: transforms with and without methods, tokens made from views, and many small parses. The `calculator` suite computes lines of arithmetic with fpeg, Lark and pe beside Python's `eval`. The `python` suite measures fpeg's Python grammar beside CPython and the parsers fpeg will be compared with on Python source, fpeg also to `ast` with positions stamped natively and with positions set in Python, and the `ord` suite measures the first real application's own pipeline beside fpeg's ORD grammar and its transformer, on a file of plain Python and over the application's 76 ORD files. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).

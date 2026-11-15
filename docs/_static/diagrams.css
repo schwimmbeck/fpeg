@@ -1,0 +1,87 @@
+/* SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck */
+/* SPDX-License-Identifier: MIT OR Apache-2.0 */
+
+/* The flow charts of docs/_diagrams, inline in their pages so that the theme's colours reach
+   them, in light and dark and after a switch between the two. The accent is the logo's red. */
+
+body {
+  --diagram-accent: #e5432a;
+  --diagram-accent-wash: rgba(229, 67, 42, 0.09);
+  --diagram-line: #c9ced6;
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --diagram-accent: #ff6f4d;
+    --diagram-accent-wash: rgba(255, 111, 77, 0.13);
+    --diagram-line: #3b4149;
+  }
+}
+
+body[data-theme="dark"] {
+  --diagram-accent: #ff6f4d;
+  --diagram-accent-wash: rgba(255, 111, 77, 0.13);
+  --diagram-line: #3b4149;
+}
+
+figure.diagram {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1rem 0.75rem;
+  overflow-x: auto;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-background-border);
+  border-radius: 0.5rem;
+}
+
+/* Below this width a phone scrolls the drawing rather than shrinking its text. */
+figure.diagram svg {
+  display: block;
+  width: 100%;
+  min-width: 38rem;
+  height: auto;
+}
+
+figure.diagram figcaption {
+  margin-top: 0.75rem;
+  text-align: left;
+  font-size: var(--font-size--small);
+  color: var(--color-foreground-secondary);
+}
+
+figure.diagram text {
+  font-family: var(--font-stack);
+  font-size: 12.5px;
+  fill: var(--color-foreground-secondary);
+}
+
+figure.diagram .box rect {
+  fill: var(--color-background-primary);
+  stroke: var(--diagram-line);
+  stroke-width: 1.5;
+}
+
+figure.diagram .box.accent rect {
+  fill: var(--diagram-accent-wash);
+  stroke: var(--diagram-accent);
+  stroke-width: 2;
+}
+
+figure.diagram .box .title {
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--color-foreground-primary);
+}
+
+figure.diagram .code {
+  font-family: var(--font-stack--monospace);
+}
+
+figure.diagram .arrow {
+  fill: none;
+  stroke: var(--color-foreground-muted);
+  stroke-width: 1.5;
+}
+
+figure.diagram .arrowhead {
+  fill: var(--color-foreground-muted);
+}

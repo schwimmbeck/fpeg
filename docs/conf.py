@@ -20,6 +20,7 @@ extensions = [
     "run_code_blocks",
     "fpeg_lexer",
     "benchmark_results",
+    "diagrams",
 ]
 # Members in the order the classes define them, which groups them by topic.
 autodoc_member_order = "bysource"
