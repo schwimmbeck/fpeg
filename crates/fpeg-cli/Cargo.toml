@@ -7,6 +7,8 @@ description = "The fpeg command: check, parse and profile grammars"
 readme = "../../README.md"
 keywords = ["parser", "peg", "grammar", "cli"]
 categories = ["parsing", "command-line-utilities"]
+# The sources. The tests stay in the repository, since they read its grammars.
+include = ["src/**/*.rs", "LICENSE-APACHE", "LICENSE-MIT"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

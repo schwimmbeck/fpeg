@@ -7,6 +7,15 @@ description = "A PEG parsing library: grammars loaded at runtime, a bytecode par
 readme = "../../README.md"
 keywords = ["parser", "peg", "grammar", "parsing"]
 categories = ["parsing"]
+# The sources and the grammars they embed. The tests and the samples stay in the repository.
+include = [
+    "src/**/*.rs",
+    "grammars/common.fpeg",
+    "grammars/json.fpeg",
+    "grammars/python.fpeg",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

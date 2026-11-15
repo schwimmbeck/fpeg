@@ -6,7 +6,8 @@
 A file of the project starts with the project's two lines. A file that holds outside code keeps
 its own copyright lines and needs a licence compatible with both MIT and Apache-2.0. Reads the
 files git tracks or would track, so ignored build output is skipped. A file type the check does
-not know is an error, so that a new kind of source file cannot go unchecked.
+not know is an error, so that a new kind of source file cannot go unchecked. The copies of the
+licence texts in the published crates must equal the texts at the root.
 """
 
 import subprocess
@@ -54,6 +55,9 @@ EXEMPT_NAMES = {
 }
 # Sample inputs of the acceptance grammars are data in many formats, not source files.
 EXEMPT_DIRECTORIES = ("crates/fpeg/grammars/samples/",)
+# The licence texts at the root, which each published crate ships a copy of, since a package
+# holds only the files inside its folder.
+LICENCE_TEXTS = {"LICENSE-MIT", "LICENSE-APACHE"}
 
 
 def header_problem(path: Path, comment: str) -> str | None:
@@ -94,6 +98,10 @@ def main() -> int:
     for name in listed.split("\0"):
         path = root / name
         if not name or not path.is_file():
+            continue
+        if path.name in LICENCE_TEXTS and path.parent != root:
+            if path.read_bytes() != (root / path.name).read_bytes():
+                problems.append(f"{name}: differs from the {path.name} at the root")
             continue
         if path.suffix in EXEMPT_SUFFIXES or path.name in EXEMPT_NAMES:
             continue
