@@ -15,7 +15,7 @@ use std::path::Path;
 
 use common::cases::{Check, CheckKind, case_files, parse_cases};
 use common::check_printing;
-use fpeg::{Diagnostic, Grammar, ParseErrorKind, Parser, Reference};
+use fpeg::{Diagnostic, Grammar, Limits, ParseErrorKind, Parser, Recovery, Reference};
 
 /// What a check produces, as the lines the case file holds.
 fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> {
@@ -27,17 +27,49 @@ fn actual(grammar: &Result<Grammar, Vec<String>>, check: &Check) -> Vec<String> 
             lines.extend(errors.iter().cloned());
             lines
         }
-        (CheckKind::Parse { input, spans }, Ok(grammar)) => match Reference::new(grammar) {
-            Err(errors) => errors.iter().map(ToString::to_string).collect(),
-            Ok(reference) => match reference.parse(input, "start") {
-                Ok(tree) => vec![tree.to_text(input, *spans)],
-                Err(error) => vec![error.to_string()],
+        (
+            CheckKind::Parse {
+                input,
+                spans,
+                recover,
             },
+            Ok(grammar),
+        ) => match Reference::new(grammar) {
+            Err(errors) => errors.iter().map(ToString::to_string).collect(),
+            Ok(reference) => {
+                let result = if *recover {
+                    let limits = Limits {
+                        max_steps: Reference::DEFAULT_MAX_STEPS,
+                        ..Limits::default()
+                    };
+                    reference.parse_recovering(input, "start", limits)
+                } else {
+                    reference.parse(input, "start")
+                };
+                match result {
+                    Ok(tree) => [tree.to_text(input, *spans)]
+                        .into_iter()
+                        .chain(recovered(tree.recoveries()))
+                        .collect(),
+                    Err(error) => [error.to_string()]
+                        .into_iter()
+                        .chain(recovered(&error.recoveries))
+                        .collect(),
+                }
+            }
         },
     }
     .into_iter()
     .map(|line| line.replace('\n', "\\n"))
     .collect()
+}
+
+/// The line that lists what a parse recovered from, if it recovered.
+fn recovered(recoveries: &[Recovery]) -> Option<String> {
+    let each: Vec<String> = (recoveries.iter())
+        .map(|r| format!("{} at {}", r.label, r.start))
+        .collect();
+    (!each.is_empty()).then(|| format!("errors: {}", each.join(", ")))
 }
 
 /// The grammar if it resolves, else the errors, and the grammar as read, if it reads, since a

@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use common::cases::{CheckKind, case_files, parse_cases};
 use common::generator::{check_seeds, generate, reference_limits, sampled_passes};
 use fpeg::{
-    Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser, Passes, Reference,
-    RuleKind, Tree,
+    DiagnosticCode, Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser,
+    Passes, Reference, RuleKind, Tree,
 };
 
 /// Steps a parse of a generated grammar may take on the machine. Each instruction is a step,
@@ -70,6 +70,10 @@ fn engines(grammar: &Grammar, sample: u64) -> Result<Engines, String> {
             }
         }
         (Err(expected), Err(errors)) if expected == errors => Ok(Engines::Rejected),
+        // A form only the reference interpreter runs so far, such as %recover.
+        (Ok(_), Err(errors)) if errors.iter().all(|e| e.code == DiagnosticCode::NotYet) => {
+            Ok(Engines::Rejected)
+        }
         (Ok(_), Err(errors)) => Err(format!("the machine rejects it: {errors:?}")),
         (Err(expected), Err(errors)) => Err(format!(
             "the engines reject it differently:\n{expected:?}\n{errors:?}"

@@ -7,7 +7,8 @@
 //! input, given as a string with Rust escapes, from the rule `start`. The lines after it hold
 //! the expected tree or error. `--- spans "input"` shows byte spans in the tree, and
 //! `--- grammar` expects the grammar to be rejected with errors that contain the lines after
-//! it.
+//! it. `--- recover "input"` parses in recovering mode, and a line `errors:` after the tree or
+//! the error lists what the parse recovered from, each as `label at position`.
 
 use std::path::{Path, PathBuf};
 
@@ -20,7 +21,11 @@ pub struct Check {
 
 /// What a check does.
 pub enum CheckKind {
-    Parse { input: String, spans: bool },
+    Parse {
+        input: String,
+        spans: bool,
+        recover: bool,
+    },
     GrammarError,
 }
 
@@ -54,6 +59,10 @@ pub fn parse_cases(text: &str) -> Vec<Case> {
             let kind = if rest == "grammar" {
                 CheckKind::GrammarError
             } else {
+                let (recover, rest) = match rest.strip_prefix("recover ") {
+                    Some(rest) => (true, rest),
+                    None => (false, rest),
+                };
                 let (spans, quoted) = match rest.strip_prefix("spans ") {
                     Some(quoted) => (true, quoted),
                     None => (false, rest),
@@ -61,6 +70,7 @@ pub fn parse_cases(text: &str) -> Vec<Case> {
                 CheckKind::Parse {
                     input: unquote(quoted, number),
                     spans,
+                    recover,
                 }
             };
             case.checks.push(Check {

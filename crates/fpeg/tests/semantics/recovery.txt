@@ -1,0 +1,138 @@
+=== a label without a recovery stops a parse in recovering mode too
+start: "[" ("1" ^ item) "]"
+--- recover "[x]"
+error at 1: item
+
+=== a recovery puts an error node over what it matched
+start: "[" ("1" ^ item) "]"
+%recover item: (!"]" .)*
+--- recover "[xy]"
+(start ~"[" (<error> ~"x" ~"y") ~"]")
+errors: item at 1
+--- recover spans "[xy]"
+(start@0..4 ~"["@0..1 (<error>@1..3 ~"x"@1..2 ~"y"@2..3) ~"]"@3..4)
+errors: item at 1
+--- "[xy]"
+error at 1: item
+
+=== a recovery that matches nothing gives a missing token
+start: "[" ("1" ^ item) "]"
+%recover item: (!"]" .)*
+--- recover "[]"
+(start ~"[" <missing>"" ~"]")
+errors: item at 1
+
+=== an error item starts after the ignored text and takes the field of what failed
+start: "[" key=N ^ item "]"
+N: [0-9]
+%recover item: (!"]" .)*
+%ignore " "+
+--- recover spans "[ x ]"
+(start@0..5 ~"["@0..1 key=(<error>@2..3 ~"x"@2..3) ~"]"@4..5)
+errors: item at 2
+--- recover "[]"
+(start ~"[" key=<missing>"" ~"]")
+errors: item at 1
+
+=== a recovery in an alternative that fails later leaves no error
+start: "a" ("1" ^ item) "!" | "a" .*
+%recover item: ()
+--- recover "ax?"
+(start ~"a" ~"x" ~"?")
+--- "ax?"
+error at 1: item
+
+=== a recovery keeps the cut of the failure it replaces
+start: (("a" ~ "b") ^ item) "c" | "a" .*
+%recover item: ()
+--- recover "ax"
+error at 1: expected "b"
+
+=== without a cut the next alternative is tried after a recovery
+start: (("a" "b") ^ item) "c" | "a" .*
+%recover item: ()
+--- recover "ax"
+(start ~"a" ~"x")
+
+=== a lookahead tests the input as written in recovering mode
+start: !("a" ("b" ^ nob)) "a" "c"
+%recover nob: ()
+--- recover "ac"
+(start ~"a" ~"c")
+
+=== a label inside a token does not recover
+start: T
+T: "a" ("b" ^ nob)
+%recover nob: ()
+--- recover "a"
+error at 1: nob
+
+=== a label inside the skip expression does not recover
+start: "a" "b"
+%ignore " "+ | "#" ("!" ^ bang)
+%recover bang: ()
+--- recover "a #b"
+error at 3: bang
+
+=== a recovery nests where it has made progress
+start: "(" ("1" ^ item) ")"
+%recover item: "x" ("1" ^ item) | ()
+--- recover "(xx)"
+(start ~"(" (<error> ~"x" (<error> ~"x" <missing>"")) ~")")
+errors: item at 1, item at 2, item at 3
+
+=== a label does not recover where its recovery began
+start: "(" ("1" ^ item) ")"
+%recover item: ("1" ^ item) "x"
+--- recover "(x)"
+error at 1: item
+
+=== a parse that still fails lists the recoveries before its error
+start: "[" ("1" ^ item) "]" ("!" ^ bang)
+%recover item: (!"]" .)*
+--- recover "[x]?"
+error at 3: bang
+errors: item at 1
+
+=== a parse that ends short of the input lists the recoveries of its match
+start: "[" ("1" ^ item) "]"
+%recover item: (!"]" .)*
+--- recover "[x]?"
+error at 3: expected end of input
+errors: item at 1
+
+=== a remembered rule brings its recovery along once
+start: r "!" | r "?"
+@memo
+r: "[" ("1" ^ item) "]"
+%recover item: (!"]" .)*
+--- recover "[x]?"
+(start (r ~"[" (<error> ~"x") ~"]") ~"?")
+errors: item at 1
+
+=== a valid input gives the same tree in both modes
+start: "[" (N ^ item) ("," (N ^ item))* "]"
+N: [0-9]+
+%recover item: (!("," | "]") .)*
+--- recover "[1,22]"
+(start ~"[" N"1" ~"," N"22" ~"]")
+--- "[1,22]"
+(start ~"[" N"1" ~"," N"22" ~"]")
+--- recover "[1,,3]"
+(start ~"[" N"1" ~"," <missing>"" ~"," N"3" ~"]")
+errors: item at 3
+
+=== left recursion through a lookahead finds the same entry in both modes
+start: start? !start
+--- ""
+(start)
+--- recover ""
+(start)
+
+=== an error of the skip after the start rule lists the recoveries of its match
+start: "[" ("1" ^ item) "]"
+%ignore " " | "#" ("!" ^ bang)
+%recover item: (!"]" .)*
+--- recover "[x] #"
+error at 5: bang
+errors: item at 1

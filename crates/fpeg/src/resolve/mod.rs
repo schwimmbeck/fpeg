@@ -340,6 +340,12 @@ pub(crate) fn resolve_counted(
         return Err(in_order(r.errors));
     }
     let facts = counts.facts(&r.rules, &entry, r.kind_names.len());
+    let mut kind_made = facts.kind_made;
+    // Where a recovery runs, a parse in recovering mode makes an error or a missing item.
+    if recoveries.iter().any(Option::is_some) {
+        kind_made[KindId::ERROR.0 as usize] = true;
+        kind_made[KindId::MISSING.0 as usize] = true;
+    }
     let rules = r.rules.into_iter().flatten().collect();
     let resolved = ir::Grammar {
         rules,
@@ -347,7 +353,7 @@ pub(crate) fn resolve_counted(
         kind_fields: facts.kind_fields,
         kind_builders: r.kind_builders,
         kind_tokens: r.kind_tokens,
-        kind_made: facts.kind_made,
+        kind_made,
         single_item: facts.single_item,
         names: Arc::new(Names {
             kinds: r.kind_names,

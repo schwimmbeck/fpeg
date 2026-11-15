@@ -107,7 +107,10 @@ pub(crate) enum Label {
 /// label fails.
 #[derive(Debug)]
 pub(crate) struct Recovery {
-    #[expect(dead_code, reason = "no engine recovers yet")]
+    #[cfg_attr(
+        not(feature = "reference"),
+        expect(dead_code, reason = "only the reference interpreter recovers so far")
+    )]
     pub expr: Expr,
     /// Where the label's name stands in the `%recover` directive.
     pub span: Span,

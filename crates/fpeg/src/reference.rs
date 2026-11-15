@@ -22,7 +22,9 @@ use crate::diag::Diagnostic;
 use crate::grammar::Grammar;
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
-use crate::parse::{END_OF_INPUT, INDENTATION, Limit, Limits, ParseError, ParseErrorKind};
+use crate::parse::{
+    END_OF_INPUT, INDENTATION, Limit, Limits, ParseError, ParseErrorKind, Recovery,
+};
 use crate::tree::{FieldId, Kind, KindId, Names, Tree};
 
 /// Stack reserved for the interpreter's thread. Deep rule nesting recurses deeply.
@@ -51,18 +53,31 @@ enum Item {
         end: u32,
         children: Vec<Item>,
     },
+    /// The error item of a recovery: an `<error>` node over what it produced, or a `<missing>`
+    /// token where it matched nothing.
+    Error {
+        label: LabelId,
+        field: FieldId,
+        start: u32,
+        end: u32,
+        children: Vec<Item>,
+    },
 }
 
 impl Item {
     fn field(&self) -> FieldId {
         match self {
-            Item::Token { field, .. } | Item::Node { field, .. } => *field,
+            Item::Token { field, .. } | Item::Node { field, .. } | Item::Error { field, .. } => {
+                *field
+            }
         }
     }
 
     fn set_field(&mut self, value: FieldId) {
         match self {
-            Item::Token { field, .. } | Item::Node { field, .. } => *field = value,
+            Item::Token { field, .. } | Item::Node { field, .. } | Item::Error { field, .. } => {
+                *field = value;
+            }
         }
     }
 
@@ -77,7 +92,7 @@ impl Item {
         while let Some(items) = pending.pop() {
             count += items.len() as u64;
             for item in items {
-                if let Item::Node { children, .. } = item {
+                if let Item::Node { children, .. } | Item::Error { children, .. } = item {
                     pending.push(children);
                 }
             }
@@ -86,12 +101,15 @@ impl Item {
     }
 
     /// The span of a node over `children`: from the first token to the last, at any depth,
-    /// or empty at `at` when there is no token.
+    /// or empty at `at` when there is no token. An error item counts as a token, since it is
+    /// one where it matched nothing and holds the tokens of its span otherwise.
     fn span_of(children: &[Item], at: u32) -> (u32, u32) {
         let mut span: Option<(u32, u32)> = None;
         for child in children {
             let (start, end, has_token) = match child {
-                Item::Token { start, end, .. } => (*start, *end, true),
+                Item::Token { start, end, .. } | Item::Error { start, end, .. } => {
+                    (*start, *end, true)
+                }
                 Item::Node {
                     start,
                     end,
@@ -112,24 +130,82 @@ impl Item {
 
 fn contains_token(items: &[Item]) -> bool {
     items.iter().any(|item| match item {
-        Item::Token { .. } => true,
+        Item::Token { .. } | Item::Error { .. } => true,
         Item::Node { children, .. } => contains_token(children),
     })
 }
 
-/// Lay out items, in order, as the top level of a tree. It recurses as deeply as the tree
-/// nests, which the interpreter's own stack allows, since it built the items recursively.
-fn tree_from_items(items: Vec<Item>, names: Arc<Names>) -> Tree {
+/// The error items among `items` at any depth, in the order of the text, as recoveries.
+fn recoveries_in(items: &[Item], labels: &[ir::Label], out: &mut Vec<Recovery>) {
+    for item in items {
+        match item {
+            Item::Token { .. } => {}
+            Item::Node { children, .. } => recoveries_in(children, labels, out),
+            Item::Error {
+                label,
+                start,
+                end,
+                children,
+                ..
+            } => {
+                out.push(recovery(*label, *start, *end, labels));
+                recoveries_in(children, labels, out);
+            }
+        }
+    }
+}
+
+/// A recovery as a caller sees it, with the name of its label.
+fn recovery(label: LabelId, start: u32, end: u32, labels: &[ir::Label]) -> Recovery {
+    let label = match labels.get(label.0 as usize) {
+        Some(ir::Label::Named(name) | ir::Label::Message(name)) => name.clone(),
+        None => String::new(),
+    };
+    Recovery {
+        label,
+        start: start as usize,
+        end: end as usize,
+    }
+}
+
+/// Lay out items, in order, as the top level of a tree, with the recoveries among them. It
+/// recurses as deeply as the tree nests, which the interpreter's own stack allows, since it
+/// built the items recursively.
+fn tree_from_items(items: Vec<Item>, names: Arc<Names>, labels: &[ir::Label]) -> Tree {
+    let mut recoveries = Vec::new();
+    recoveries_in(&items, labels, &mut recoveries);
     let mut tree = Tree::empty(names);
     for item in items {
         push_item(&mut tree, item);
     }
+    tree.set_recoveries(recoveries);
     tree
 }
 
 /// Append an item and its children in postorder, and return how many entries it made.
 fn push_item(tree: &mut Tree, item: Item) -> u32 {
     match item {
+        // What a recovery that matched nothing produced has no text, and a token no children.
+        Item::Error {
+            field, start, end, ..
+        } if start == end => {
+            tree.push_token(KindId::MISSING, false, start, end, field);
+            1
+        }
+        Item::Error {
+            field,
+            start,
+            end,
+            children,
+            ..
+        } => {
+            let size = 1 + children
+                .into_iter()
+                .map(|c| push_item(tree, c))
+                .sum::<u32>();
+            tree.push_node(KindId::ERROR, start, end, size, field);
+            size
+        }
         Item::Token {
             kind,
             field,
@@ -207,7 +283,7 @@ impl Reference {
 
     /// Parse the whole input from the rule `start`.
     pub fn parse_with(&self, input: &str, start: &str, limits: Limits) -> Result<Tree, ParseError> {
-        self.run(input, start, limits, true)
+        self.run(input, start, limits, true, false)
     }
 
     /// Parse without remembering rule results, which must give the same result as
@@ -218,7 +294,18 @@ impl Reference {
         start: &str,
         limits: Limits,
     ) -> Result<Tree, ParseError> {
-        self.run(input, start, limits, false)
+        self.run(input, start, limits, false, false)
+    }
+
+    /// Parse in recovering mode, where a label that `%recover` gives a recovery puts an error
+    /// item in the tree where it fails, and the parse goes on.
+    pub fn parse_recovering(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+    ) -> Result<Tree, ParseError> {
+        self.run(input, start, limits, true, true)
     }
 
     fn run(
@@ -227,6 +314,7 @@ impl Reference {
         start: &str,
         limits: Limits,
         memoize: bool,
+        recovering: bool,
     ) -> Result<Tree, ParseError> {
         let Some(start_expr) = self.grammar.entry.get(start) else {
             return Err(ParseError {
@@ -242,7 +330,10 @@ impl Reference {
                 recoveries: Vec::new(),
             });
         }
-        let run = || Interp::new(&self.grammar, input, limits, memoize).parse(start_expr);
+        let run = || {
+            let interp = Interp::new(&self.grammar, input, limits, memoize);
+            interp.parse(start_expr, recovering)
+        };
         let outcome = std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .stack_size(STACK_BYTES)
@@ -263,13 +354,16 @@ impl Reference {
     }
 }
 
-/// The context of a match: flags that are on, the reference column, and what the captures map
-/// to. Contexts that map the same compare equal, whatever was captured and hidden before.
+/// The context of a match: flags that are on, the reference column, what the captures map to,
+/// and, inside a recovery, its floor. Contexts that map the same compare equal, whatever was
+/// captured and hidden before.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Ctx {
     flags: BTreeSet<FlagId>,
     column: u32,
     captures: Captures,
+    /// Where the recovery in progress started, past which alone a label recovers.
+    floor: Option<usize>,
 }
 
 /// What each capture name maps to, as the id of an interned text. Equal texts get equal ids, so
@@ -290,10 +384,14 @@ enum Outcome {
     Fail { cut: bool },
 }
 
-/// What ends the whole parse: a labeled error or a limit.
+/// What ends the whole parse: a labeled error, with the recoveries made before it, or a limit.
 #[derive(Debug)]
 enum Abort {
-    Error { label: LabelId, position: usize },
+    Error {
+        label: LabelId,
+        position: usize,
+        recoveries: Vec<Recovery>,
+    },
     Limit(Limit),
 }
 
@@ -330,6 +428,10 @@ struct Interp<'a> {
     /// Results of calls that depend on no outside table entry, keyed with the quiet state.
     memo: HashMap<(CallKey, bool), MemoEntry>,
     memoize: bool,
+    /// Whether the parse recovers from labeled errors.
+    recovering: bool,
+    /// How many tokens are being matched, at most one, since nothing inside a token makes one.
+    tokens: u32,
     /// The captured texts by id, and the id of each.
     texts: Vec<String>,
     text_ids: HashMap<String, u32>,
@@ -356,6 +458,8 @@ impl<'a> Interp<'a> {
             next_serial: 0,
             memo: HashMap::new(),
             memoize,
+            recovering: false,
+            tokens: 0,
             texts: Vec::new(),
             text_ids: HashMap::new(),
             dependency: usize::MAX,
@@ -369,29 +473,40 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn parse(mut self, start: &ir::Expr) -> Result<Tree, ParseError> {
+    fn parse(mut self, start: &ir::Expr, recovering: bool) -> Result<Tree, ParseError> {
         let ctx = Ctx {
             flags: BTreeSet::new(),
             column: 0,
             captures: Captures::new(),
+            floor: None,
         };
+        self.recovering = recovering;
         let result = self.eval(start, 0, &ctx).and_then(|outcome| match outcome {
-            Outcome::Ok(success) => {
-                let end = self.skip_end(success.end, &ctx)?;
-                Ok(Some((end, success.items)))
-            }
+            // An error of the skip after the start rule comes after its items.
+            Outcome::Ok(success) => match self.skip_end(success.end, &ctx) {
+                Ok(end) => Ok(Some((end, success.items))),
+                Err(abort) => Err(self.after(&success.items, abort)),
+            },
             Outcome::Fail { .. } => Ok(None),
         });
         match result {
-            Ok(Some((end, items))) if end == self.input.len() => {
-                Ok(tree_from_items(items, Arc::clone(&self.g.names)))
-            }
-            Ok(Some((end, _))) => {
+            Ok(Some((end, items))) if end == self.input.len() => Ok(tree_from_items(
+                items,
+                Arc::clone(&self.g.names),
+                &self.g.labels,
+            )),
+            Ok(Some((end, items))) => {
                 self.record_expected(end, END_OF_INPUT.to_owned());
-                Err(self.no_match())
+                let mut error = self.no_match();
+                recoveries_in(&items, &self.g.labels, &mut error.recoveries);
+                Err(error)
             }
             Ok(None) => Err(self.no_match()),
-            Err(Abort::Error { label, position }) => {
+            Err(Abort::Error {
+                label,
+                position,
+                recoveries,
+            }) => {
                 let text = match self.g.labels.get(label.0 as usize) {
                     Some(ir::Label::Message(m) | ir::Label::Named(m)) => m.clone(),
                     None => String::new(),
@@ -399,7 +514,7 @@ impl<'a> Interp<'a> {
                 Err(ParseError {
                     position,
                     kind: ParseErrorKind::Label(text),
-                    recoveries: Vec::new(),
+                    recoveries,
                 })
             }
             Err(Abort::Limit(limit)) => Err(ParseError {
@@ -417,6 +532,28 @@ impl<'a> Interp<'a> {
                 expected: std::mem::take(&mut self.expected).into_iter().collect(),
             },
             recoveries: Vec::new(),
+        }
+    }
+
+    /// An error of a part, which ends the whole, after the parts before it produced `items`:
+    /// the recoveries among those come first.
+    fn after(&self, items: &[Item], abort: Abort) -> Abort {
+        match abort {
+            Abort::Error {
+                label,
+                position,
+                recoveries,
+            } => {
+                let mut before = Vec::new();
+                recoveries_in(items, &self.g.labels, &mut before);
+                before.extend(recoveries);
+                Abort::Error {
+                    label,
+                    position,
+                    recoveries: before,
+                }
+            }
+            limit => limit,
         }
     }
 
@@ -464,6 +601,7 @@ impl<'a> Interp<'a> {
             flags: ctx.flags.clone(),
             column: ctx.column,
             captures,
+            floor: ctx.floor,
         }
     }
 
@@ -662,7 +800,11 @@ impl<'a> Interp<'a> {
                 let mut cut = false;
                 for part in parts {
                     let part_ctx = Interp::with_captures(ctx, captures);
-                    match self.eval(part, end, &part_ctx)? {
+                    let outcome = match self.eval(part, end, &part_ctx) {
+                        Ok(outcome) => outcome,
+                        Err(abort) => return Err(self.after(&items, abort)),
+                    };
+                    match outcome {
                         Outcome::Ok(success) => {
                             end = success.end;
                             items.extend(success.items);
@@ -705,7 +847,11 @@ impl<'a> Interp<'a> {
                 let mut captures = ctx.captures.clone();
                 while max.is_none_or(|max| count < max) {
                     let step_ctx = Interp::with_captures(ctx, captures.clone());
-                    match self.eval(expr, end, &step_ctx)? {
+                    let outcome = match self.eval(expr, end, &step_ctx) {
+                        Ok(outcome) => outcome,
+                        Err(abort) => return Err(self.after(&items, abort)),
+                    };
+                    match outcome {
                         Outcome::Ok(success) => {
                             let consumed = success.end > end;
                             count += 1;
@@ -751,23 +897,28 @@ impl<'a> Interp<'a> {
                 let end = self.skip_end(pos, ctx)?;
                 Interp::ok(end, ctx)
             }
-            E::Token { kind, hidden, expr } => match self.eval(expr, pos, ctx)? {
-                Outcome::Ok(success) => Ok(Outcome::Ok(Success {
-                    items: vec![Item::Token {
-                        kind: *kind,
-                        field: FieldId::NONE,
-                        hidden: *hidden,
-                        start: pos as u32,
-                        end: success.end as u32,
-                    }],
-                    ..success
-                })),
-                Outcome::Fail { cut } => {
-                    let what = self.kind_display(*kind);
-                    self.record_expected(pos, what);
-                    Ok(Outcome::Fail { cut })
+            E::Token { kind, hidden, expr } => {
+                self.tokens += 1;
+                let outcome = self.eval(expr, pos, ctx);
+                self.tokens -= 1;
+                match outcome? {
+                    Outcome::Ok(success) => Ok(Outcome::Ok(Success {
+                        items: vec![Item::Token {
+                            kind: *kind,
+                            field: FieldId::NONE,
+                            hidden: *hidden,
+                            start: pos as u32,
+                            end: success.end as u32,
+                        }],
+                        ..success
+                    })),
+                    Outcome::Fail { cut } => {
+                        let what = self.kind_display(*kind);
+                        self.record_expected(pos, what);
+                        Ok(Outcome::Fail { cut })
+                    }
                 }
-            },
+            }
             E::Node { kind, expr } => self.node(*kind, expr, pos, ctx, false),
             E::Transparent { kind, expr } => self.node(*kind, expr, pos, ctx, true),
             E::Field { field, expr } => match self.eval(expr, pos, ctx)? {
@@ -876,12 +1027,13 @@ impl<'a> Interp<'a> {
             }
             E::Label { label, expr, skip } => match self.eval(expr, pos, ctx)? {
                 // Any failure, also one after a cut, since a label is no choice point.
-                Outcome::Fail { .. } => {
+                Outcome::Fail { cut } => {
                     let position = if *skip { self.skip_end(pos, ctx)? } else { pos };
-                    Err(Abort::Error {
-                        label: *label,
-                        position,
-                    })
+                    let field = match &**expr {
+                        E::Field { field, .. } => *field,
+                        _ => FieldId::NONE,
+                    };
+                    self.recover(*label, field, position, cut, ctx)
                 }
                 success => Ok(success),
             },
@@ -890,8 +1042,56 @@ impl<'a> Interp<'a> {
         }
     }
 
+    /// What a label that failed at `position` gives: the error, or in recovering mode, past the
+    /// floor, the error item of the label's recovery where it succeeds. A recovery runs in
+    /// recovering mode with its start as the floor, so one nested in it starts further, and
+    /// keeps the cut flag of the failure, since a cut that the label's expression passed still
+    /// commits the choice around it.
+    fn recover(
+        &mut self,
+        label: LabelId,
+        field: FieldId,
+        position: usize,
+        cut: bool,
+        ctx: &Ctx,
+    ) -> Eval {
+        let error = Abort::Error {
+            label,
+            position,
+            recoveries: Vec::new(),
+        };
+        // Inside a lookahead, a token and the skip expression what is made is dropped, so a
+        // recovery there would go unreported.
+        let sheltered = self.quiet > 0 || self.tokens > 0;
+        let past_floor = ctx.floor.is_none_or(|floor| position > floor);
+        let recovery = (self.g.recoveries.get(label.0 as usize)).and_then(Option::as_ref);
+        let Some(recovery) = recovery.filter(|_| self.recovering && !sheltered && past_floor)
+        else {
+            return Err(error);
+        };
+        let inner = Ctx {
+            floor: Some(position),
+            ..ctx.clone()
+        };
+        match self.eval(&recovery.expr, position, &inner)? {
+            Outcome::Ok(success) => Ok(Outcome::Ok(Success {
+                end: success.end,
+                items: vec![Item::Error {
+                    label,
+                    field,
+                    start: position as u32,
+                    end: success.end as u32,
+                    children: success.items,
+                }],
+                captures: ctx.captures.clone(),
+                cut,
+            })),
+            Outcome::Fail { .. } => Err(error),
+        }
+    }
+
     /// Whether `expr` succeeds at `pos`, without consuming input, recording failures or
-    /// keeping captures. A labeled error counts as a failure there.
+    /// keeping captures. A labeled error counts as a failure there, and nothing recovers.
     fn lookahead(&mut self, expr: &ir::Expr, pos: usize, ctx: &Ctx) -> Result<bool, Abort> {
         self.quiet += 1;
         let outcome = self.eval(expr, pos, ctx);

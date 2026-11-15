@@ -35,7 +35,7 @@ The definition has two steps. First, every grammar is translated into a small co
 | `on(a, e)`, `off(a, e)`, `if(a)`, `if_not(a)` | flags |
 | `indent(e, s)`, `same(s)` | columns, `s` says whether to skip before the check |
 | `def(x, e, s)`, `ref(x)` | captures |
-| `label(e, l, s)` | match `e`, and stop the parse with the labeled error `l` if it fails |
+| `label(e, l, s)` | match `e`. If it fails, stop the parse with the labeled error `l`, or recover from it in recovering mode |
 | `error_alternative(m)` | fail. Reserved for explaining errors |
 
 ## Modules
@@ -77,13 +77,14 @@ The translation runs in this order.
 
 The meaning of a core expression `e` is a relation between `e`, a position `i`, a context `κ`, and a result.
 
-- The context `κ` has three parts: the set of flags that are on, the reference column, and the captures, which map names to texts. Two contexts are equal when all three parts are, however the captures came about.
+- The context `κ` has four parts: the set of flags that are on, the reference column, the captures, which map names to texts, and the *floor*, a position or none. Two contexts are equal when all four parts are, however the captures came about.
+- Matching knows besides the mode of the parse, normal or recovering, and whether it runs *sheltered*, inside a lookahead, a token or the skip expression. Neither is part of the context, so a rule that calls itself through a lookahead finds the entry of the table of left recursion made around it, in either mode.
 - A result is one of:
   - **success** `(j, items, Γ, c)`: the expression matched the input from `i` to `j`, produced the list `items`, leaves the captures `Γ` for what follows, and `c` says whether it passed a cut that no choice point has consumed yet;
   - **failure** `(c)`: the expression does not match, and `c` says whether a cut was passed before the failure;
-  - **error** `(l, p)`: the labeled error `l` occurred at position `p`. An error is never caught by a choice and ends the whole parse.
+  - **error** `(l, p, D)`: the labeled error `l` occurred at position `p`, after the error items `D` that the matches it ended had produced before it. An error is never caught by a choice and ends the whole parse.
 
-Unless a rule below says otherwise, an error result of a part is the error result of the whole, and the captures of a success are those of the context.
+Unless a rule below says otherwise, an error of a part is the error of the whole, with the error items among what the parts before it produced, at any depth, in front of its `D`, and the captures of a success are those of the context.
 
 | Expression | Result |
 |---|---|
@@ -94,10 +95,10 @@ Unless a rule below says otherwise, an error result of a part is the error resul
 | `seq(e1, ..., en)` | match `e1` at `i`, then each next part where the previous ended, with the captures the previous left. Success if all succeed, with the concatenated items and `c` true if any part passed a cut. Failure at the first failing part, with `c` true if that part or an earlier one passed a cut |
 | `choice(e1, ..., en)` | match the alternatives at `i` in order. The first success is the result, with `c` false. A failure with `c` true ends the choice: the result is failure `(false)` and later alternatives are not tried. If all fail, failure `(false)` |
 | `rep(e, n, m)` | match `e` repeatedly, each time where the previous ended and with the captures it left, until it fails or `m` matches have been made. A failure of `e` with `c` true makes the result failure `(false)`. A match that consumes no input is the last one: it counts, contributes its items, and the repetition succeeds even if fewer than `n` matches were made, since more would match the same way. Otherwise success if at least `n` matches were made, with their items, and failure `(false)` if not |
-| `not(e)` | match `e` at `i`: success `(i, [], Γ, false)` if it fails or ends in an error, failure `(false)` if it succeeds |
-| `and(e)` | success `(i, [], Γ, false)` if `e` succeeds, failure `(false)` if it fails or ends in an error |
+| `not(e)` | match `e` at `i`, sheltered: success `(i, [], Γ, false)` if it fails or ends in an error, failure `(false)` if it succeeds |
+| `and(e)` | match `e` at `i`, sheltered: success `(i, [], Γ, false)` if it succeeds, failure `(false)` if it fails or ends in an error |
 | `cut` | success `(i, [], Γ, true)` |
-| `label(e, l, s)` | the result of `e` if it succeeds or ends in an error. If `e` fails, with `c` true or not, the error `(l, p)`, where `p` is where `skip` ends at `i` if `s`, otherwise `i`. A label is no choice point, so a cut that `e` passes reaches the enclosing one |
+| `label(e, l, s)` | the result of `e` if it succeeds or ends in an error. If `e` fails, with `c` true or not, let `p` be where `skip` ends at `i` if `s`, otherwise `i`. The result is the error `(l, p, [])`, unless the parse is in recovering mode, the match is not sheltered, the floor is none or lies before `p`, and the grammar gives `l` a recovery `r`. Then `r` is matched at `p` with the floor `p`. On a success at `q`, the result is success `(q, [x], Γ, c)`, with the captures of the context, the cut flag of the failure, and the error item `x` of `l` from `p` to `q` with the items of `r`. If `r` fails, the result is the error `(l, p, [])`, and if it ends in an error, that error. A label is no choice point, so a cut that `e` passes reaches the enclosing one |
 | `error_alternative(m)` | failure `(false)` |
 
 The captures do not change inside a `not` or `and`: what `e` captures there is dropped.
@@ -118,10 +119,12 @@ A rule that is not left recursive gives the same result as matching its body onc
 
 ## Skipping and tokens
 
-- `skip` matches the skip expression at `i`, in plain mode, with the current context, then again where it ended, as long as it succeeds and consumes input. Its result is success at the last end, without items, and with the captures of the context: what the skip expression captures holds for that one match. A grammar without `%ignore` has an empty skip expression, so `skip` matches the empty string.
-- `token(k, h, e)` matches `e`, drops what `e` produces, and on success produces one token of kind `k` from `i` to the end of the match, hidden if `h`.
+- `skip` matches the skip expression at `i`, in plain mode, sheltered, with the current context, then again where it ended, as long as it succeeds and consumes input. Its result is success at the last end, without items, and with the captures of the context: what the skip expression captures holds for that one match. A grammar without `%ignore` has an empty skip expression, so `skip` matches the empty string.
+- `token(k, h, e)` matches `e`, sheltered, drops what `e` produces, and on success produces one token of kind `k` from `i` to the end of the match, hidden if `h`.
 - `word_end` succeeds without consuming input unless a word character follows at `i`. The word characters are those of `%word`, and `[A-Za-z0-9_]` for reserved words in a grammar without `%word`.
 - `unreserved(e)` matches `e` and fails when the matched text is a reserved word. The reserved words are the texts of literals that occur as tokens of syntactic or lexical rules and consist only of word characters, minus the soft keywords. A case-insensitive literal reserves every ASCII spelling of its text.
+
+Where what an expression produces is dropped, in a token, the skip expression and a lookahead, it runs sheltered and nothing recovers, so no recovery goes unreported.
 
 ## Context
 
@@ -146,18 +149,23 @@ Matching produces a list of items. An item is a token, with a kind, a position r
 - `transparent(k, e)` does the same unless the items contain exactly one item that is not a hidden token. In that case the items are the result as they are.
 - `field(f, e)` gives field `f` to each item of a success of `e` that has no field yet and is not a hidden token. Hidden tokens never carry a field.
 - The **span** of a node runs from the start of its first token to the end of its last token, at any depth, hidden tokens included. A node without tokens has the empty span at the position where its `node` or `transparent` expression was matched.
+- The **error item** of a label `l` from `p` to `q`, with the items `X` of its recovery, is a node of kind `<error>` with the children `X` and the span from `p` to `q`, or, where `q` is `p`, a token of kind `<missing>` with the empty span at `p`, which is never hidden. It records `l`. Where the failed expression is `field(f, e)`, it carries the field `f`. Within the span of its parent it counts as a token.
 
 ## Parsing an input
 
-To parse an input with a start rule `S`, the expression for a reference to `S` in syntactic mode is matched at position 0 in the initial context: no flags, reference column 0, no captures. On success at `j`, `skip` is matched at `j`, and the parse succeeds if that reaches the end of the input. The tree consists of the items of the success.
+A parse runs in *normal mode* or in *recovering mode*. To parse an input with a start rule `S`, the expression for a reference to `S` in syntactic mode is matched at position 0 in the initial context: no flags, reference column 0, no captures and no floor. On success at `j`, `skip` is matched at `j`, and the parse succeeds if that reaches the end of the input. An error of that `skip` comes after the items of the success, whose error items come first in its `D`. The tree consists of the items of the success. Its *recoveries* are its error items in the order of the text, each with its label and span. A parse in normal mode has none.
 
 A parse that does not succeed fails at the *farthest failure position*, with an *expected set*:
 
 - A `token` expression that fails at position `p` records `p`, outside of `not`, `and` and the skip expression. Of all recorded positions the largest is the farthest failure position. The expected set holds the kinds of the tokens that failed there, by display name where the grammar gives one.
 - An `indent` or `same` whose column check fails records the position it checked, expecting indentation.
-- If the input does not end where the parse ended, that position counts as a failure that expects the end of the input.
-- A parse that ends in an error fails with that error instead.
+- If the input does not end where the parse ended, that position counts as a failure that expects the end of the input. The recoveries of the failed parse are the error items of the success.
+- A parse that ends in an error `(l, p, D)` fails with that error instead, and its recoveries are the error items in `D`.
+
+An input that a parse in normal mode accepts fails no label outside a token, the skip expression and a lookahead, so a parse in recovering mode gives it the same tree and no recoveries.
 
 ## Limits
 
 An implementation stops a parse that exceeds a limit on time, recursion depth, memory or input size, and reports which limit it hit. A limit never changes the result of a parse that stays within it.
+
+Recovery needs no limit of its own. A recovery that matches nothing is an empty match, which ends a repetition and takes part in left recursion like any other, and a recovery inside another starts past where the other started.
