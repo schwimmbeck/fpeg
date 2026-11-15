@@ -87,6 +87,17 @@ impl LineIndex {
         self.starts[self.line(offset)]
     }
 
+    /// The byte range of a line counted from 0, without its line break. `text` must be the
+    /// text the index was made for.
+    pub(crate) fn bounds(&self, text: &str, line: usize) -> (usize, usize) {
+        let start = self.starts.get(line).copied().unwrap_or(text.len());
+        let next = self.starts.get(line + 1).copied().unwrap_or(text.len());
+        let raw = text.get(start..next).unwrap_or_default();
+        let content = raw.strip_suffix('\n').unwrap_or(raw);
+        let content = content.strip_suffix('\r').unwrap_or(content);
+        (start, start + content.len())
+    }
+
     /// The code points of `text` before a byte offset, the index of a string that counts in
     /// code points. `text` must be the text the index was made for.
     pub fn char_offset(&self, text: &str, offset: usize) -> usize {
@@ -97,6 +108,31 @@ impl LineIndex {
         let checkpoint = offset / CHECKPOINT_BYTES;
         let before = self.checkpoints.get(checkpoint).copied().unwrap_or(0);
         before + count_chars(text, checkpoint * CHECKPOINT_BYTES, offset)
+    }
+
+    /// The byte offset before the code point at index `chars`, the inverse of
+    /// [`LineIndex::char_offset`], and the end of the text for an index past its code points.
+    /// `text` must be the text the index was made for.
+    pub fn byte_offset(&self, text: &str, chars: usize) -> usize {
+        if self.ascii {
+            return chars.min(text.len());
+        }
+        let checkpoint =
+            (self.checkpoints.partition_point(|&before| before <= chars)).saturating_sub(1);
+        let mut count = self.checkpoints.get(checkpoint).copied().unwrap_or(0);
+        let bytes = text.as_bytes();
+        let mut at = checkpoint * CHECKPOINT_BYTES;
+        loop {
+            // A checkpoint may fall inside a code point, whose rest counts with it.
+            while bytes.get(at).is_some_and(|&b| b & 0xC0 == 0x80) {
+                at += 1;
+            }
+            if count == chars || at >= bytes.len() {
+                return at.min(bytes.len());
+            }
+            count += 1;
+            at += 1;
+        }
     }
 
     /// The position of a byte offset of `text`.
@@ -289,6 +325,7 @@ mod tests {
             // Each lookup counts up to a checkpoint of bytes, so a sample keeps the test fast.
             if k % 13 == 0 {
                 assert_eq!(lines.position(&text, at), expected, "at byte {at}");
+                assert_eq!(lines.byte_offset(&text, expected.offset), at);
             }
         }
         // A cursor that goes back finds the place and counts on from there.
@@ -306,6 +343,8 @@ mod tests {
         for (at, expected) in counted(text) {
             assert_eq!(lines.position(text, at), expected);
             assert_eq!(cursor.position(at), expected);
+            assert_eq!(lines.byte_offset(text, expected.offset), at);
         }
+        assert_eq!(lines.byte_offset(text, text.len() + 1), text.len());
     }
 }

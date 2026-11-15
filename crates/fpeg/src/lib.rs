@@ -5,8 +5,9 @@
 //! parsing machine and builds a lossless parse tree with exact source spans.
 //!
 //! A [`Grammar`] is read from text or built with the [`builder`], and a [`Parser`] compiles it
-//! for the machine and parses inputs into a [`Tree`]. Behind the `reference` feature, the
-//! reference interpreter defines what a grammar means, and the tests compare the machine with it.
+//! for the machine and parses inputs into a [`Tree`]. A [`Source`] shows the errors of a parse
+//! with the lines they stand in. Behind the `reference` feature, the reference interpreter
+//! defines what a grammar means, and the tests compare the machine with it.
 
 // The core returns errors as values and never panics on any grammar or input.
 #![cfg_attr(
@@ -24,6 +25,7 @@ mod lines;
 mod parse;
 #[cfg(feature = "reference")]
 mod reference;
+mod render;
 mod resolve;
 mod tree;
 mod vm;
@@ -44,6 +46,7 @@ pub use parse::{
 };
 #[cfg(feature = "reference")]
 pub use reference::Reference;
+pub use render::Source;
 pub use tree::{FieldCount, FieldId, Kind, KindId, Names, NodeRef, Tree};
 pub use vm::{Memo, Options, Parser, Passes, Profile, ProfileRow};
 
