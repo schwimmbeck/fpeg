@@ -44,6 +44,9 @@ pub(crate) struct Grammar {
     pub reserved: Reserved,
     pub tab_width: u32,
     pub labels: Vec<Label>,
+    /// How many error alternatives the grammar has. A failed parse is explained where it has
+    /// one.
+    pub error_alternatives: u32,
     /// The recovery of each label, by label id, where `%recover` gives it one: the expression a
     /// parse in recovering mode matches where the label fails.
     pub recoveries: Vec<Option<Expr>>,
@@ -216,7 +219,14 @@ pub(crate) enum Expr {
         expr: Box<Expr>,
         skip: bool,
     },
-    ErrorAlternative,
+    /// `%error(message)` after the parts of a sequence, `expr`: it fails, and where a failed
+    /// parse is explained, its attempts are tested. `index` orders it among the others, in the
+    /// order the translation made them.
+    ErrorAlternative {
+        expr: Box<Expr>,
+        message: String,
+        index: u32,
+    },
     /// An expression that the translation uses twice, the item of a separated repetition,
     /// shared so that nesting them does not double the grammar at every level.
     Shared(Arc<Expr>),
@@ -240,7 +250,8 @@ impl Expr {
             | Expr::FlagOff { expr, .. }
             | Expr::Indent { expr, .. }
             | Expr::Def { expr, .. }
-            | Expr::Label { expr, .. } => std::slice::from_ref(&**expr),
+            | Expr::Label { expr, .. }
+            | Expr::ErrorAlternative { expr, .. } => std::slice::from_ref(&**expr),
             Expr::Shared(expr) => std::slice::from_ref(&**expr),
             Expr::Empty
             | Expr::Literal { .. }
@@ -252,8 +263,7 @@ impl Expr {
             | Expr::WordEnd
             | Expr::FlagTest { .. }
             | Expr::Same { .. }
-            | Expr::Ref { .. }
-            | Expr::ErrorAlternative => &[],
+            | Expr::Ref { .. } => &[],
         }
     }
 }

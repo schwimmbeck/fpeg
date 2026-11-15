@@ -58,6 +58,7 @@ pub(crate) fn verify(program: &Program) -> Result<(), String> {
     roots.extend(&program.shared);
     roots.extend(program.skip);
     roots.extend(program.recoveries.iter().flatten());
+    roots.extend(program.error_tests.iter().flatten());
     let mut entries: Vec<u32> = program.entries.values().copied().collect();
     entries.sort_unstable();
     roots.extend(entries);
@@ -203,6 +204,10 @@ impl Tables<'_> {
                 top(&shape, &[Entry::Predicate])?;
                 Vec::new()
             }
+            Inst::ErrorAttempt(alternative) => {
+                index(alternative, p.error_messages.len(), "error alternative")?;
+                Vec::new()
+            }
             Inst::Throw(label) => {
                 index(label, p.labels.len(), "label")?;
                 Vec::new()
@@ -251,7 +256,7 @@ impl Tables<'_> {
                 }
                 (Some(_), None) => vec![(next, shape)],
             },
-            Inst::Ret | Inst::End => match shape == Shape::default() {
+            Inst::Ret | Inst::End | Inst::TestEnd => match shape == Shape::default() {
                 true => Vec::new(),
                 false => return Err(format!("leaves {shape:?}")),
             },

@@ -138,6 +138,13 @@ pub enum ParseErrorKind {
         /// What the grammar expected where the error occurred, sorted.
         expected: Vec<String>,
     },
+    /// An error alternative of the grammar matched where the parse was explained.
+    ErrorAlternative {
+        /// The message of `%error("message")`.
+        message: String,
+        /// The byte offset where what the alternative matched ends.
+        end: usize,
+    },
     /// The parse hit a limit.
     Limit(Limit),
     /// The start rule does not exist or cannot start a parse.
@@ -161,6 +168,15 @@ pub enum Limit {
 }
 
 impl ParseError {
+    /// Where the error ends: where what an error alternative matched ends, and its position
+    /// for the others.
+    pub fn end(&self) -> usize {
+        match &self.kind {
+            ParseErrorKind::ErrorAlternative { end, .. } => *end,
+            _ => self.position,
+        }
+    }
+
     /// What went wrong, without the position.
     pub fn message(&self) -> String {
         match &self.kind {
@@ -172,6 +188,7 @@ impl ParseError {
                 expected,
             } => named(label, expected),
             ParseErrorKind::Label { label, .. } => label.clone(),
+            ParseErrorKind::ErrorAlternative { message, .. } => message.clone(),
             ParseErrorKind::Limit(Limit::Depth) => {
                 "rule calls nest deeper than the depth limit".to_owned()
             }
@@ -191,7 +208,12 @@ impl ParseError {
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error at {}: {}", self.position, self.message())
+        match self.end() {
+            end if end > self.position => {
+                write!(f, "error at {}..{end}: {}", self.position, self.message())
+            }
+            _ => write!(f, "error at {}: {}", self.position, self.message()),
+        }
     }
 }
 

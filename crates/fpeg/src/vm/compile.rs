@@ -52,6 +52,7 @@ pub(crate) fn compile(
         test_ids: HashMap::new(),
         rules: &grammar.rules,
         recovered: (grammar.recoveries.iter()).map(Option::is_some).collect(),
+        error_alternatives: vec![None; grammar.error_alternatives as usize],
         inline: Vec::new(),
         seed_rule: None,
         defines_shared: HashMap::new(),
@@ -185,13 +186,38 @@ pub(crate) fn compile(
             Some(pc)
         })
         .collect();
-    while let Some((index, expr)) = c.queue.pop() {
-        c.shared_pcs[index] = c.here();
-        // A cut passes the call of a shared part, and what stands around its uses is not
-        // known here.
-        c.cuttable = true;
-        c.expr(expr);
-        c.emit(Inst::Ret);
+    // A test routine matches what an error alternative tests, as a parse of its own once the
+    // parse failed. Tests and shared parts may meet more of either.
+    let mut error_tests: Vec<Option<u32>> = vec![None; c.error_alternatives.len()];
+    loop {
+        let pending: Vec<(usize, &ir::Expr)> = (c.error_alternatives.iter().enumerate())
+            .filter(|&(index, _)| error_tests[index].is_none())
+            .filter_map(|(index, found)| Some((index, found.as_ref()?.0)))
+            .collect();
+        if pending.is_empty() && c.queue.is_empty() {
+            break;
+        }
+        for (index, test) in pending {
+            error_tests[index] = Some(c.here());
+            c.cuttable = false;
+            let defines = c.defines(test);
+            if defines {
+                c.emit(Inst::CaptureMark);
+            }
+            c.expr(test);
+            if defines {
+                c.emit(Inst::CaptureDrop);
+            }
+            c.emit(Inst::TestEnd);
+        }
+        while let Some((index, expr)) = c.queue.pop() {
+            c.shared_pcs[index] = c.here();
+            // A cut passes the call of a shared part, and what stands around its uses is not
+            // known here.
+            c.cuttable = true;
+            c.expr(expr);
+            c.emit(Inst::Ret);
+        }
     }
     for (at, rule) in std::mem::take(&mut c.calls) {
         c.code[at] = match rules.get(rule.0 as usize) {
@@ -234,6 +260,11 @@ pub(crate) fn compile(
         kind_display: grammar.kind_display.clone(),
         labels,
         recoveries,
+        error_messages: (c.error_alternatives.iter())
+            .map(|found| found.map_or_else(String::new, |(_, message)| message.to_owned()))
+            .collect(),
+        error_tests,
+        explains: grammar.error_alternatives > 0,
         kinds: grammar.kinds(),
         single_item: grammar.single_item.clone(),
         passes: options.passes,
@@ -320,6 +351,8 @@ struct Compiler<'f> {
     rules: &'f [ir::Rule],
     /// Whether each label has a recovery, by label id.
     recovered: Vec<bool>,
+    /// What each error alternative met so far tests, and its message, by index.
+    error_alternatives: Vec<Option<(&'f ir::Expr, &'f str)>>,
     /// Whether the calls of each rule compile as its body.
     inline: Vec<bool>,
     /// The rule whose next call compiles as `SeedUse`: the leading call of a recursive
@@ -770,8 +803,15 @@ impl<'f> Compiler<'f> {
                 }
                 self.patch(commit);
             }
-            E::ErrorAlternative => {
-                self.emit(Inst::Fail);
+            E::ErrorAlternative {
+                expr,
+                message,
+                index,
+            } => {
+                if let Some(slot @ None) = self.error_alternatives.get_mut(*index as usize) {
+                    *slot = Some((&**expr, message.as_str()));
+                }
+                self.emit(Inst::ErrorAttempt(*index));
             }
             E::Shared(expr) => {
                 let key = Arc::as_ptr(expr);
@@ -929,7 +969,7 @@ impl<'f> Compiler<'f> {
             | E::FlagTest { .. }
             | E::Same { .. }
             | E::Ref { .. }
-            | E::ErrorAlternative => false,
+            | E::ErrorAlternative { .. } => false,
         }
     }
 

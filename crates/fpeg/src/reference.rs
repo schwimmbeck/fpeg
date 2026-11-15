@@ -14,7 +14,7 @@
 //! since could be reached. Without it, every operator level of a precedence block re-parses the
 //! levels below it in each growing step, which is exponential in the number of levels.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -450,8 +450,9 @@ struct Interp<'a> {
     /// new serial.
     lr_active: Vec<(u64, usize)>,
     next_serial: u64,
-    /// Results of calls that depend on no outside table entry, keyed with the quiet state.
-    memo: HashMap<(CallKey, bool), MemoEntry>,
+    /// Results of calls that depend on no outside table entry, keyed with the quiet state and
+    /// whether a lookahead encloses the call, where error alternatives record no attempts.
+    memo: HashMap<(CallKey, bool, bool), MemoEntry>,
     memoize: bool,
     /// Whether the parse recovers from labeled errors.
     recovering: bool,
@@ -471,6 +472,46 @@ struct Interp<'a> {
     /// How many matches enclose the one in progress.
     nesting: u32,
     limits: Limits,
+    /// How many lookaheads enclose the match in progress, where no error alternative makes an
+    /// attempt.
+    looking: u32,
+    /// The attempts of error alternatives the parse made, which explain it where it fails.
+    attempts: Vec<Attempt>,
+}
+
+/// An error alternative matched outside a lookahead: which, where and in which context, so that
+/// it can be tested there once the parse has failed.
+struct Attempt {
+    index: u32,
+    pos: usize,
+    ctx: Ctx,
+}
+
+/// What each error alternative of a grammar tests, and its message, by index.
+fn error_alternatives(g: &ir::Grammar) -> Vec<Option<(&ir::Expr, &str)>> {
+    let mut table = vec![None; g.error_alternatives as usize];
+    let mut seen = HashSet::new();
+    let mut pending: Vec<&ir::Expr> = g.rules.iter().map(|rule| &rule.body).collect();
+    pending.extend(g.skip.iter());
+    pending.extend(g.recoveries.iter().flatten());
+    while let Some(expr) = pending.pop() {
+        match expr {
+            // A shared part stands at each of its uses.
+            ir::Expr::Shared(inner) if !seen.insert(Arc::as_ptr(inner)) => continue,
+            ir::Expr::ErrorAlternative {
+                expr: tested,
+                message,
+                index,
+            } => {
+                if let Some(slot) = table.get_mut(*index as usize) {
+                    *slot = Some((&**tested, message.as_str()));
+                }
+            }
+            _ => {}
+        }
+        pending.extend(expr.children());
+    }
+    table
 }
 
 impl<'a> Interp<'a> {
@@ -496,40 +537,28 @@ impl<'a> Interp<'a> {
             nesting: 0,
             depth: 0,
             limits,
+            looking: 0,
+            attempts: Vec::new(),
         }
     }
 
     fn parse(mut self, start: &ir::Expr, recovering: bool) -> Result<Tree, ParseError> {
-        let ctx = Ctx {
-            flags: BTreeSet::new(),
-            column: 0,
-            captures: Captures::new(),
-            floor: None,
-        };
         self.recovering = recovering;
-        let result = self.eval(start, 0, &ctx).and_then(|outcome| match outcome {
-            // An error of the skip after the start rule comes after its items.
-            Outcome::Ok(success) => match self.skip_end(success.end, &ctx) {
-                Ok(end) => Ok(Some((end, success.items))),
-                Err(abort) => Err(self.after(&success.items, abort)),
-            },
-            Outcome::Fail { .. } => Ok(None),
-        });
-        match result {
+        let (error, floor) = match self.run(start) {
             Ok(Some((end, items))) => {
                 let mut found = Vec::new();
                 recoveries_in(&items, &self.g.labels, &mut found);
-                if end < self.input.len() {
-                    self.record_expected(end, Failed::EndOfInput, None);
-                    let mut error = self.no_match();
-                    error.recoveries = self.explained(&found);
-                    return Err(error);
+                if end == self.input.len() {
+                    let mut tree = tree_from_items(items, Arc::clone(&self.g.names));
+                    tree.set_recoveries(self.explained(&found));
+                    return Ok(tree);
                 }
-                let mut tree = tree_from_items(items, Arc::clone(&self.g.names));
-                tree.set_recoveries(self.explained(&found));
-                Ok(tree)
+                self.record_expected(end, Failed::EndOfInput, None);
+                let mut error = self.no_match();
+                error.recoveries = self.explained(&found);
+                (error, None)
             }
-            Ok(None) => Err(self.no_match()),
+            Ok(None) => (self.no_match(), None),
             Err(Abort::Error {
                 label,
                 position,
@@ -541,7 +570,7 @@ impl<'a> Interp<'a> {
                     Some(ir::Label::Named(name)) => (name.clone(), true),
                     None => (String::new(), false),
                 };
-                Err(ParseError {
+                let error = ParseError {
                     position,
                     kind: ParseErrorKind::Label {
                         label: text,
@@ -549,13 +578,105 @@ impl<'a> Interp<'a> {
                         expected: self.expected_at(position, floor),
                     },
                     recoveries: self.explained(&recoveries),
-                })
+                };
+                (error, floor)
             }
-            Err(Abort::Limit(limit)) => Err(ParseError {
-                position: self.farthest.unwrap_or(0),
-                kind: ParseErrorKind::Limit(limit),
-                recoveries: Vec::new(),
-            }),
+            Err(Abort::Limit(limit)) => {
+                return Err(ParseError {
+                    position: self.farthest.unwrap_or(0),
+                    kind: ParseErrorKind::Limit(limit),
+                    recoveries: Vec::new(),
+                });
+            }
+        };
+        Err(self.explain(error, floor))
+    }
+
+    /// Match the start expression at the start of the input, and the skip after it: the end and
+    /// the items, or `None` where the start expression fails.
+    fn run(&mut self, start: &ir::Expr) -> Result<Option<(usize, Vec<Item>)>, Abort> {
+        let ctx = Ctx {
+            flags: BTreeSet::new(),
+            column: 0,
+            captures: Captures::new(),
+            floor: None,
+        };
+        self.eval(start, 0, &ctx).and_then(|outcome| match outcome {
+            // An error of the skip after the start rule comes after its items.
+            Outcome::Ok(success) => match self.skip_end(success.end, &ctx) {
+                Ok(end) => Ok(Some((end, success.items))),
+                Err(abort) => Err(self.after(&success.items, abort)),
+            },
+            Outcome::Fail { .. } => Ok(None),
+        })
+    }
+
+    /// The error of a failed parse as the grammar's error alternatives explain it. The attempts
+    /// under the floor of the error are tested in the order of their positions, and at one
+    /// position in the order of the alternatives, each matched where it was made as a parse of
+    /// its own. The first alternative that matches, with its longest match, gives its message
+    /// over what it matched in place of the error. Explaining is part of the parse: the tests
+    /// have the steps the parse left, and a limit they reach ends the parse at it.
+    fn explain(&self, error: ParseError, floor: Option<usize>) -> ParseError {
+        let table = error_alternatives(self.g);
+        let mut attempts: Vec<&Attempt> = (self.attempts.iter())
+            .filter(|attempt| attempt.ctx.floor == floor)
+            .collect();
+        attempts.sort_by_key(|attempt| (attempt.pos, attempt.index));
+        let left = Limits {
+            max_steps: self.limits.max_steps.saturating_sub(self.steps),
+            ..self.limits
+        };
+        let mut tester = Interp::new(self.g, self.input, left, self.memoize);
+        // A context names its captures by the ids of the parse's texts.
+        tester.texts = self.texts.clone();
+        tester.text_ids = self.text_ids.clone();
+        // A test is sheltered: it records no failure, and a label in it fails it.
+        tester.quiet = 1;
+        tester.looking = 1;
+        let mut seen = HashSet::new();
+        let mut found: Option<(&Attempt, usize)> = None;
+        for attempt in attempts {
+            let Some(&Some((tested, _))) = table.get(attempt.index as usize) else {
+                continue;
+            };
+            if found
+                .is_some_and(|(first, _)| (first.pos, first.index) != (attempt.pos, attempt.index))
+            {
+                break;
+            }
+            let ctx = Ctx {
+                floor: None,
+                ..attempt.ctx.clone()
+            };
+            if !seen.insert((attempt.index, attempt.pos, ctx.clone())) {
+                continue;
+            }
+            match tester.eval(tested, attempt.pos, &ctx) {
+                Ok(Outcome::Ok(success)) if found.is_none_or(|(_, end)| success.end > end) => {
+                    found = Some((attempt, success.end));
+                }
+                Err(Abort::Limit(limit)) => {
+                    return ParseError {
+                        position: self.farthest.unwrap_or(0),
+                        kind: ParseErrorKind::Limit(limit),
+                        recoveries: Vec::new(),
+                    };
+                }
+                _ => {}
+            }
+        }
+        let message = found.and_then(|(attempt, _)| table.get(attempt.index as usize)?.as_ref());
+        match (found, message) {
+            (Some((attempt, end)), Some((_, message))) => ParseError {
+                position: attempt.pos,
+                kind: ParseErrorKind::ErrorAlternative {
+                    message: (*message).to_owned(),
+                    end,
+                },
+                recoveries: error.recoveries,
+            },
+            _ => error,
         }
     }
 
@@ -690,7 +811,7 @@ impl<'a> Interp<'a> {
             self.charge(&result)?;
             return Ok(Interp::call_outcome(result, ctx));
         }
-        let memo_key = (key.clone(), self.quiet > 0);
+        let memo_key = (key.clone(), self.quiet > 0, self.looking > 0);
         // The result consulted none of the entries active when it was made. Matching it again
         // would follow the same path unless it consulted an entry made since, and it can only
         // reach entries at its own position. Those are the top of the stack, since a call
@@ -1096,7 +1217,16 @@ impl<'a> Interp<'a> {
                 }
                 success => Ok(success),
             },
-            E::ErrorAlternative => Interp::fail(),
+            E::ErrorAlternative { index, .. } => {
+                if self.looking == 0 && self.g.error_alternatives > 0 {
+                    self.attempts.push(Attempt {
+                        index: *index,
+                        pos,
+                        ctx: ctx.clone(),
+                    });
+                }
+                Interp::fail()
+            }
             E::Shared(expr) => self.eval(expr, pos, ctx),
         }
     }
@@ -1155,7 +1285,9 @@ impl<'a> Interp<'a> {
     /// keeping captures. A labeled error counts as a failure there, and nothing recovers.
     fn lookahead(&mut self, expr: &ir::Expr, pos: usize, ctx: &Ctx) -> Result<bool, Abort> {
         self.quiet += 1;
+        self.looking += 1;
         let outcome = self.eval(expr, pos, ctx);
+        self.looking -= 1;
         self.quiet -= 1;
         match outcome {
             Ok(Outcome::Ok(_)) => Ok(true),

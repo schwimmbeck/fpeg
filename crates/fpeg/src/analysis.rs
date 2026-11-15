@@ -671,7 +671,11 @@ impl Twice<'_> {
                 }
                 seen
             }
-            E::Repeat { max: Some(0), .. } | E::Token { .. } | E::And(_) | E::Not(_) => Vec::new(),
+            E::Repeat { max: Some(0), .. }
+            | E::Token { .. }
+            | E::And(_)
+            | E::Not(_)
+            | E::ErrorAlternative { .. } => Vec::new(),
             E::Repeat { expr, .. }
             | E::Node { expr, .. }
             | E::Transparent { expr, .. }
@@ -700,8 +704,7 @@ impl Twice<'_> {
             | E::WordEnd
             | E::FlagTest { .. }
             | E::Same { .. }
-            | E::Ref { .. }
-            | E::ErrorAlternative => Vec::new(),
+            | E::Ref { .. } => Vec::new(),
         }
     }
 }
@@ -784,7 +787,11 @@ impl Graph {
             }
             E::Class(set) => self.push(Form::Bytes(Bytes::of_class(set)), Order::Start, NEVER, &[]),
             E::Any => self.push(Form::Bytes(Bytes::ALL), Order::Start, NEVER, &[]),
-            E::ErrorAlternative => self.push(Form::Unknown, Order::Start, NEVER, &[]),
+            // It never succeeds, and what it tests in a diagnosis starts where it stands.
+            E::ErrorAlternative { expr, .. } => {
+                let child = self.node(expr);
+                self.push(Form::Unknown, Order::Start, NEVER, &[child])
+            }
             E::Call(rule) => {
                 // The edge is linked to the body once every rule has its node.
                 let node = self.push(Form::Call(*rule), Order::Start, 1, &[0]);

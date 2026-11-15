@@ -90,6 +90,11 @@ pub(crate) enum Inst {
     BackCommit(u32),
     /// The tested expression of `!e` matched: pop the predicate entry and fail.
     FailTwice,
+    /// Fail as the error alternative with this index does. In a run that explains a failed
+    /// parse, outside a lookahead, record its attempt here first.
+    ErrorAttempt(u32),
+    /// The test routine of an error alternative matched: the test succeeds where it stands.
+    TestEnd,
     /// Push a label entry, which catches every failure and resumes at the target to throw.
     LabelChoice(u32),
     /// Stop the parse with the label with this index at the current position. Inside a
@@ -338,6 +343,12 @@ pub(crate) struct Program {
     pub labels: Vec<ir::Label>,
     /// Where the recovery routine of each label starts, for the labels that have one.
     pub recoveries: Vec<Option<u32>>,
+    /// The messages of the error alternatives, by index.
+    pub error_messages: Vec<String>,
+    /// Where the test routine of each error alternative starts, for those compiled.
+    pub error_tests: Vec<Option<u32>>,
+    /// Whether the grammar has an error alternative, so that a failed parse is explained.
+    pub explains: bool,
     /// The kind table shown to callers.
     pub kinds: Vec<Kind>,
     /// For each entry, whether a parse from it always leaves one visible item.

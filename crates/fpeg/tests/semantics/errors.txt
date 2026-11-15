@@ -38,10 +38,57 @@ start: !("a" ^ "never") "b"
 --- "b"
 (start ~"b")
 
-=== an error alternative never matches during a parse
+=== an error alternative never matches, and explains a failed parse
 start: "a" | %error("no a here")
+--- "a"
+(start ~"a")
 --- "b"
-error at 0: expected "a"
+error at 0: no a here
+
+=== the first error alternative that matches explains the error, over what it matched
+start: "a" ("b" %error("not b") | "b" "c" %error("not bc") | "d")
+--- "abc"
+error at 1..2: not b
+
+=== the attempt that comes first in the text explains the error, whatever was tried first
+start: "a" ("b" "c" ("d" | %error("far")) | %error("near"))
+--- "abcx"
+error at 1: near
+
+=== an attempt is tested in the context it was made in, with its captures
+start: %def(q, "'") ("x" %ref(q) | "y" %ref(q) %error("y is no x"))
+--- "'y'"
+error at 1..3: y is no x
+
+=== an error alternative inside a lookahead explains nothing
+start: !("a" %error("never shown")) "b"
+--- "a"
+error at 0: expected "b"
+
+=== an attempt counts where a rule matched before inside a lookahead runs again outside it
+start: !"b" "a"
+%ignore " " | C
+@memo
+C: "#" "x"+ | "#" %error("a comment needs text")
+--- "#"
+error at 0..1: a comment needs text
+
+=== a label inside an error alternative fails it
+start: "a" (("b" ^ "never") %error("not b") | "c" | "x" %error("x is no c"))
+--- "ax"
+error at 1..2: x is no c
+
+=== an error alternative in the skip expression explains the error after it
+start: "a" "b"
+%ignore " "+ | "/*" (!"*/" .)* "*/" | "/*" (!"*/" .)* %error("the comment does not end")
+--- "a /* b"
+error at 2..6: the comment does not end
+
+=== an error alternative in a terminal explains the error at its token
+start: STRING+
+STRING: "'" [a-z]* "'" | "'" [a-z]* %error("the string does not end")
+--- "'ab"
+error at 0..3: the string does not end
 
 === the expected set lists everything that failed at the farthest position
 start: "a" ("b" | "c" | D)

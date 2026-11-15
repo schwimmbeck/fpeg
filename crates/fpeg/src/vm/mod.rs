@@ -461,10 +461,14 @@ fn attempt(
             machine
         }
     };
-    // A run after the first collects what failed where the errors stand. It follows the first
-    // exactly, so it ends the same way.
-    let diagnosed = |positions: &[(u32, Option<u32>)]| {
+    // A run after the first collects what failed where the errors stand, and for a failed
+    // parse the attempts of error alternatives. It follows the first exactly, so it ends the
+    // same way.
+    let diagnosed = |positions: &[(u32, Option<u32>)], explain: bool| {
         let mut again = machine(positions);
+        if explain && program.explains {
+            again = again.explaining();
+        }
         let _ = again.run(entry);
         again
     };
@@ -478,13 +482,33 @@ fn attempt(
     let farthest = first.farthest();
     let position = farthest.unwrap_or(0) as usize;
     let ended = first.take_recoveries();
+    // The error of a failed parse as the error alternatives explain it under its floor.
+    // Explaining is part of the parse, so a limit it reaches ends the parse at it.
+    let explain = |again: &Machine<'_, '_>, error: ParseError, floor: Option<u32>| match again
+        .explain(floor)
+    {
+        Ok(Some((index, start, end))) => ParseError {
+            position: start as usize,
+            kind: ParseErrorKind::ErrorAlternative {
+                message: (program.error_messages.get(index as usize).cloned()).unwrap_or_default(),
+                end: end as usize,
+            },
+            recoveries: error.recoveries,
+        },
+        Err(Stop::Limit(limit)) => ParseError {
+            position,
+            kind: ParseErrorKind::Limit(limit),
+            recoveries: Vec::new(),
+        },
+        Ok(None) | Err(_) => error,
+    };
     let result = match outcome {
         Ok(()) => match first.tree() {
             Ok((tree, found)) if found.is_empty() => Ok(tree),
             Ok((mut tree, found)) => {
                 // The second run holds its own memory, so the first gives its back.
                 drop(first);
-                let again = diagnosed(&asked(&found));
+                let again = diagnosed(&asked(&found), false);
                 tree.set_recoveries(explained(&again, &found));
                 Ok(tree)
             }
@@ -498,19 +522,24 @@ fn attempt(
             drop(first);
             let mut positions = asked(&ended);
             positions.extend(farthest.map(|at| (at, None)));
-            let (expected, recoveries) = match positions.is_empty() {
-                true => (Vec::new(), Vec::new()),
-                false => {
-                    let again = diagnosed(&positions);
-                    let expected = farthest.map_or_else(Vec::new, |at| again.expected(at, None));
-                    (expected, explained(&again, &ended))
-                }
-            };
-            Err(ParseError {
-                position,
-                kind: ParseErrorKind::NoMatch { expected },
-                recoveries,
-            })
+            if positions.is_empty() && !program.explains {
+                Err(ParseError {
+                    position,
+                    kind: ParseErrorKind::NoMatch {
+                        expected: Vec::new(),
+                    },
+                    recoveries: Vec::new(),
+                })
+            } else {
+                let again = diagnosed(&positions, true);
+                let expected = farthest.map_or_else(Vec::new, |at| again.expected(at, None));
+                let error = ParseError {
+                    position,
+                    kind: ParseErrorKind::NoMatch { expected },
+                    recoveries: explained(&again, &ended),
+                };
+                Err(explain(&again, error, None))
+            }
         }
         Err(Stop::Error {
             label,
@@ -520,13 +549,13 @@ fn attempt(
             drop(first);
             let mut positions = asked(&ended);
             positions.push((position, floor));
-            let again = diagnosed(&positions);
+            let again = diagnosed(&positions, true);
             let (label, named) = match program.labels.get(label as usize) {
                 Some(ir::Label::Named(name)) => (name.clone(), true),
                 Some(ir::Label::Message(text)) => (text.clone(), false),
                 None => (String::new(), false),
             };
-            Err(ParseError {
+            let error = ParseError {
                 position: position as usize,
                 kind: ParseErrorKind::Label {
                     label,
@@ -534,7 +563,8 @@ fn attempt(
                     expected: again.expected(position, floor),
                 },
                 recoveries: explained(&again, &ended),
-            })
+            };
+            Err(explain(&again, error, floor))
         }
         Err(Stop::Limit(limit)) => Err(ParseError {
             position,

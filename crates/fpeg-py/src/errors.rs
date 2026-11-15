@@ -261,7 +261,7 @@ impl Found {
         };
         Found {
             start: error.position,
-            end: error.position,
+            end: error.end(),
             message: error.message(),
             label,
             expected,

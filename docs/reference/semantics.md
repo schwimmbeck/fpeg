@@ -36,7 +36,7 @@ The definition has two steps. First, every grammar is translated into a small co
 | `indent(e, s)`, `same(s)` | columns, `s` says whether to skip before the check |
 | `def(x, e, s)`, `ref(x)` | captures |
 | `label(e, l, s)` | match `e`. If it fails, stop the parse with the labeled error `l`, or recover from it in recovering mode |
-| `error_alternative(m)` | fail. Reserved for explaining errors |
+| `error_alternative(e, m)` | fail, and where a failed parse is explained, give the error `m` over what `e` matches where the parse tried it |
 
 ## Modules
 
@@ -61,7 +61,7 @@ The translation runs in this order.
 
 1. **Parameters.** Every use `r<a1, ..., an>` of a rule with parameters becomes a call of a rule instance whose body is the template with each parameter replaced by its argument. Uses with structurally equal arguments share one instance. All instances carry the name of the template.
 2. **Precedence blocks.** A rule `r: %precedence { L1 ... Ln }` becomes one rule per level. The rule of level `Lk` is `choice(A1, ..., Aj, call(Lk+1))`, with the alternatives `A` of that level and the fall-through to the next level, which the last level does not have. A reference to a level name calls that level's rule, from inside the block or from any other rule, since level names belong to the whole grammar. The rule `r` itself becomes `call(L1)`.
-3. **Sugar.** `e?` is `rep(e, 0, 1)`, `e*` is `rep(e, 0, ∞)`, `e+` is `rep(e, 1, ∞)`. `e ** s` is `rep(seq(e, rep(seq(s, e), 0, ∞)), 0, 1)` and `e ++ s` is `seq(e, rep(seq(s, e), 0, ∞))`. `e ^ l` is `label(e, l, s)`, where a message forms a label of its own. `()` is `ε`.
+3. **Sugar.** `e?` is `rep(e, 0, 1)`, `e*` is `rep(e, 0, ∞)`, `e+` is `rep(e, 1, ∞)`. `e ** s` is `rep(seq(e, rep(seq(s, e), 0, ∞)), 0, 1)` and `e ++ s` is `seq(e, rep(seq(s, e), 0, ∞))`. `e ^ l` is `label(e, l, s)`, where a message forms a label of its own. `()` is `ε`. A sequence `e1 ... ek %error(m) ...` is `error_alternative(seq(e1, ..., ek), m)`, without the parts after `%error(m)`, which never match, and `%error(m)` alone is `error_alternative(ε, m)`.
 4. **Modes.** Every expression is translated in the mode of the rule whose body it ends up in: *syntactic* for syntactic rules, *lexical* for lexical rules, *plain* for terminals and the skip expression.
    - In syntactic mode, a literal, class, property, `.` or `ref(x)` becomes `seq(skip, token(k, h, a))` with the atom `a`, a reference to a terminal `T` becomes `seq(skip, token(T, h, call(T)))`, and a reference to a lexical rule becomes `seq(skip, call(R))`.
    - In lexical mode the same holds without the `skip`.
@@ -99,7 +99,7 @@ Unless a rule below says otherwise, an error of a part is the error of the whole
 | `and(e)` | match `e` at `i`, sheltered: success `(i, [], Γ, false)` if it succeeds, failure `(false)` if it fails or ends in an error |
 | `cut` | success `(i, [], Γ, true)` |
 | `label(e, l, s)` | the result of `e` if it succeeds or ends in an error. If `e` fails, with `c` true or not, let `p` be where `skip` ends at `i` if `s`, otherwise `i`. The result is the error `(l, p, [])`, unless the parse is in recovering mode, the match is not sheltered, the floor is none or lies before `p`, and the grammar gives `l` a recovery `r`. Then `r` is matched at `p` with the floor `p`. On a success at `q`, the result is success `(q, [x], Γ, c)`, with the captures of the context, the cut flag of the failure, and the error item `x` of `l` from `p` to `q` with the items of `r`. If `r` fails, the result is the error `(l, p, [])`, and if it ends in an error, that error. A label is no choice point, so a cut that `e` passes reaches the enclosing one |
-| `error_alternative(m)` | failure `(false)` |
+| `error_alternative(e, m)` | failure `(false)`. Outside `not` and `and`, the match is an *attempt* of the alternative at `i` in the context `κ` |
 
 The captures do not change inside a `not` or `and`: what `e` captures there is dropped.
 
@@ -162,6 +162,8 @@ A parse that does not succeed fails at the *farthest failure position*, with an 
 - A labeled error and an error item at position `p` have the expected set of `p` under the floor their label failed with: what failed there in the whole parse with that floor. So what a recovery tries, with a floor of its own, explains no error outside it. A named label shows the set after its name.
 - If the input does not end where the parse ended, that position counts as a failure that expects the end of the input. The recoveries of the failed parse are the error items of the success.
 - A parse that ends in an error `(l, p, D)` fails with that error instead, and its recoveries are the error items in `D`.
+
+A parse that fails, other than at a limit, is *explained* where the grammar has an error alternative. Its attempts under the floor of its error, which is that of the label and none for a parse that does not match, are tested in the order of their positions, and at one position in the order of the alternatives in the grammar: `e` is matched at `i` in `κ`, sheltered, as a parse of its own. The first alternative whose `e` succeeds gives the error `m` from `i` to `j`, the farthest end where it succeeds in several contexts, in place of the error, with no expected set, and the parse keeps its recoveries. Since an attempt is tested on its own, what the parse remembered and the order it tried things in cannot change which one explains it. Explaining is part of the parse, so a limit that the tests reach ends the parse at that limit.
 
 An input that a parse in normal mode accepts fails no label outside a token, the skip expression and a lookahead, so a parse in recovering mode gives it the same tree and no recoveries.
 

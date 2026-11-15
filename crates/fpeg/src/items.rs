@@ -260,7 +260,7 @@ impl Counter<'_> {
                 self.shared.insert(key, items.clone());
                 items
             }
-            E::ErrorAlternative => Items::never(),
+            E::ErrorAlternative { .. } => Items::never(),
             // Atoms outside a token match without an item, inside a terminal.
             E::Empty
             | E::Literal { .. }
@@ -542,7 +542,7 @@ fn item_calls(
 ) {
     use ir::Expr as E;
     match expr {
-        E::Node { .. } | E::Token { .. } | E::And(_) | E::Not(_) => {}
+        E::Node { .. } | E::Token { .. } | E::And(_) | E::Not(_) | E::ErrorAlternative { .. } => {}
         E::Call(rule) if (rule.0 as usize) < rules => calls.push(rule.0 as usize),
         E::Shared(inner) => {
             if walked.insert(Arc::as_ptr(inner)) {

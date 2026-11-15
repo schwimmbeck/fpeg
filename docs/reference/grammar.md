@@ -323,10 +323,22 @@ A capture lasts until the rule activation that made it returns, and rules called
 | `e ^ "message"` | if `e` fails, stop the parse with this message | now |
 | `e ^ label` | if `e` fails, stop the parse with the named error | now |
 | `%recover label: e` | in a parse that recovers, where the named error occurs, what `e` matches stands in the tree as an error node and the parse goes on | now |
-| `%error("message")` at the end of an alternative | an error alternative, tried only when a failed parse is explained | M8 |
+| `%error("message")` at the end of an alternative | an error alternative: it never matches, and where a parse fails, the first whose parts before it match gives the error | now |
 | `@sync` | recovery may resume before this rule | M8 |
 
 A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text. A named error says its name and what the grammar expected there, as `"]" ^ close` says `close: expected "]"`, and an error with a message says its message.
+
+An error alternative gives a common mistake a message of its own. It never matches, so it changes nothing that the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, each error alternative that it tried outside a lookahead is tested where it was tried, and the first in the order of the text whose parts before `%error` match there gives its message over the text they matched, in place of the error.
+
+```fpeg
+start: assignment+
+assignment: NAME "=" NUMBER ";" | NAME "==" %error("= assigns, == compares")
+NAME: [a-z]+
+NUMBER: [0-9]+
+%ignore " "+
+```
+
+The text `x == 1;` gives the error `= assigns, == compares` over `x ==`, where the grammar alone says that it expected a `NUMBER` after `x =`.
 
 ## Values
 

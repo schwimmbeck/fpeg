@@ -132,6 +132,8 @@ struct Resolver<'g> {
     captures: Interner,
     labels: Vec<ir::Label>,
     label_ids: HashMap<ir::Label, LabelId>,
+    /// How many error alternatives were lowered.
+    error_alternatives: u32,
     word: CharSet,
     soft: HashSet<&'g str>,
     reserved: ir::Reserved,
@@ -178,6 +180,7 @@ pub(crate) fn resolve_counted(
         captures: Interner::default(),
         labels: Vec::new(),
         label_ids: HashMap::new(),
+        error_alternatives: 0,
         word: CharSet {
             negated: false,
             items: vec![
@@ -364,6 +367,7 @@ pub(crate) fn resolve_counted(
         reserved: r.reserved,
         tab_width: grammar.tabs.map_or(DEFAULT_TAB_WIDTH, |t| t.value),
         labels: r.labels,
+        error_alternatives: r.error_alternatives,
         recoveries,
     };
     Ok((resolved, counts))
@@ -1219,7 +1223,26 @@ impl<'g> Resolver<'g> {
                     in_field: scope.in_field && items.len() == 1,
                     ..scope
                 };
-                E::Seq(items.iter().map(|e| self.lower(e, scope)).collect())
+                let mut parts: Vec<ir::Expr> = items.iter().map(|e| self.lower(e, scope)).collect();
+                // An error alternative tests the parts before it, and what follows it never
+                // matches, since it fails.
+                let error = (items.iter().enumerate()).find_map(|(at, item)| match &item.kind {
+                    ExprKind::Error { message } => Some((at, message)),
+                    _ => None,
+                });
+                match error {
+                    Some((at, message)) => {
+                        parts.truncate(at);
+                        let index = self.error_alternatives;
+                        self.error_alternatives += 1;
+                        E::ErrorAlternative {
+                            expr: Box::new(E::Seq(parts)),
+                            message: message.value.clone(),
+                            index,
+                        }
+                    }
+                    None => E::Seq(parts),
+                }
             }
             ExprKind::Choice(items) => {
                 let items = items
@@ -1348,7 +1371,15 @@ impl<'g> Resolver<'g> {
                 };
                 self.atom(expr, atom, scope)
             }
-            ExprKind::Error { .. } => E::ErrorAlternative,
+            ExprKind::Error { message } => {
+                let index = self.error_alternatives;
+                self.error_alternatives += 1;
+                E::ErrorAlternative {
+                    expr: Box::new(E::Empty),
+                    message: message.value.clone(),
+                    index,
+                }
+            }
             ExprKind::Inherited => {
                 let message = "... stands for the alternatives of a rule that the grammar \
                                extends and this rule replaces";

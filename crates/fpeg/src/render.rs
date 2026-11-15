@@ -104,8 +104,7 @@ impl ParseError {
             } => Some(label.as_str()),
             _ => None,
         };
-        let at = self.position;
-        shown.push(source.render(name, &self.message(), at, at));
+        shown.push(source.render(name, &self.message(), self.position, self.end()));
         shown.join("\n\n")
     }
 }

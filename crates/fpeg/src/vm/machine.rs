@@ -141,6 +141,19 @@ enum Entry {
     Recovering,
 }
 
+/// An error alternative matched outside a lookahead: which, where, and the context there, so
+/// that it can be tested once the parse has failed.
+#[derive(Clone, Copy, Debug)]
+struct Attempt {
+    index: u32,
+    pos: u32,
+    flags: u64,
+    column: u32,
+    /// The id of the visible captures.
+    map: u32,
+    floor: Option<u32>,
+}
+
 /// A recovery in progress: where it returns to, its label and the field of what failed,
 /// where it started, the height of the items then, and the floor and context it replaced.
 #[derive(Clone, Copy, Debug)]
@@ -163,8 +176,9 @@ struct Seeded {
 }
 
 /// What a remembered result depends on: the rule, the position, the flags that are on, the rest
-/// of the context, and whether failures were being recorded, since a result found while they
-/// were not recorded none. Without the last, it is the key of the table of left recursion.
+/// of the context, whether failures were being recorded, since a result found while they were
+/// not recorded none, and whether a lookahead enclosed the call, since then error alternatives
+/// recorded no attempts. Without the last two, it is the key of the table of left recursion.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MemoKey {
     rule: u32,
@@ -174,6 +188,7 @@ struct MemoKey {
     /// of the parse.
     context: u32,
     quiet: bool,
+    looking: bool,
 }
 
 impl Hash for MemoKey {
@@ -181,7 +196,8 @@ impl Hash for MemoKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write_u64(u64::from(self.rule) << 32 | u64::from(self.pos));
         state.write_u64(self.flags);
-        state.write_u64(u64::from(self.context) << 1 | u64::from(self.quiet));
+        let states = u64::from(self.quiet) << 1 | u64::from(self.looking);
+        state.write_u64(u64::from(self.context) << 2 | states);
     }
 }
 
@@ -281,6 +297,7 @@ pub fn memo_hashes(keys: impl Iterator<Item = (u32, u32, u64)>) -> Vec<u64> {
             flags,
             context: 0,
             quiet: false,
+            looking: false,
         })
     })
     .collect()
@@ -298,12 +315,16 @@ fn id_after(count: usize) -> Result<u32, Stop> {
 /// A skip that ran the skip routine: where it started, with which flags and context, and where
 /// it ended. Skipping depends on nothing else, since the skip expression makes no items, records
 /// no failures and calls no rule that skips, so a skip from there with those flags and that
-/// context ends there. The context counts only where the skip expression reads it.
+/// context ends there. The context counts only where the skip expression reads it. The floor
+/// counts, since the attempts of error alternatives count under it, and a run that explains a
+/// failed parse also tells apart skips inside a lookahead, where they record none.
 #[derive(Clone, Copy, Debug)]
 struct SkipCache {
     start: u32,
     flags: u64,
     context: u32,
+    floor: Option<u32>,
+    looking: bool,
     end: u32,
 }
 
@@ -557,6 +578,12 @@ pub(crate) struct Machine<'p, 'i> {
     labels: HashMap<u32, (u32, Option<u32>)>,
     /// What a parse that stopped without a tree recovered from on its way.
     ended: Vec<Found>,
+    /// Whether the run records the attempts of error alternatives, to explain a failed parse.
+    explaining: bool,
+    /// The attempts of error alternatives made outside lookaheads.
+    attempts: Vec<Attempt>,
+    /// How many lookaheads enclose the code in progress.
+    looking: u32,
     /// The ids of the captured texts met, one for equal texts, and the texts by id.
     texts: HashMap<&'i str, u32>,
     text_list: Vec<&'i str>,
@@ -623,6 +650,9 @@ impl<'p, 'i> Machine<'p, 'i> {
             recovering_frames: Vec::new(),
             labels: HashMap::new(),
             ended: Vec::new(),
+            explaining: false,
+            attempts: Vec::new(),
+            looking: 0,
             texts: HashMap::new(),
             text_list: Vec::new(),
             maps: HashMap::new(),
@@ -649,6 +679,104 @@ impl<'p, 'i> Machine<'p, 'i> {
     pub fn recovering(mut self) -> Machine<'p, 'i> {
         self.recovering = true;
         self
+    }
+
+    /// The machine for a run that records the attempts of error alternatives, to explain a
+    /// failed parse.
+    pub fn explaining(mut self) -> Machine<'p, 'i> {
+        self.explaining = true;
+        self
+    }
+
+    /// The error alternative that explains the failed parse whose error stands under `floor`.
+    /// The attempts under it are tested in the order of their positions, and at one position
+    /// in the order of the alternatives, each as a parse of its own, with the steps the run
+    /// left. The index of the first that matches, and where its longest match starts and ends,
+    /// or none where none matches, or the limit the tests reach.
+    pub fn explain(&self, floor: Option<u32>) -> Result<Option<(u32, u32, u32)>, Stop> {
+        let mut attempts: Vec<Attempt> = (self.attempts.iter())
+            .filter(|attempt| attempt.floor == floor)
+            .copied()
+            .collect();
+        let key = |a: &Attempt| (a.pos, a.index, a.flags, a.column, a.map);
+        attempts.sort_by_key(key);
+        attempts.dedup_by_key(|a| key(a));
+        let left = Limits {
+            max_steps: self.limits.max_steps.saturating_sub(self.steps),
+            ..self.limits
+        };
+        let mut tester = Machine::new(self.program, self.input, left, &[]);
+        let mut found: Option<(u32, u32, u32)> = None;
+        for attempt in attempts {
+            if found.is_some_and(|(index, pos, _)| (pos, index) != (attempt.pos, attempt.index)) {
+                break;
+            }
+            let Some(&Some(routine)) = self.program.error_tests.get(attempt.index as usize) else {
+                continue;
+            };
+            let captures = self.captured(attempt.map);
+            match tester.test_attempt(routine, &attempt, &captures) {
+                Ok(Some(end)) if found.is_none_or(|(_, _, longest)| end > longest) => {
+                    found = Some((attempt.index, attempt.pos, end));
+                }
+                Ok(_) => {}
+                Err(stop) => return Err(stop),
+            }
+        }
+        Ok(found)
+    }
+
+    /// Whether error alternatives record no attempts where they could: inside a lookahead of a
+    /// run that explains a failed parse. What is remembered or cached there is kept apart, so
+    /// that a later match outside the lookahead makes its attempts. Other runs record none at
+    /// all and keep nothing apart.
+    fn unattempted(&self) -> bool {
+        self.explaining && self.looking > 0
+    }
+
+    /// The visible captures with this id, each by name with its text.
+    fn captured(&self, map: u32) -> Vec<(u16, &'i str)> {
+        let Some(map) = (map as usize)
+            .checked_sub(1)
+            .and_then(|i| self.map_list.get(i))
+        else {
+            return Vec::new();
+        };
+        (map.iter())
+            .filter_map(|&(name, text)| Some((name, *self.text_list.get(text as usize)?)))
+            .collect()
+    }
+
+    /// Match the test routine of an error alternative at an attempt, sheltered, as a parse of
+    /// its own: where it ends if it matches. What earlier tests remembered stays valid, since a
+    /// result depends on its key alone.
+    fn test_attempt(
+        &mut self,
+        routine: u32,
+        attempt: &Attempt,
+        captures: &[(u16, &'i str)],
+    ) -> Result<Option<u32>, Stop> {
+        self.stack.clear();
+        self.items.clear();
+        self.recovering_frames.clear();
+        self.token = None;
+        self.depth = 0;
+        self.quiet = 1;
+        self.looking = 1;
+        self.floor = None;
+        self.pos = attempt.pos;
+        self.flags = attempt.flags;
+        self.column = attempt.column;
+        self.captures.clear();
+        for &(name, text) in captures {
+            self.remember(name, text)?;
+        }
+        self.context = self.context_of(self.column, self.map())?;
+        match self.run(routine) {
+            Ok(()) => Ok(Some(self.pos)),
+            Err(Stop::NoMatch | Stop::Error { .. }) => Ok(None),
+            Err(stop) => Err(stop),
+        }
     }
 
     /// What a parse that stopped without a tree recovered from on its way, in the order of
@@ -859,6 +987,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         quiet: self.quiet,
                     })?;
                     self.quiet += 1;
+                    self.looking += 1;
                 }
                 Inst::Commit(target) => {
                     self.stack.pop();
@@ -927,15 +1056,32 @@ impl<'p, 'i> Machine<'p, 'i> {
                     if let Some(Entry::Predicate { saved, quiet, .. }) = self.stack.pop() {
                         self.restore(saved);
                         self.quiet = quiet;
+                        self.looking -= 1;
                     }
                     self.pc = target;
                 }
                 Inst::FailTwice => {
                     if let Some(Entry::Predicate { quiet, .. }) = self.stack.pop() {
                         self.quiet = quiet;
+                        self.looking -= 1;
                     }
                     self.fail()?;
                 }
+                Inst::ErrorAttempt(index) => {
+                    if self.explaining && self.looking == 0 {
+                        self.memory.room(&mut self.attempts, 1)?;
+                        self.attempts.push(Attempt {
+                            index,
+                            pos: self.pos,
+                            flags: self.flags,
+                            column: self.column,
+                            map: self.map(),
+                            floor: self.floor,
+                        });
+                    }
+                    self.fail()?;
+                }
+                Inst::TestEnd => return Ok(()),
                 Inst::Throw(label) => self.throw(label)?,
                 Inst::Recover { label, field } => self.recover(label, field)?,
                 Inst::Fail => self.fail()?,
@@ -949,9 +1095,10 @@ impl<'p, 'i> Machine<'p, 'i> {
                     }
                     self.depth += 1;
                     let context = self.context();
+                    let (quiet, looking) = (self.quiet > 0, self.unattempted());
                     if let Some(profiler) = self.profiler.as_deref_mut() {
                         let rule = self.program.rule_at(target);
-                        let key = (rule, self.pos, self.flags, context, self.quiet > 0);
+                        let key = (rule, self.pos, self.flags, context, quiet, looking);
                         profiler.called(key, false, &mut self.memory)?;
                         let (stack, nodes) = (self.stack.len(), self.nodes.len());
                         profiler.entered(rule, self.pos, self.steps, stack, nodes);
@@ -974,8 +1121,19 @@ impl<'p, 'i> Machine<'p, 'i> {
                     (None, Some(_))
                         if self.program.passes.skip
                             && let Some(last) = self.skip_cache
-                            && (last.start, last.flags, last.context)
-                                == (self.pos, self.flags, self.skip_context()) =>
+                            && (
+                                last.start,
+                                last.flags,
+                                last.context,
+                                last.floor,
+                                last.looking,
+                            ) == (
+                                self.pos,
+                                self.flags,
+                                self.skip_context(),
+                                self.floor,
+                                self.unattempted(),
+                            ) =>
                     {
                         self.pos = last.end;
                         self.pc += 1;
@@ -1005,6 +1163,8 @@ impl<'p, 'i> Machine<'p, 'i> {
                                 start: self.skip_start,
                                 flags: self.flags,
                                 context: self.skip_context(),
+                                floor: self.floor,
+                                looking: self.unattempted(),
                                 end: self.pos,
                             });
                         }
@@ -1253,6 +1413,11 @@ impl<'p, 'i> Machine<'p, 'i> {
         let text = input
             .get(start as usize..self.pos as usize)
             .unwrap_or_default();
+        self.remember(name, text)
+    }
+
+    /// Remember `text` under the capture `name`, as `capture` does.
+    fn remember(&mut self, name: u16, text: &'i str) -> Result<(), Stop> {
         self.steps += text.len() as u64 / LITERAL_BYTES_PER_STEP + 1;
         let text_id = match self.texts.get(text) {
             Some(&id) => id,
@@ -1363,13 +1528,25 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some(test) = program.tests.get(index as usize) else {
             return true;
         };
-        let context = self.skip_context();
+        let here = (
+            self.pos,
+            self.flags,
+            self.skip_context(),
+            self.floor,
+            self.unattempted(),
+        );
         let at = match (test.after_skip, program.skip_class, self.skip_cache) {
             (false, _, _) => self.pos,
             (true, Some(class), _) => self.pos + self.run_of(class).0 as u32,
             (true, None, _) if self.skips_nothing() => self.pos,
             (true, None, Some(last))
-                if (last.start, last.flags, last.context) == (self.pos, self.flags, context) =>
+                if (
+                    last.start,
+                    last.flags,
+                    last.context,
+                    last.floor,
+                    last.looking,
+                ) == here =>
             {
                 last.end
             }
@@ -1483,10 +1660,18 @@ impl<'p, 'i> Machine<'p, 'i> {
             flags: self.flags,
             context: self.context(),
             quiet: self.quiet > 0,
+            looking: self.unattempted(),
         };
         let entry = recursive.then(|| self.active(rule)).flatten();
         if let Some(profiler) = self.profiler.as_deref_mut() {
-            let seen = (rule, key.pos, key.flags, key.context, key.quiet);
+            let seen = (
+                rule,
+                key.pos,
+                key.flags,
+                key.context,
+                key.quiet,
+                key.looking,
+            );
             profiler.called(seen, entry.is_some(), &mut self.memory)?;
         }
         if let Some(index) = entry {
@@ -1827,6 +2012,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                 self.restore(saved);
                 if let Some(quiet) = quiet {
                     self.quiet = quiet;
+                    self.looking -= 1;
                 }
                 self.pc = alt;
                 return Ok(());
@@ -1894,6 +2080,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     }
                     self.restore(saved);
                     self.quiet = quiet;
+                    self.looking -= 1;
                     self.pc = alt;
                     return Ok(());
                 }

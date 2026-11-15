@@ -28,6 +28,11 @@ impl Display for Program {
                 headings.insert(*pc, format!("recover {}:", label.text()));
             }
         }
+        for (index, pc) in self.error_tests.iter().enumerate() {
+            if let (Some(pc), Some(message)) = (pc, self.error_messages.get(index)) {
+                headings.insert(*pc, format!("test {}:", quoted(message)));
+            }
+        }
         for (name, &pc) in &self.entries {
             headings.insert(pc, format!("entry {name}:"));
         }
@@ -149,6 +154,11 @@ impl Program {
             Inst::PredChoice(target) => format!("PredChoice {target}"),
             Inst::BackCommit(target) => format!("BackCommit {target}"),
             Inst::FailTwice => "FailTwice".to_owned(),
+            Inst::ErrorAttempt(index) => match self.error_messages.get(index as usize) {
+                Some(text) => format!("ErrorAttempt {}", quoted(text)),
+                None => format!("ErrorAttempt ?{index}"),
+            },
+            Inst::TestEnd => "TestEnd".to_owned(),
             Inst::LabelChoice(target) => format!("LabelChoice {target}"),
             Inst::Throw(label) => match self.labels.get(label as usize) {
                 Some(label) => format!("Throw {}", quoted(label.text())),

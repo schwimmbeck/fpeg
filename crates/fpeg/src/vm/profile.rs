@@ -100,8 +100,9 @@ pub struct ProfileRow {
 }
 
 /// A call as the profiler tells calls apart for [`ProfileRow::repeats`]: the rule, the
-/// position, the flags, the rest of the context and the quiet state, as the memo does.
-type Seen = (u32, u32, u64, u32, bool);
+/// position, the flags, the rest of the context, the quiet state and whether a lookahead
+/// encloses it, as the memo does.
+type Seen = (u32, u32, u64, u32, bool, bool);
 
 /// A call whose routine is running.
 struct Active {

@@ -89,6 +89,19 @@ start: "[" ("1" ^ item) ("]" ^ close)
 (start ~"[" (<error> ~"x") <missing>"")
 errors: item: expected "1" at 1, close: expected "]" at 2
 
+=== an error alternative inside a recovery explains no error outside it
+start: "[" ("1" ^ item) "]"
+%recover item: "x" %error("never shown") | "x"
+--- recover "[x?"
+error at 2: expected "]"
+
+=== an error alternative in the ignored text makes its attempt under each floor
+start: ("x" ^ u) "z"
+%recover u: "y"*
+%ignore " " | "#" %error("hash")
+--- recover "y#z"
+error at 1..2: hash
+
 === a parse that does not match fails where the parse failed outside its recoveries
 start: "[" ("1" ^ item) "]"
 %recover item: "x" ("y" "z")?
