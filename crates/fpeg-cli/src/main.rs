@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use fpeg::{
-    Diagnostic, Grammar, LineIndex, NodeRef, ParseError, ParseErrorKind, Parser, Severity, Tree,
+    Diagnostic, Grammar, LineIndex, ModuleFiles, NodeRef, ParseError, ParseErrorKind, Parser,
+    Severity, Tree,
 };
 
 mod profile;
@@ -141,10 +142,17 @@ fn report(path: &Path, text: &str, found: &[Diagnostic]) {
     }
 }
 
+/// Read a grammar and join it with the grammars it extends and imports, from the files beside it
+/// before those that come with fpeg.
+fn joined(path: &Path, text: &str) -> Result<Grammar, Vec<Diagnostic>> {
+    let beside = ModuleFiles::new(path.parent().unwrap_or(Path::new("")));
+    Grammar::from_text(text)?.link(&beside)
+}
+
 /// Read and compile a grammar, or report its errors.
 fn compile(path: &Path) -> Result<(Grammar, Parser), Failure> {
     let text = read_grammar(path)?;
-    let grammar = Grammar::from_text(&text).map_err(|errors| {
+    let grammar = joined(path, &text).map_err(|errors| {
         report(path, &text, &errors);
         Failure::Problem
     })?;
@@ -176,7 +184,7 @@ fn check(args: &[OsString]) -> Result<(), Failure> {
             failed = true;
             continue;
         };
-        let found = match Grammar::from_text(&text) {
+        let found = match joined(path, &text) {
             Ok(grammar) => fpeg::check(&grammar),
             Err(errors) => errors,
         };

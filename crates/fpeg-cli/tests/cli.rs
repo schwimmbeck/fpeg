@@ -220,6 +220,37 @@ fn check_and_parse_report_each_problem_with_its_place_and_code() {
 }
 
 #[test]
+fn a_grammar_extends_and_imports_the_grammar_files_beside_it() {
+    let paths = files(
+        "modules",
+        &[
+            (
+                "base.fpeg",
+                "start: item+\nitem: WORD\nWORD: [a-z]+\n%ignore \" \"+\n",
+            ),
+            ("main.fpeg", "%extends \"base\"\nitem: ... | N\nN: [0-9]+\n"),
+            ("input.txt", "ab 12"),
+            ("broken.fpeg", "start: x\n"),
+            ("user.fpeg", "%import broken (start)\n"),
+        ],
+    );
+    let out = run(["parse".as_ref(), paths[1].as_os_str(), paths[2].as_os_str()]);
+    assert!(out.status.success(), "{}", text(&out.stdout));
+    assert_eq!(
+        text(&out.stdout),
+        "start\n  item\n    WORD\"ab\"\n  item\n    N\"12\"\n"
+    );
+    // A problem in a module stands at the directive, with its place in the module.
+    let out = run(["check".as_ref(), paths[4].as_os_str()]);
+    assert_eq!(out.status.code(), Some(1));
+    let user = paths[4].display();
+    let found = format!(
+        "{user}:1:9: error[E201]: in the grammar broken, line 1, column 8: unknown rule x\n"
+    );
+    assert_eq!(text(&out.stdout), found);
+}
+
+#[test]
 fn check_prints_warnings_and_fails_on_them_only_when_strict() {
     let paths = files(
         "warnings",
