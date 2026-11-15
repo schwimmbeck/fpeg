@@ -245,7 +245,7 @@ expr: %precedence {
 
 ```fpeg
 %ignore [ \t\r\n]+
-%ignore "//" [^\n]*
+%ignore "//" [^\r\n]*
 ```
 
 The skip expression is the ordered choice of all `%ignore` expressions. It is applied before every token of a syntactic rule, before the end of the input, and before the column checks of `%indent` and `%same` in syntactic rules. It is repeated as long as it matches a non-empty text. It may test flags, check the column against the reference column, and match captures with `%ref`. What it captures itself holds for that one match. It produces no tokens and must not use syntactic or lexical rules.

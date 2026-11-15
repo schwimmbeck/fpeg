@@ -6,8 +6,8 @@
 //! others to extend or import from, which resolves but has no samples.
 //!
 //! The samples of `grammars/<name>.fpeg` are the files in `grammars/samples/<name>/`. Each must
-//! parse from the rule `start`, and where a file `<sample>.tree` sits beside it, the tree must
-//! equal its content. The files in `grammars/samples/<name>/invalid/` must fail to parse.
+//! parse from the rule `start`, also with CR LF line breaks, and where a file `<sample>.tree`
+//! sits beside it, the tree must equal its content. The files in `grammars/samples/<name>/invalid/` must fail to parse.
 //! `FPEG_BLESS=1` writes the `.tree` files of samples that have one.
 //!
 //! The errors of these grammars name their terminals by display names, not by rule names.
@@ -83,6 +83,10 @@ fn acceptance_grammars_parse_their_samples() {
         for sample in valid {
             let input = std::fs::read_to_string(&sample).expect("the sample is readable");
             let shown = sample.display();
+            let crlf = input.replace('\n', "\r\n");
+            if reference.parse(&crlf, "start").is_err() {
+                failures.push(format!("{shown}: fails with CR LF line breaks"));
+            }
             match reference.parse(&input, "start") {
                 Err(error) => failures.push(format!("{shown}: {error}")),
                 Ok(tree) => {
@@ -112,6 +116,32 @@ fn acceptance_grammars_parse_their_samples() {
     }
     assert!(parsed > 0, "no samples parsed");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn line_comments_end_at_a_carriage_return() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
+    let read = |name: &str| {
+        std::fs::read_to_string(root.join(format!("{name}.fpeg"))).expect("the grammar is readable")
+    };
+    let common = "%import common (CPP_COMMENT, SH_COMMENT, SQL_COMMENT, INT, WS)\nstart: INT+\n\
+                  %ignore WS | CPP_COMMENT | SH_COMMENT | SQL_COMMENT\n";
+    let cases = [
+        (read("expressions"), "a // c\n+ b"),
+        (read("tiny"), "let a = 1; // c\nlet b = 2;"),
+        (read("jsonc"), "[1 // c\n, 2]"),
+        (common.to_owned(), "1 // a\n2 # b\n3 -- c\n4"),
+    ];
+    for (text, input) in &cases {
+        let grammar = Grammar::from_text(text).expect("reads");
+        let reference = Reference::new(&grammar).expect("resolves");
+        let tree = |input: &str| {
+            (reference.parse(input, "start"))
+                .map(|tree| tree.to_text(input, false))
+                .map_err(|error| error.to_string())
+        };
+        assert_eq!(tree(&input.replace('\n', "\r")), tree(input), "{input:?}");
+    }
 }
 
 /// The names that `expr` refers to outside a lookahead, where a failure is quiet.

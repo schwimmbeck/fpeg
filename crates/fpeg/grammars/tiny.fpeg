@@ -47,4 +47,4 @@ NAME "name": [A-Za-z_] [A-Za-z0-9_]*
 NUMBER "number": [0-9]+
 STRING "string": "\"" ([^"\\\n] | "\\" .)* "\""
 
-%ignore [ \t\r\n]+ | "//" [^\n]*
+%ignore [ \t\r\n]+ | "//" [^\r\n]*

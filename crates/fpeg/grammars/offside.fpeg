@@ -39,5 +39,5 @@ alternative: pattern=(NUMBER | NAME) "->" body=expr
 @reserved
 NAME "name": [a-z_] [a-zA-Z0-9_']*
 NUMBER "number": [0-9]+
-COMMENT: "--" [^\n]*
-_BREAK "line break": ("\n" " "* COMMENT?)+
+COMMENT: "--" [^\r\n]*
+_BREAK "line break": (("\r\n" | "\n") " "* COMMENT?)+

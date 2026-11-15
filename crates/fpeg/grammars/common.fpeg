@@ -26,7 +26,7 @@ WS "whitespace": [ \t\x0C\r\n]+
 CR "carriage return": "\r"
 LF "line feed": "\n"
 NEWLINE "newline": (CR? LF)+
-SH_COMMENT "comment": "#" [^\n]*
-CPP_COMMENT "comment": "//" [^\n]*
+SH_COMMENT "comment": "#" [^\r\n]*
+CPP_COMMENT "comment": "//" [^\r\n]*
 C_COMMENT "comment": "/*" (!"*/" .)* "*/"
-SQL_COMMENT "comment": "--" [^\n]*
+SQL_COMMENT "comment": "--" [^\r\n]*

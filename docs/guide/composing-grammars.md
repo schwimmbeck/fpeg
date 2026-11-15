@@ -13,7 +13,7 @@ jsonc = fpeg.Grammar(r"""
 %extends "json"
 object: "{" ((member ++ ",") ","?)? "}" => dict
 array: "[" ((value ++ ",") ","?)? "]" => list
-%ignore "//" [^\n]* | "/*" (!"*/" .)* "*/"
+%ignore "//" [^\r\n]* | "/*" (!"*/" .)* "*/"
 """)
 
 print(fpeg.Transformer().transform(jsonc.parse('{"a": [1, 2,], /* two */ "b": null,}')))
