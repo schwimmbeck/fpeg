@@ -353,6 +353,10 @@ pub(crate) struct Program {
     pub error_messages: Vec<String>,
     /// The rank of each error alternative in the order of the text, by index.
     pub error_ranks: Vec<u32>,
+    /// Whether the error of each error alternative starts after the ignored text, by index.
+    pub error_skips: Vec<bool>,
+    /// Where the test routine starts that finds where the ignored text at a position ends.
+    pub skip_test: Option<u32>,
     /// Where the test routine of each error alternative starts, for those compiled.
     pub error_tests: Vec<Option<u32>>,
     /// Whether the grammar has an error alternative, so that a failed parse is explained.

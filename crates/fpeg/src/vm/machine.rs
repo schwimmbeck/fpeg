@@ -724,9 +724,11 @@ impl<'p, 'i> Machine<'p, 'i> {
             ..self.limits
         };
         let mut tester = Machine::new(self.program, self.input, left, &[]);
-        let mut found: Option<(u32, u32, u32)> = None;
+        let mut found: Option<(Attempt, u32)> = None;
         for attempt in attempts {
-            if found.is_some_and(|(index, pos, _)| (pos, index) != (attempt.pos, attempt.index)) {
+            if found
+                .is_some_and(|(first, _)| (first.pos, first.index) != (attempt.pos, attempt.index))
+            {
                 break;
             }
             let Some(&Some(routine)) = self.program.error_tests.get(attempt.index as usize) else {
@@ -734,14 +736,27 @@ impl<'p, 'i> Machine<'p, 'i> {
             };
             let captures = self.captured(attempt.map);
             match tester.test_attempt(routine, &attempt, &captures) {
-                Ok(Some(end)) if found.is_none_or(|(_, _, longest)| end > longest) => {
-                    found = Some((attempt.index, attempt.pos, end));
+                Ok(Some(end)) if found.is_none_or(|(_, longest)| end > longest) => {
+                    found = Some((attempt, end));
                 }
                 Ok(_) => {}
                 Err(stop) => return Err(stop),
             }
         }
-        Ok(found)
+        let Some((attempt, end)) = found else {
+            return Ok(None);
+        };
+        // The error starts after the ignored text, as a label's does, or where the attempt was
+        // made where the ignored text there does not match.
+        let mut start = attempt.pos;
+        if self.program.error_skips.get(attempt.index as usize) == Some(&true)
+            && let Some(routine) = self.program.skip_test
+            && let Some(skipped) =
+                tester.test_attempt(routine, &attempt, &self.captured(attempt.map))?
+        {
+            start = skipped;
+        }
+        Ok(Some((attempt.index, start, end.max(start))))
     }
 
     /// Whether error alternatives record no attempts where they could: inside a lookahead of a

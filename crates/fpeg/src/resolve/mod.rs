@@ -1261,6 +1261,7 @@ impl<'g> Resolver<'g> {
                             expr: Box::new(E::Seq(parts)),
                             message: message.value.clone(),
                             index,
+                            skip: scope.mode == Mode::Syntactic,
                         }
                     }
                     None => E::Seq(parts),
@@ -1403,6 +1404,7 @@ impl<'g> Resolver<'g> {
                     expr: Box::new(E::Empty),
                     message: message.value.clone(),
                     index,
+                    skip: scope.mode == Mode::Syntactic,
                 }
             }
             ExprKind::Inherited => {

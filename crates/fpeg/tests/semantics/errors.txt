@@ -62,6 +62,15 @@ start: "a" ("b" "c" ("d" | %error("far")) | %error("near"))
 --- "abcx"
 error at 1: near
 
+=== an error alternative's error starts after the ignored text, as a label's does
+start: assignment+
+assignment: NAME "=" NUMBER ";" | NAME "==" %error("= assigns, == compares")
+NAME: [a-z]+
+NUMBER: [0-9]+
+%ignore " "+
+--- "a = 1; x == 2;"
+error at 7..11: = assigns, == compares
+
 === attempts at one position are tested in the order their alternatives stand in the grammar
 pair<x>: x x | "b" %error("first")
 start: pair<"a"> | "b" %error("second")

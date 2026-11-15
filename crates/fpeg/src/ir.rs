@@ -229,11 +229,13 @@ pub(crate) enum Expr {
     },
     /// `%error(message)` after the parts of a sequence, `expr`: it fails, and where a failed
     /// parse is explained, its attempts are tested. `index` names it in the tables of the
-    /// grammar, and its rank in [`Grammar::error_ranks`] orders it among the others.
+    /// grammar, and its rank in [`Grammar::error_ranks`] orders it among the others. With
+    /// `skip`, in syntactic mode, its error starts after the ignored text.
     ErrorAlternative {
         expr: Box<Expr>,
         message: String,
         index: u32,
+        skip: bool,
     },
     /// An expression that the translation uses twice, the item of a separated repetition,
     /// shared so that nesting them does not double the grammar at every level.

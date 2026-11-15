@@ -502,8 +502,9 @@ struct Attempt {
     ctx: Ctx,
 }
 
-/// What each error alternative of a grammar tests, and its message, by index.
-fn error_alternatives(g: &ir::Grammar) -> Vec<Option<(&ir::Expr, &str)>> {
+/// What each error alternative of a grammar tests, its message, and whether its error starts
+/// after the ignored text, by index.
+fn error_alternatives(g: &ir::Grammar) -> Vec<Option<(&ir::Expr, &str, bool)>> {
     let mut table = vec![None; g.error_alternatives as usize];
     let mut seen = HashSet::new();
     let mut pending: Vec<&ir::Expr> = g.rules.iter().map(|rule| &rule.body).collect();
@@ -517,9 +518,10 @@ fn error_alternatives(g: &ir::Grammar) -> Vec<Option<(&ir::Expr, &str)>> {
                 expr: tested,
                 message,
                 index,
+                skip,
             } => {
                 if let Some(slot) = table.get_mut(*index as usize) {
-                    *slot = Some((&**tested, message.as_str()));
+                    *slot = Some((&**tested, message.as_str(), *skip));
                 }
             }
             _ => {}
@@ -665,7 +667,7 @@ impl<'a> Interp<'a> {
         let mut seen = HashSet::new();
         let mut found: Option<(&Attempt, usize)> = None;
         for attempt in attempts {
-            let Some(&Some((tested, _))) = table.get(attempt.index as usize) else {
+            let Some(&Some((tested, _, _))) = table.get(attempt.index as usize) else {
                 continue;
             };
             if found
@@ -695,16 +697,36 @@ impl<'a> Interp<'a> {
             }
         }
         let message = found.and_then(|(attempt, _)| table.get(attempt.index as usize)?.as_ref());
-        match (found, message) {
-            (Some((attempt, end)), Some((_, message))) => ParseError {
-                position: attempt.pos,
-                kind: ParseErrorKind::ErrorAlternative {
-                    message: (*message).to_owned(),
-                    end,
-                },
-                recoveries: error.recoveries,
+        let Some(((attempt, end), &(_, message, skip))) = found.zip(message) else {
+            return error;
+        };
+        // The error starts after the ignored text, as a label's does, or where the attempt was
+        // made where the ignored text there does not match.
+        let ctx = Ctx {
+            floor: None,
+            ..attempt.ctx.clone()
+        };
+        let position = match skip {
+            true => match tester.skip_end(attempt.pos, &ctx) {
+                Ok(position) => position,
+                Err(Abort::Limit(limit)) => {
+                    return ParseError {
+                        position: self.farthest.unwrap_or(0),
+                        kind: ParseErrorKind::Limit(limit),
+                        recoveries: Vec::new(),
+                    };
+                }
+                Err(_) => attempt.pos,
             },
-            _ => error,
+            false => attempt.pos,
+        };
+        ParseError {
+            position,
+            kind: ParseErrorKind::ErrorAlternative {
+                message: message.to_owned(),
+                end: end.max(position),
+            },
+            recoveries: error.recoveries,
         }
     }
 

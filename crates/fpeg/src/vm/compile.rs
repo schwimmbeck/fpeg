@@ -219,6 +219,15 @@ pub(crate) fn compile(
             c.emit(Inst::Ret);
         }
     }
+    // Where an error alternative's error starts after the ignored text, a test finds where
+    // that ends.
+    let skip_test = (c.has_skip && c.error_alternatives.iter().flatten().any(|found| found.2))
+        .then(|| {
+            let pc = c.here();
+            c.emit(Inst::Skip);
+            c.emit(Inst::TestEnd);
+            pc
+        });
     for (at, rule) in std::mem::take(&mut c.calls) {
         c.code[at] = match rules.get(rule.0 as usize) {
             Some(info) if info.recursive => Inst::LrCall(rule.0),
@@ -261,8 +270,12 @@ pub(crate) fn compile(
         labels,
         recoveries,
         error_messages: (c.error_alternatives.iter())
-            .map(|found| found.map_or_else(String::new, |(_, message)| message.to_owned()))
+            .map(|found| found.map_or_else(String::new, |(_, message, _)| message.to_owned()))
             .collect(),
+        error_skips: (c.error_alternatives.iter())
+            .map(|found| found.is_some_and(|(_, _, skip)| skip))
+            .collect(),
+        skip_test,
         error_ranks: grammar.error_ranks.clone(),
         error_tests,
         explains: grammar.error_alternatives > 0,
@@ -353,7 +366,7 @@ struct Compiler<'f> {
     /// Whether each label has a recovery, by label id.
     recovered: Vec<bool>,
     /// What each error alternative met so far tests, and its message, by index.
-    error_alternatives: Vec<Option<(&'f ir::Expr, &'f str)>>,
+    error_alternatives: Vec<Option<(&'f ir::Expr, &'f str, bool)>>,
     /// Whether the calls of each rule compile as its body.
     inline: Vec<bool>,
     /// The rule whose next call compiles as `SeedUse`: the leading call of a recursive
@@ -808,9 +821,10 @@ impl<'f> Compiler<'f> {
                 expr,
                 message,
                 index,
+                skip,
             } => {
                 if let Some(slot @ None) = self.error_alternatives.get_mut(*index as usize) {
-                    *slot = Some((&**expr, message.as_str()));
+                    *slot = Some((&**expr, message.as_str(), *skip));
                 }
                 self.emit(Inst::ErrorAttempt(*index));
             }
