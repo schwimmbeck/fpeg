@@ -28,6 +28,11 @@ GRAMMAR = fpeg.Grammar('%extends "python"')
 # The Python whose ast holds every node the transformer makes. An older one lacks some.
 _AST_PYTHON = (3, 15)
 
+# CPython's parser shares one instance of each context among its nodes, and so does this one.
+_LOAD = ast.Load()
+_STORE = ast.Store()
+_DEL = ast.Del()
+
 _BINARY = {
     "+": ast.Add,
     "-": ast.Sub,
@@ -82,12 +87,12 @@ def _with_context(expr: Any, context: Any) -> Any:
     while todo:
         node = todo.pop()
         if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
-            node.ctx = context()
+            node.ctx = context
         elif isinstance(node, ast.Starred):
-            node.ctx = context()
+            node.ctx = context
             todo.append(node.value)
         elif isinstance(node, (ast.Tuple, ast.List)):
-            node.ctx = context()
+            node.ctx = context
             todo.extend(node.elts)
     return expr
 
@@ -199,7 +204,7 @@ def _dotted(parts: list[Any]) -> Any:
     """Names joined by dots as attributes of the first, each spanning the names up to it."""
     value = parts[0]
     for part in parts[1:]:
-        value = _spanning(ast.Attribute(value, _name_of(part), ast.Load()), value, part)
+        value = _spanning(ast.Attribute(value, _name_of(part), _LOAD), value, part)
     return value
 
 
@@ -366,16 +371,16 @@ class ToAstBase(fpeg.Transformer):
     def annotated_assign(self, target: Any, annotation: Any, value: Any, *, node: Any) -> Any:
         written = node.field("target")
         simple = int(isinstance(target, ast.Name) and not isinstance(written, fpeg.Tree))
-        return ast.AnnAssign(_with_context(target, ast.Store), annotation, value, simple)
+        return ast.AnnAssign(_with_context(target, _STORE), annotation, value, simple)
 
     def assign(self, targets: Any, value: Any) -> Any:
-        return ast.Assign([_with_context(t, ast.Store) for t in targets], value)
+        return ast.Assign([_with_context(t, _STORE) for t in targets], value)
 
     def augmented_assign(self, target: Any, op: Any, value: Any) -> Any:
-        return ast.AugAssign(_with_context(target, ast.Store), _AUGMENTED[str(op)](), value)
+        return ast.AugAssign(_with_context(target, _STORE), _AUGMENTED[str(op)](), value)
 
     def type_alias(self, name: Any, params: Any, value: Any) -> Any:
-        return ast.TypeAlias(_with_context(name, ast.Store), params or [], value)
+        return ast.TypeAlias(_with_context(name, _STORE), params or [], value)
 
     def return_(self, value: Any) -> Any:
         return ast.Return(value)
@@ -395,7 +400,7 @@ class ToAstBase(fpeg.Transformer):
     def del_(self, targets: Any, *, node: Any) -> Any:
         bare = getattr(node.field("targets"), "data", None) == "tuple_expression"
         items = targets.elts if bare else [targets]
-        return ast.Delete([_with_context(t, ast.Del) for t in items])
+        return ast.Delete([_with_context(t, _DEL) for t in items])
 
     def yield_statement(self, value: Any) -> Any:
         return ast.Expr(value)
@@ -473,7 +478,7 @@ class ToAstBase(fpeg.Transformer):
 
     def for_(self, targets: Any, iter: Any, body: Any, orelse: Any, *, node: Any) -> Any:
         kind = ast.AsyncFor if node.field("async") is not None else ast.For
-        return kind(_with_context(targets, ast.Store), iter, body, orelse or [])
+        return kind(_with_context(targets, _STORE), iter, body, orelse or [])
 
     def with_(self, items: Any, body: Any, *, node: Any) -> Any:
         kind = ast.AsyncWith if node.field("async") is not None else ast.With
@@ -483,7 +488,7 @@ class ToAstBase(fpeg.Transformer):
         return items
 
     def with_item(self, context: Any, target: Any) -> Any:
-        return ast.withitem(context, None if target is None else _with_context(target, ast.Store))
+        return ast.withitem(context, None if target is None else _with_context(target, _STORE))
 
     def try_(self, body: Any, handlers: Any, orelse: Any, final: Any, *, node: Any) -> Any:
         star = any(getattr(h, "data", None) == "except_star" for h in node.field("handlers"))
@@ -619,7 +624,7 @@ class ToAstBase(fpeg.Transformer):
         return [i for i in items if not isinstance(i, ast.keyword)], keywords
 
     def starred(self, value: Any) -> Any:
-        return ast.Starred(value, ast.Load())
+        return ast.Starred(value, _LOAD)
 
     def double_starred(self, value: Any) -> Any:
         return ast.keyword(None, value)
@@ -630,10 +635,10 @@ class ToAstBase(fpeg.Transformer):
     # Expressions
 
     def tuple_expression(self, items: Any) -> Any:
-        return ast.Tuple(items, ast.Load())
+        return ast.Tuple(items, _LOAD)
 
     def named_expression(self, target: Any, value: Any) -> Any:
-        return ast.NamedExpr(_with_context(target, ast.Store), value)
+        return ast.NamedExpr(_with_context(target, _STORE), value)
 
     def yield_from(self, value: Any) -> Any:
         return ast.YieldFrom(value)
@@ -687,18 +692,18 @@ class ToAstBase(fpeg.Transformer):
         return ast.Call(func, args, keywords)
 
     def subscript(self, value: Any, slices: Any) -> Any:
-        return ast.Subscript(value, slices, ast.Load())
+        return ast.Subscript(value, slices, _LOAD)
 
     def slices(self, items: Any, *, node: Any) -> Any:
         if len(items) == 1 and not node.text.rstrip().endswith(","):
             return items[0]
-        return ast.Tuple(items, ast.Load())
+        return ast.Tuple(items, _LOAD)
 
     def slice(self, lower: Any, upper: Any, step: Any) -> Any:
         return ast.Slice(lower, upper, step)
 
     def attribute(self, value: Any, attribute: Any) -> Any:
-        return ast.Attribute(value, _name_of(attribute), ast.Load())
+        return ast.Attribute(value, _name_of(attribute), _LOAD)
 
     def true(self) -> Any:
         return ast.Constant(True)
@@ -714,13 +719,21 @@ class ToAstBase(fpeg.Transformer):
 
     def NAME(self, token: fpeg.Token) -> Any:
         # Python reads identifiers in NFKC.
-        return ast.Name(unicodedata.normalize("NFKC", token), ast.Load())
+        return ast.Name(unicodedata.normalize("NFKC", token), _LOAD)
 
     def NUMBER(self, token: fpeg.Token) -> Any:
-        return ast.Constant(ast.literal_eval(str(token)))
+        text = str(token)
+        # Most numbers are plain decimal integers, which int reads without running the compiler.
+        # Past the digit limit of int, literal_eval gives the error that Python gives.
+        if text.isdigit():
+            try:
+                return ast.Constant(int(text))
+            except ValueError:
+                pass
+        return ast.Constant(ast.literal_eval(text))
 
     def tuple(self, items: Any) -> Any:
-        return ast.Tuple(items, ast.Load())
+        return ast.Tuple(items, _LOAD)
 
     def group(self, value: Any) -> Any:
         return value
@@ -729,7 +742,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.GeneratorExp(element, clauses)
 
     def list(self, items: Any) -> Any:
-        return ast.List(items, ast.Load())
+        return ast.List(items, _LOAD)
 
     def list_comprehension(self, element: Any, clauses: Any) -> Any:
         return ast.ListComp(element, clauses)
@@ -757,13 +770,19 @@ class ToAstBase(fpeg.Transformer):
         return clauses
 
     def for_if(self, targets: Any, iter: Any, conditions: Any, *, node: Any) -> Any:
-        target = _with_context(targets, ast.Store)
+        target = _with_context(targets, _STORE)
         return ast.comprehension(target, iter, conditions, int(node.field("async") is not None))
 
     # Strings
 
     def STRING(self, token: fpeg.Token) -> Any:
-        return ast.Constant(ast.literal_eval(str(token)))
+        text = str(token)
+        # A string in single quotes without prefix or escape means the text between its quotes,
+        # which needs no compiler. A null character keeps the error that literal_eval gives.
+        short = text[0] in "'\"" and not text.startswith(("'''", '"""'))
+        if short and "\\" not in text and "\0" not in text:
+            return ast.Constant(text[1:-1])
+        return ast.Constant(ast.literal_eval(text))
 
     def BYTES(self, token: fpeg.Token) -> Any:
         return ast.literal_eval(str(token))

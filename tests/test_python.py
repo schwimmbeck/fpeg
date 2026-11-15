@@ -248,16 +248,17 @@ def test_the_transformer_refuses_a_python_older_than_its_ast(
         python.ToAst()
 
 
-def test_parse_takes_limits_and_refuses_an_escape_that_python_cannot_decode() -> None:
+def test_parse_takes_limits_and_refuses_a_literal_that_python_cannot_read() -> None:
     deep = "(" * 150 + "1" + ")" * 150 + "\n"
     with pytest.raises(fpeg.LimitError):
         python.parse(deep)
     assert isinstance(python.parse(deep, max_depth=100_000), ast.Module)
     backslash = chr(92)
-    # The grammar takes the form of these, and Python cannot decode them.
-    for escape in ("N{BOGUS}", "U00110000"):
+    # The grammar takes the form of these, and Python cannot read them.
+    escapes = [f'f"{backslash}{escape}"' for escape in ("N{BOGUS}", "U00110000")]
+    for source in [*escapes, '"a' + chr(0) + 'b"', "1" * 5000]:
         with pytest.raises(SyntaxError):
-            python.parse(f'f"{backslash}{escape}"\n')
+            python.parse(source + "\n")
 
 
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
