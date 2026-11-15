@@ -30,6 +30,8 @@ ORDEC_PACKAGE_SHA256 = {
     "parser.py": "bf09618fe631d77fa2e22707e2d12dea495adcac7047832ef3087b9d6b718dbb",
     "python_transformer.py": "9b35b499e1dfe631ebd1ab6b9fcc591541bebbaaa3e9bea63ca01888b557cf1a",
 }
+# The hash of its 76 ORD files, over their paths below the archive's top folder and their contents.
+ORD_FILES_SHA256 = "916d9da4aae54e33a786104cffc81cb69d2ad19689cb5610835703dfa021af18"
 
 # The test suite of Lua 5.4, which the Lua grammar must parse, pinned to the hash lua.org lists.
 LUA_TESTS_URL = "https://www.lua.org/tests/lua-5.4.9-tests.tar.gz"
@@ -72,6 +74,8 @@ RECORDS_JSON = Input(
     "35148527f24c4ab316fed81f290d8c490b16896c0029a941fa71b1266e3c76e3",
 )
 ORD_PACKAGE = CORPORA / "ordpkg"
+# The ORD files, which the ORD grammar of the tests must read as the application's parser does.
+ORD_FILES = CORPORA / "ord"
 PYTHON_FILE = Input(
     "python_transformer.py",
     ORD_PACKAGE / "python_transformer.py",
@@ -212,22 +216,48 @@ def fetch(url: str, path: Path, expected: str) -> None:
     partial.replace(path)
 
 
-def fetch_ord_package(target: Path) -> None:
-    """Download the first real application's parser package into ``target``."""
-    prefix = f"ordec-{ORDEC_COMMIT}/{ORDEC_PACKAGE_PATH}/"
+def fetch_ordec() -> None:
+    """Download the first real application for its parser package and its ORD files.
+
+    Both are checked before they take their names.
+    """
+    top = f"ordec-{ORDEC_COMMIT}/"
+    package = f"{top}{ORDEC_PACKAGE_PATH}/"
     with tempfile.TemporaryDirectory(dir=CORPORA) as scratch:
         archive = Path(scratch) / "ordec.tar.gz"
         with urllib.request.urlopen(ORDEC_ARCHIVE_URL, timeout=DOWNLOAD_TIMEOUT_S) as response:
             archive.write_bytes(response.read())
-        unpacked = Path(scratch) / "ordpkg"
-        unpacked.mkdir()
+        unpacked_package = Path(scratch) / "ordpkg"
+        unpacked_files = Path(scratch) / "ord"
+        unpacked_package.mkdir()
+        unpacked_files.mkdir()
         with tarfile.open(archive) as tar:
             for member in tar.getmembers():
-                name = member.name.removeprefix(prefix)
-                if member.isfile() and name in ORDEC_PACKAGE_SHA256:
-                    member.name = name
-                    tar.extract(member, unpacked, filter="data")
-        shutil.move(unpacked, target)
+                if not member.isfile():
+                    continue
+                if member.name.removeprefix(package) in ORDEC_PACKAGE_SHA256:
+                    member.name = member.name.removeprefix(package)
+                    tar.extract(member, unpacked_package, filter="data")
+                elif member.name.startswith(top) and member.name.endswith(".ord"):
+                    member.name = member.name.removeprefix(top)
+                    tar.extract(member, unpacked_files, filter="data")
+        for name, expected in ORDEC_PACKAGE_SHA256.items():
+            check(unpacked_package / name, expected)
+        if ord_files_digest(unpacked_files) != ORD_FILES_SHA256:
+            raise SystemExit(f"the ORD files do not have the pinned SHA-256 {ORD_FILES_SHA256}")
+        for unpacked, target in ((unpacked_package, ORD_PACKAGE), (unpacked_files, ORD_FILES)):
+            shutil.rmtree(target, ignore_errors=True)
+            shutil.move(unpacked, target)
+
+
+def ord_files_digest(folder: Path) -> str:
+    """Return the hash of the ORD files below a folder, over their paths and their contents."""
+    digest = hashlib.sha256()
+    paths = sorted(folder.rglob("*.ord"), key=lambda path: path.relative_to(folder).as_posix())
+    for path in paths:
+        digest.update(path.relative_to(folder).as_posix().encode() + b"\0")
+        digest.update(path.read_bytes() + b"\0")
+    return digest.hexdigest()
 
 
 def matches(path: Path, expected: str) -> bool:
@@ -254,11 +284,10 @@ def prepare() -> None:
     if not matches(CALCULATOR.path, CALCULATOR.sha256):
         write_calculator(CALCULATOR.path)
         check(CALCULATOR.path, CALCULATOR.sha256)
-    if not all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items()):
-        shutil.rmtree(ORD_PACKAGE, ignore_errors=True)
-        fetch_ord_package(ORD_PACKAGE)
-        for name, expected in ORDEC_PACKAGE_SHA256.items():
-            check(ORD_PACKAGE / name, expected)
+    package = all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items())
+    files = ORD_FILES.is_dir() and ord_files_digest(ORD_FILES) == ORD_FILES_SHA256
+    if not (package and files):
+        fetch_ordec()
     if not matches(LUA_TESTS.path, LUA_TESTS.sha256):
         fetch(LUA_TESTS_URL, LUA_TESTS.path, LUA_TESTS.sha256)
 
