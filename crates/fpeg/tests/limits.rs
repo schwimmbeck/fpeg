@@ -64,6 +64,10 @@ fn grammar_errors(text: &str) -> Vec<String> {
 /// and a parse with every rule remembered, which takes a few thousand.
 const PATHOLOGICAL_MAX_STEPS: u64 = 1_100_000;
 
+/// Brackets that the reference interpreter parses within its own caps on nesting, deep enough
+/// to show that its recursion fits its stack.
+const DEEP_NESTING: usize = 1_900;
+
 /// Levels of nesting in the pathological inputs, each of which doubles the work of the parse
 /// without the restart.
 const PATHOLOGICAL_LEVELS: usize = 24;
@@ -166,8 +170,7 @@ fn a_rule_compiled_into_its_callers_makes_no_activation() {
 #[test]
 fn nesting_deeper_than_the_depth_limit_is_an_error_not_a_stack_overflow() {
     let reference = nesting();
-    // Just under the default depth, so the default is shown to fit the interpreter's stack.
-    assert!(reference.parse(&nested(1_900), "start").is_ok());
+    assert!(reference.parse(&nested(DEEP_NESTING), "start").is_ok());
     let error = reference
         .parse(&nested(100_000), "start")
         .expect_err("too deep");
