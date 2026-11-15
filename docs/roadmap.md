@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 to M5 are done. Work continues with M6.
+M0 to M6 are done. Work continues with M7.
 
 ## M0 Foundations
 
@@ -46,8 +46,11 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## M6 Context-sensitive syntax
 
-- Indentation, captures and back references, lexical rules with structure.
-- A Python grammar checked against CPython's own parser over the standard library.
+- Indentation by columns, captures and back references, run by the parsing machine, with what a parse remembers kept apart by them.
+- Lexical rules with structure, for strings that hold expressions.
+- The Python grammar checked against CPython's own parser over its standard library, tree and positions, Lua's own test suite as a corpus that must parse, and a small language with the offside rule.
+- Positions stamped natively on the values a transform makes, as Python's `ast` counts them or in the units of other tools.
+- Guides to indentation and to interpolated strings.
 
 ## M7 Modules
 
