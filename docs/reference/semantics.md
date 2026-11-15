@@ -113,8 +113,10 @@ A rule that is not left recursive gives the same result as matching its body onc
 | `if(a)`, `if_not(a)` | success `(i, [], Γ, false)` if flag `a` is on, or off, otherwise failure `(false)` |
 | `indent(e, s)` | let `p` be where `skip` ends at `i` if `s`, otherwise `i`. If the column of `p` is greater than the reference column, the result of `e` at `i` with the column of `p` as the reference column, otherwise failure `(false)` |
 | `same(s)` | with `p` as above: success `(i, [], Γ, false)` if the column of `p` equals the reference column, otherwise failure `(false)` |
-| `def(x, e, s)` | the result of `e`. On success, the captures it leaves map `x` to the text from `p` to the end of the match, in place of any text before, where `p` is where `skip` ends at `i` if `s`, otherwise `i`, and at most the end of the match |
+| `def(x, e, s)` | with `p` as above: the result of `e`. On success, the captures it leaves map `x` to the text from `p` to the end of the match, in place of any text before, and at most the end of the match |
 | `ref(x)` | success after the text `x` maps to if the input continues with it at `i`. Failure if it does not, or if `x` maps to nothing |
+
+Where `indent`, `same` and `def` take `p` from where `skip` ends, before anything else, an error that `skip` ends in is their result.
 
 Flags and the reference column hold for the extent of their expression, including the rules it calls. Captures hold until the rule activation that made them ends.
 

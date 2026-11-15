@@ -113,3 +113,10 @@ start: "c" | %on(nested, "a") | "b"
 (start ~"a")
 --- "\nb"
 error at 1: expected "a"
+
+=== def skips before its expression, as a column check does, so an error of the skip is its result
+%flag f
+%ignore " " | %if(f) "#" ("x" ^ "bad")
+start: %on(f, %def(c, %if(!f) "a"))? "#y"
+--- "#y"
+error at 1: bad

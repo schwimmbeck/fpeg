@@ -836,18 +836,20 @@ impl<'a> Interp<'a> {
                 capture,
                 expr,
                 skip,
-            } => match self.eval(expr, pos, ctx)? {
-                Outcome::Ok(mut success) => {
-                    let start = if *skip { self.skip_end(pos, ctx)? } else { pos };
-                    let start = start.min(success.end);
-                    let text = self.input.get(start..success.end).unwrap_or_default();
-                    self.spend(text.len() as u64)?;
-                    let id = self.intern(text);
-                    success.captures.insert(*capture, id);
-                    Ok(Outcome::Ok(success))
+            } => {
+                let start = if *skip { self.skip_end(pos, ctx)? } else { pos };
+                match self.eval(expr, pos, ctx)? {
+                    Outcome::Ok(mut success) => {
+                        let start = start.min(success.end);
+                        let text = self.input.get(start..success.end).unwrap_or_default();
+                        self.spend(text.len() as u64)?;
+                        let id = self.intern(text);
+                        success.captures.insert(*capture, id);
+                        Ok(Outcome::Ok(success))
+                    }
+                    failure => Ok(failure),
                 }
-                failure => Ok(failure),
-            },
+            }
             E::Ref { capture } => {
                 let Some(text) = ctx
                     .captures
