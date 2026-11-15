@@ -114,6 +114,10 @@ start
 
 ```
 
+```{diagram} recovery.svg
+A label that fails stops a normal parse. With `recover=True`, its `%recover` expression runs where the label's expression started, what it matches goes into the tree, and the parse goes on, so that one parse reports every mistake and still returns a tree.
+```
+
 A text with mistakes raises `ParseError` all the same, so that no broken text passes for a valid one. `tree` holds what the parse recovered and `errors` each mistake, as a parse without `recover` would have reported it had it stopped there. A recovery may parse what it skips, as `(NUMBER | !("," | "]") .)*` would keep the numbers in it, and a label inside a recovery recovers again once the recovery has made progress, so that the trees of a broken part stay.
 
 A `Transformer` gives error items to its methods `__error__` and `__missing__`. One that returns `fpeg.Discard` drops them, so the values of a recovered tree are those of what the parse could read:

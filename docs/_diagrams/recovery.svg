@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 440" role="img" aria-label="A label that fails stops a normal parse with ParseError. With recover=True, its %recover expression runs where the label's expression started. What it matches becomes an error node, a match of nothing a missing token, and the parse goes on, to raise ParseError at the end with the tree. Without a %recover for the label, or where the recovery fails, the parse stops.">
+  <defs>
+    <marker id="recovery-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <g class="box">
+    <rect x="20" y="20" width="270" height="58" rx="8"/>
+    <text class="title" x="155" y="45" text-anchor="middle"><tspan class="code">e ^ name</tspan> fails</text>
+    <text x="155" y="64" text-anchor="middle">where e does not match</text>
+  </g>
+  <g class="box">
+    <rect x="390" y="20" width="270" height="58" rx="8"/>
+    <text class="title code" x="525" y="45" text-anchor="middle">ParseError</text>
+    <text x="525" y="64" text-anchor="middle">the parse stops at this error</text>
+  </g>
+  <g class="box accent">
+    <rect x="20" y="134" width="270" height="58" rx="8"/>
+    <text class="title code" x="155" y="159" text-anchor="middle">%recover name: r</text>
+    <text x="155" y="178" text-anchor="middle">r runs where e started</text>
+  </g>
+  <g class="box">
+    <rect x="20" y="248" width="270" height="58" rx="8"/>
+    <text class="title" x="155" y="273" text-anchor="middle"><tspan class="code">&lt;error&gt;</tspan> node</text>
+    <text x="155" y="292" text-anchor="middle">holds the text r matched</text>
+  </g>
+  <g class="box">
+    <rect x="390" y="248" width="270" height="58" rx="8"/>
+    <text class="title" x="525" y="273" text-anchor="middle"><tspan class="code">&lt;missing&gt;</tspan> token</text>
+    <text x="525" y="292" text-anchor="middle">where r matched nothing</text>
+  </g>
+  <g class="box">
+    <rect x="100" y="362" width="480" height="58" rx="8"/>
+    <text class="title" x="340" y="387" text-anchor="middle">the parse goes on</text>
+    <text x="340" y="406" text-anchor="middle">and raises ParseError at the end, with the tree</text>
+  </g>
+  <path class="arrow" d="M290,49 H386" marker-end="url(#recovery-arrow)"/>
+  <text x="340" y="41" text-anchor="middle">normal parse</text>
+  <path class="arrow" d="M155,78 V130" marker-end="url(#recovery-arrow)"/>
+  <text class="code" x="167" y="110">recover=True</text>
+  <path class="arrow" d="M290,163 H525 V82" marker-end="url(#recovery-arrow)"/>
+  <text x="407" y="155" text-anchor="middle">no <tspan class="code">%recover</tspan>, or r fails</text>
+  <path class="arrow" d="M155,192 V244" marker-end="url(#recovery-arrow)"/>
+  <text x="143" y="226" text-anchor="end">r matches text</text>
+  <path class="arrow" d="M155,218 H525 V244" marker-end="url(#recovery-arrow)"/>
+  <text x="340" y="210" text-anchor="middle">r matches nothing</text>
+  <path class="arrow" d="M155,306 V358" marker-end="url(#recovery-arrow)"/>
+  <path class="arrow" d="M525,306 V358" marker-end="url(#recovery-arrow)"/>
+</svg>
