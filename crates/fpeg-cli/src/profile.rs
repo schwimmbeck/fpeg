@@ -183,8 +183,9 @@ fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
         );
     }
     for row in rows {
-        // A call that repeats an earlier one costs what an average call of the rule costs.
-        let saved = row.repeats * row.steps_with_callees / row.calls.max(1);
+        // What the repeated calls spent, which an average call would overstate where the rules
+        // they call are remembered and answer the repeats cheaply.
+        let saved = row.repeated_steps;
         if !row.remembered
             && !unmarkable.contains(row.name.as_str())
             && saved * 100 >= profile.steps * SUGGEST_MEMO_PERCENT

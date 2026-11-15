@@ -59,6 +59,7 @@ impl Profile {
             sum.steps_with_callees += row.steps_with_callees;
             sum.backtracked_bytes += row.backtracked_bytes;
             sum.repeats += row.repeats;
+            sum.repeated_steps += row.repeated_steps;
             sum.memo_hits += row.memo_hits;
             sum.memo_stores += row.memo_stores;
             sum.growths += row.growths;
@@ -91,6 +92,10 @@ pub struct ProfileRow {
     /// same context of columns and captures and the same recording of failures: what
     /// remembering the rule would answer.
     pub repeats: u64,
+    /// Steps from the calls counted in `repeats` that ran the rule to their ends, the rules
+    /// they called included, outside another such call of the rules of the name: what
+    /// remembering the rule would save at most.
+    pub repeated_steps: u64,
     /// Calls that a remembered result answered, a remembered failure included.
     pub memo_hits: u64,
     /// Results that were remembered.
@@ -115,6 +120,8 @@ struct Active {
     caller: u32,
     /// The farthest position that a try in the call failed at.
     reached: u32,
+    /// Whether the call repeats an earlier one.
+    repeated: bool,
 }
 
 /// The counting state of a profiling parse.
@@ -127,6 +134,10 @@ pub(super) struct Profiler {
     name_of: Vec<u32>,
     /// How many calls of the rules of each name are in progress, by the first row of the name.
     nesting: Vec<u32>,
+    /// How many of them repeat an earlier call.
+    repeated_nesting: Vec<u32>,
+    /// Whether the call counted last repeats an earlier one, for the routine it runs.
+    repeating: bool,
     /// The row that the steps since `mark` belong to, and the steps of the parse at the last
     /// change of that row.
     current: u32,
@@ -160,6 +171,8 @@ impl Profiler {
             .collect();
         Profiler {
             nesting: vec![0; rows.len()],
+            repeated_nesting: vec![0; rows.len()],
+            repeating: false,
             name_of,
             rows,
             active: Vec::new(),
@@ -193,6 +206,12 @@ impl Profiler {
         self.nesting.get_mut(name as usize)
     }
 
+    /// How many of those repeat an earlier call.
+    fn repeated_nesting(&mut self, rule: u32) -> Option<&mut u32> {
+        let name = *self.name_of.get(rule as usize)?;
+        self.repeated_nesting.get_mut(name as usize)
+    }
+
     /// A rule is called: count the call, and whether it repeats one, unless keeping it takes
     /// the parse past its memory limit. The left-recursive use of the entry of a call in
     /// progress repeats nothing that remembering the rule would answer.
@@ -210,6 +229,7 @@ impl Profiler {
             row.calls += 1;
             row.repeats += u64::from(repeated);
         }
+        self.repeating = repeated;
         Ok(())
     }
 
@@ -217,14 +237,19 @@ impl Profiler {
     pub fn entered(&mut self, rule: u32, pos: u32, steps: u64, stack: usize, nodes: usize) {
         let caller = self.current;
         self.switch(steps, rule);
+        let repeated = std::mem::take(&mut self.repeating);
         self.active.push(Active {
             rule,
             start: pos,
             entered: steps,
             caller,
             reached: pos,
+            repeated,
         });
         if let Some(nesting) = self.nesting(rule) {
+            *nesting += 1;
+        }
+        if repeated && let Some(nesting) = self.repeated_nesting(rule) {
             *nesting += 1;
         }
         self.peak_stack = self.peak_stack.max(stack as u64);
@@ -244,8 +269,21 @@ impl Profiler {
             }
             None => false,
         };
+        let outermost_repeat = call.repeated
+            && match self.repeated_nesting(call.rule) {
+                Some(nesting) => {
+                    *nesting = nesting.saturating_sub(1);
+                    *nesting == 0
+                }
+                None => false,
+            };
         if let Some(row) = self.row(call.rule) {
             row.steps_with_callees += if outermost { steps - call.entered } else { 0 };
+            row.repeated_steps += if outermost_repeat {
+                steps - call.entered
+            } else {
+                0
+            };
             if let Some(pos) = failed_at {
                 row.failures += 1;
                 let reached = call.reached.max(pos);
@@ -337,6 +375,7 @@ impl Profiler {
                     known.steps_with_callees += row.steps_with_callees;
                     known.backtracked_bytes += row.backtracked_bytes;
                     known.repeats += row.repeats;
+                    known.repeated_steps += row.repeated_steps;
                     known.memo_hits += row.memo_hits;
                     known.memo_stores += row.memo_stores;
                     known.growths += row.growths;

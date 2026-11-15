@@ -94,10 +94,20 @@ fn a_profile_counts_calls_and_those_that_repeat_one() {
         (false, 0, 0)
     );
     assert_eq!(row(&plain, "start").calls, 1);
+    // The calls cost alike, so the two that repeat the first spend two thirds of the steps.
+    assert_eq!(item.repeated_steps * 3, item.steps_with_callees * 2);
+    // Where a rule repeats inside its own repeats, the outermost counts, as for its steps.
+    let nested = "start: dot | bang | item\ndot: item \".\"\nbang: item \"!\"\n\
+                  item: \"(\" start \")\" | \"x\"\n";
+    let nested = profile(nested, "((((x))))");
+    assert!(row(&nested, "item").repeated_steps > 0);
+    for row in &nested.rows {
+        assert!(row.repeated_steps <= row.steps_with_callees, "{row:?}");
+    }
     // Remembered, the two calls that repeat the first are answered from its result.
     let marked = profile(&grammar("@memo\n"), "x");
     let item = row(&marked, "item");
-    assert_eq!((item.calls, item.repeats), (3, 2));
+    assert_eq!((item.calls, item.repeats, item.repeated_steps), (3, 2, 0));
     assert_eq!(
         (item.remembered, item.memo_hits, item.memo_stores),
         (true, 2, 1)

@@ -399,6 +399,23 @@ fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
         "{}",
         text(&out.stdout)
     );
+    // Nor is a rule whose repeated calls cost little, since a remembered rule they call
+    // answers them, however much its first call cost.
+    let cheap =
+        "start: a | b\na: w \"!\"\nb: w \"?\"\nw: \"x\"? m\n@memo\nm: \"(\" m \")\" | \"y\"\n";
+    let nested = format!("{}y{}?", "(".repeat(40), ")".repeat(40));
+    let paths = files("cheap", &[("again.fpeg", cheap), ("input.txt", &nested)]);
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        !text(&out.stdout).contains("@memo on w:"),
+        "{}",
+        text(&out.stdout)
+    );
     // Nor is a rule marked @nomemo, nor a precedence block or its levels, which @memo cannot
     // stand on. The start rule, called inside them, may be.
     let unmarked = grammar.replace("item:", "@nomemo\nitem:");

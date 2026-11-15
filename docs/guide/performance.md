@@ -28,10 +28,10 @@ dot        121     121    484   7.1%          5505         237      116     0   
 (parse)      0       0      2   0.0%             0           0        0     0       0      0
 
 6774 steps, at most 37 entries on the stack and 10 nodes, 0 results remembered
-@memo on item: 358 of its 363 calls repeat an earlier one, about 98% of all steps
+@memo on item: 358 of its 363 calls repeat an earlier one, about 97% of all steps
 @memo on start: 116 of its 121 calls repeat an earlier one, about 95% of all steps
-@memo on bang: 116 of its 121 calls repeat an earlier one, about 77% of all steps
-@memo on dot: 116 of its 121 calls repeat an earlier one, about 77% of all steps
+@memo on bang: 116 of its 121 calls repeat an earlier one, about 64% of all steps
+@memo on dot: 116 of its 121 calls repeat an earlier one, about 64% of all steps
 ```
 
 A step is one instruction of the parser. Nine characters take 6774 of them, and the column `repeats` says why: of 363 calls of `item`, 358 are at a position where `item` was called before. Where `dot` fails at the dot, `bang` parses the same item again, and so does the last alternative, and at every level of the parentheses that triples the work. The [command line reference](../reference/cli.md#fpeg-profile) explains every column.
