@@ -72,7 +72,7 @@ expr: %precedence {
            | "case"i branches=when+ ("else"i otherwise=expr)? "end"i -> case
            | "exists"i "(" query=select ")" -> exists
            | "(" query=select ")" -> subquery
-           | function=name "(" (all="*" | distinct="distinct"i? arguments=(expr ** ",")) ")" -> call
+           | function=name "(" (all="*" | distinct="distinct"i arguments=(expr ++ ",") | arguments=(expr ** ",")) ")" -> call
            | name
            | "(" expr ")"
 }
