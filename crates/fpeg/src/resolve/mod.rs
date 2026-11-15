@@ -579,10 +579,6 @@ impl<'g> Resolver<'g> {
             let message = format!("%tabs needs a width from 1 to {MAX_TAB_WIDTH}");
             self.error(DiagnosticCode::Bounds, message, tabs.span);
         }
-        for import in &g.imports {
-            let message = "%import is not supported yet, see the roadmap (M7)".into();
-            self.error(DiagnosticCode::NotYet, message, import.module.span);
-        }
         for recover in &g.recovers {
             let message = "%recover is not supported yet, see the roadmap (M8)".into();
             self.error(DiagnosticCode::NotYet, message, recover.label.span);

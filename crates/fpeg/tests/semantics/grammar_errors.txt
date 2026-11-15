@@ -175,15 +175,15 @@ start: "a"* *
 --- "aa"
 (start ~"a" ~"a")
 
-=== imports are not supported yet
-%import common (WS)
+=== an import under a prefix is not supported yet
+%import common (WS) as c
 start: "a"
 --- grammar
-%import is not supported yet
+an import under a prefix is not supported yet
 
-=== recovery and a word set that is no class are errors in a grammar that extends another, and builders print back
+=== recovery and a word set that is no class are errors in a grammar that extends and imports others, and builders print back
 %extends "json"
-%import common (WS, INT) as c
+%import common (WS, LETTER)
 %word "a"
 %recover missing: (!";" .)*
 start: "a" => Point(x, y=*, z=None, w="s", n=1.5)

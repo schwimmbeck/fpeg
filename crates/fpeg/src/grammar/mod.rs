@@ -130,7 +130,7 @@ pub struct Rule {
 impl Rule {
     /// The kind of the rule, from the case of its name and the `@lexical` attribute.
     pub fn kind(&self) -> RuleKind {
-        let first = self.name.text.trim_start_matches('_').chars().next();
+        let first = self.own_name().trim_start_matches('_').chars().next();
         if first.is_some_and(|c| c.is_ascii_uppercase()) {
             RuleKind::Terminal
         } else if self.has_attribute("lexical") {
@@ -142,7 +142,16 @@ impl Rule {
 
     /// Whether the name starts with an underscore: an inlined rule or a hidden terminal.
     pub fn is_underscored(&self) -> bool {
-        self.name.text.starts_with('_')
+        self.own_name().starts_with('_')
+    }
+
+    /// The name as its grammar wrote it: an import puts the name of the grammar and a dot
+    /// before the name of a rule it brings in for others, which keeps its kind.
+    fn own_name(&self) -> &str {
+        self.name
+            .text
+            .rsplit_once('.')
+            .map_or(&self.name.text, |(_, own)| own)
     }
 
     /// Whether the rule carries the attribute.

@@ -1,0 +1,31 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// Terminals that many grammars need, to be taken with %import common (NAME, ...). It is no
+// grammar of its own and has no start rule.
+
+DIGIT: [0-9]
+HEXDIGIT: [0-9a-fA-F]
+INT: DIGIT+
+SIGNED_INT: [+\-]? INT
+DECIMAL: INT "." INT? | "." INT
+_EXPONENT: [eE] SIGNED_INT
+FLOAT: INT _EXPONENT | DECIMAL _EXPONENT?
+SIGNED_FLOAT: [+\-]? FLOAT
+NUMBER: FLOAT | INT
+SIGNED_NUMBER: [+\-]? NUMBER
+ESCAPED_STRING: "\"" ("\\" . | [^"\\])* "\""
+LCASE_LETTER: [a-z]
+UCASE_LETTER: [A-Z]
+LETTER: UCASE_LETTER | LCASE_LETTER
+WORD: LETTER+
+CNAME: ("_" | LETTER) ("_" | LETTER | DIGIT)*
+WS_INLINE: [ \t]+
+WS: [ \t\x0C\r\n]+
+CR: "\r"
+LF: "\n"
+NEWLINE: (CR? LF)+
+SH_COMMENT: "#" [^\n]*
+CPP_COMMENT: "//" [^\n]*
+C_COMMENT: "/*" (!"*/" .)* "*/"
+SQL_COMMENT: "--" [^\n]*

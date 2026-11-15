@@ -1,21 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Modules: a grammar joined with the grammars it extends into one grammar, before it resolves.
+//! Modules: a grammar joined with the grammars it extends and imports into one grammar, before
+//! it resolves.
 //!
 //! The text of each module is read with its spans placed after those of the grammars before it,
 //! so that a problem the resolver or `check` finds in a module's rules can be traced back to it.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use super::{Expr, ExprKind, Grammar, Rule, RuleBody, Span, Text};
+use super::{
+    Alternative, Expr, ExprKind, Grammar, Import, Level, Name, Rule, RuleBody, Span, Text,
+};
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::lines::LineIndex;
 
-/// The text of a grammar that comes with the library, by the name a grammar extends it by.
+/// The text of a grammar that comes with the library, by the name a grammar extends or imports
+/// it by.
 pub fn bundled(name: &str) -> Option<&'static str> {
     match name {
+        "common" => Some(include_str!("../../grammars/common.fpeg")),
         "json" => Some(include_str!("../../grammars/json.fpeg")),
         "python" => Some(include_str!("../../grammars/python.fpeg")),
         _ => None,
@@ -62,17 +67,16 @@ fn locate(sources: &[Source], diagnostic: Diagnostic) -> Diagnostic {
     }
 }
 
-/// Join a grammar with the grammars it extends.
+/// Join a grammar with the grammars it extends and imports.
 pub(crate) fn link(grammar: &Grammar) -> Result<Cow<'_, Grammar>, Vec<Diagnostic>> {
-    if grammar.extends.is_none() {
+    if grammar.extends.is_none() && grammar.imports.is_empty() {
         return Ok(Cow::Borrowed(grammar));
     }
     let mut linker = Linker {
         sources: Vec::new(),
         next_base: extent(grammar) + 1,
-        directive: None,
     };
-    match linker.extended(grammar.clone()) {
+    match linker.linked(grammar.clone(), None) {
         Ok(mut joined) => {
             joined.sources = linker.sources;
             Ok(Cow::Owned(joined))
@@ -92,7 +96,13 @@ fn extent(grammar: &Grammar) -> u32 {
     let flags = grammar.flags.iter().map(|f| f.span.end);
     let tabs = grammar.tabs.iter().map(|t| t.span.end);
     let words = grammar.soft_keywords.iter().map(|w| w.span.end);
-    let imports = grammar.imports.iter().map(|i| i.module.span.end);
+    // The names and the prefix of an import stand after its module, and errors point at them.
+    let imports = grammar.imports.iter().flat_map(|i| {
+        let names = i.names.iter().map(|n| n.span.end);
+        names
+            .chain(i.prefix.iter().map(|p| p.span.end))
+            .chain([i.module.span.end])
+    });
     let extends = grammar.extends.iter().map(|e| e.span.end);
     let recovers = grammar.recovers.iter().map(|r| r.expr.span.end);
     (rules
@@ -111,8 +121,6 @@ fn extent(grammar: &Grammar) -> u32 {
 struct Linker {
     sources: Vec<Source>,
     next_base: u32,
-    /// The directive of the grammar itself that the modules being read come through.
-    directive: Option<Span>,
 }
 
 fn problem(code: DiagnosticCode, message: String, span: Span) -> Vec<Diagnostic> {
@@ -124,26 +132,37 @@ fn problem(code: DiagnosticCode, message: String, span: Span) -> Vec<Diagnostic>
 }
 
 impl Linker {
-    /// The grammar joined with what it extends, through any number of grammars.
-    fn extended(&mut self, mut grammar: Grammar) -> Result<Grammar, Vec<Diagnostic>> {
-        let Some(base) = grammar.extends.take() else {
-            return Ok(grammar);
-        };
-        let module = self.read(&base)?;
-        let module = self.extended(module)?;
-        extend(module, grammar)
+    /// A grammar joined with what it extends and imports, through any number of grammars.
+    /// `directive` is the one of the grammar itself that this grammar came in through.
+    fn linked(
+        &mut self,
+        mut grammar: Grammar,
+        directive: Option<Span>,
+    ) -> Result<Grammar, Vec<Diagnostic>> {
+        if let Some(base) = grammar.extends.take() {
+            let through = directive.unwrap_or(base.span);
+            let module = self.read(&base, through)?;
+            let module = self.linked(module, Some(through))?;
+            grammar = extend(module, grammar)?;
+        }
+        for taken in by_module(std::mem::take(&mut grammar.imports))? {
+            let through = directive.unwrap_or(taken.module.span);
+            let module = self.read(&taken.module, through)?;
+            let module = self.linked(module, Some(through))?;
+            import(&mut grammar, module, &taken.module, taken.names)?;
+        }
+        Ok(grammar)
     }
 
     /// The grammar model of a module.
-    fn read(&mut self, name: &Text) -> Result<Grammar, Vec<Diagnostic>> {
+    fn read(&mut self, name: &Text, directive: Span) -> Result<Grammar, Vec<Diagnostic>> {
         let Some(text) = bundled(&name.value) else {
             let message = format!("no grammar is named {}", name.value);
             return Err(problem(DiagnosticCode::UnknownModule, message, name.span));
         };
-        let directive = *self.directive.get_or_insert(name.span);
         let base = self.next_base;
         let too_large = || {
-            let message = "the grammars extended take too much text".to_owned();
+            let message = "the grammars extended and imported take too much text".to_owned();
             problem(DiagnosticCode::TooLarge, message, directive)
         };
         let length = u32::try_from(text.len()).map_err(|_| too_large())?;
@@ -184,11 +203,7 @@ fn extend(mut base: Grammar, extension: Grammar) -> Result<Grammar, Vec<Diagnost
     if extension.word.is_some() {
         base.word = extension.word;
     }
-    for flag in extension.flags {
-        if !base.flags.iter().any(|f| f.text == flag.text) {
-            base.flags.push(flag);
-        }
-    }
+    join_flags(&mut base.flags, extension.flags);
     if extension.tabs.is_some() {
         base.tabs = extension.tabs;
     }
@@ -200,6 +215,15 @@ fn extend(mut base: Grammar, extension: Grammar) -> Result<Grammar, Vec<Diagnost
     base.imports.extend(extension.imports);
     base.recovers.extend(extension.recovers);
     Ok(base)
+}
+
+/// The flags of a grammar with those of another added, each name once.
+fn join_flags(flags: &mut Vec<Name>, more: Vec<Name>) {
+    for flag in more {
+        if !flags.iter().any(|f| f.text == flag.text) {
+            flags.push(flag);
+        }
+    }
 }
 
 /// The spans of every `...` in an expression.
@@ -281,4 +305,183 @@ fn splice(mut rule: Rule, old: &Rule) -> Result<Rule, Vec<Diagnostic>> {
         alternatives.splice(at..=at, inherited.iter().cloned());
     }
     Ok(rule)
+}
+
+/// What a grammar imports from one module: the rules it names, or every rule.
+struct Taken {
+    module: Text,
+    /// `None` where an import names no rules and so takes them all.
+    names: Option<Vec<Name>>,
+}
+
+/// The imports of a grammar by module, in the order they first name it.
+fn by_module(imports: Vec<Import>) -> Result<Vec<Taken>, Vec<Diagnostic>> {
+    let mut modules: Vec<Taken> = Vec::new();
+    for import in imports {
+        if let Some(prefix) = &import.prefix {
+            let message = "an import under a prefix is not supported yet, see the roadmap (M9)";
+            return Err(problem(DiagnosticCode::NotYet, message.into(), prefix.span));
+        }
+        let names = (!import.names.is_empty()).then_some(import.names);
+        match modules
+            .iter_mut()
+            .find(|t| t.module.value == import.module.value)
+        {
+            Some(taken) => match (taken.names.as_mut(), names) {
+                (Some(taken), Some(more)) => taken.extend(more),
+                _ => taken.names = None,
+            },
+            None => modules.push(Taken {
+                module: import.module,
+                names,
+            }),
+        }
+    }
+    Ok(modules)
+}
+
+/// The names of the levels of a rule, none unless its body is a precedence block.
+fn levels(rule: &Rule) -> impl Iterator<Item = &str> {
+    let levels = match &rule.body {
+        RuleBody::Alternatives(_) => &[][..],
+        RuleBody::Precedence(levels) => levels.as_slice(),
+    };
+    levels.iter().map(|level| level.name.text.as_str())
+}
+
+/// The names a rule refers to, rules and levels, its parameters left out.
+fn references(rule: &Rule) -> Vec<&str> {
+    let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
+    let mut pending: Vec<&Expr> = match &rule.body {
+        RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
+        RuleBody::Precedence(levels) => (levels.iter())
+            .flat_map(|level| level.alternatives.iter().map(|a| &a.expr))
+            .collect(),
+    };
+    let mut found = Vec::new();
+    while let Some(expr) = pending.pop() {
+        if let ExprKind::Reference { name, .. } = &expr.kind
+            && !params.contains(name.text.as_str())
+        {
+            found.push(name.text.as_str());
+        }
+        pending.extend(expr.children());
+    }
+    found
+}
+
+/// Add the rules an import takes to the grammar under their names, and the rules they need
+/// under `module.name`, which no grammar can write, so that they clash with none. The levels of
+/// a precedence block always take such a name, since an import takes rules, not levels.
+fn import(
+    grammar: &mut Grammar,
+    module: Grammar,
+    name: &Text,
+    names: Option<Vec<Name>>,
+) -> Result<(), Vec<Diagnostic>> {
+    let rules: HashMap<&str, &Rule> = (module.rules.iter())
+        .map(|rule| (rule.name.text.as_str(), rule))
+        .collect();
+    // The rule that defines each name of the module, its block for a level.
+    let owners: HashMap<&str, &str> = (module.rules.iter())
+        .flat_map(|rule| {
+            let owner = rule.name.text.as_str();
+            levels(rule)
+                .map(move |level| (level, owner))
+                .chain([(owner, owner)])
+        })
+        .collect();
+    let taken: Vec<(&str, Span)> = match &names {
+        Some(names) => names.iter().map(|n| (n.text.as_str(), n.span)).collect(),
+        None => (module.rules.iter())
+            .map(|rule| (rule.name.text.as_str(), name.span))
+            .collect(),
+    };
+    let own: HashSet<&str> = (grammar.rules.iter())
+        .flat_map(|rule| levels(rule).chain([rule.name.text.as_str()]))
+        .collect();
+    let mut errors = Vec::new();
+    for &(rule, span) in &taken {
+        if !rules.contains_key(rule) {
+            let message = format!("the grammar {} defines no rule {rule}", name.value);
+            errors.extend(problem(DiagnosticCode::UnknownImport, message, span));
+        } else if own.contains(rule) {
+            let message = format!(
+                "the grammar defines {rule}, which it imports from {} too",
+                name.value
+            );
+            errors.extend(problem(DiagnosticCode::ImportClash, message, span));
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    let public: HashSet<&str> = taken.iter().map(|&(rule, _)| rule).collect();
+    let mut needed = public.clone();
+    let mut pending: Vec<&str> = needed.iter().copied().collect();
+    while let Some(rule) = pending.pop() {
+        for used in references(rules[rule]) {
+            if let Some(&owner) = owners.get(used)
+                && needed.insert(owner)
+            {
+                pending.push(owner);
+            }
+        }
+    }
+    let renamed = |rule: &str| match public.contains(rule) {
+        true => rule.to_owned(),
+        false => format!("{}.{rule}", name.value),
+    };
+    for rule in &module.rules {
+        if !needed.contains(rule.name.text.as_str()) {
+            continue;
+        }
+        let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
+        let alternatives = |alternatives: &[Alternative]| -> Vec<Alternative> {
+            (alternatives.iter())
+                .map(|a| Alternative {
+                    expr: rename_references(&a.expr, &params, &owners, &renamed),
+                    ..a.clone()
+                })
+                .collect()
+        };
+        let body = match &rule.body {
+            RuleBody::Alternatives(a) => RuleBody::Alternatives(alternatives(a)),
+            RuleBody::Precedence(levels) => RuleBody::Precedence(
+                (levels.iter())
+                    .map(|level| Level {
+                        name: Name {
+                            text: renamed(&level.name.text),
+                            span: level.name.span,
+                        },
+                        alternatives: alternatives(&level.alternatives),
+                    })
+                    .collect(),
+            ),
+        };
+        let mut copy = rule.clone();
+        copy.name.text = renamed(&rule.name.text);
+        copy.body = body;
+        grammar.rules.push(copy);
+    }
+    join_flags(&mut grammar.flags, module.flags);
+    Ok(())
+}
+
+/// An expression with each reference to a name of the module renamed, parameters left alone.
+fn rename_references(
+    expr: &Expr,
+    params: &HashSet<&str>,
+    owners: &HashMap<&str, &str>,
+    renamed: &dyn Fn(&str) -> String,
+) -> Expr {
+    let mut copy =
+        expr.map_children(&mut |child| rename_references(child, params, owners, renamed));
+    if let ExprKind::Reference { name, .. } = &mut copy.kind
+        && !params.contains(name.text.as_str())
+        && owners.contains_key(name.text.as_str())
+    {
+        name.text = renamed(&name.text);
+    }
+    copy
 }

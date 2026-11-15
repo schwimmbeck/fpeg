@@ -47,6 +47,13 @@ A grammar with `%extends "m"` is joined with the grammar `m` before anything els
 - The other rules are added.
 - The skip expression is the ordered choice of `m`'s `%ignore` expressions and then the grammar's. The flags and soft keywords are those of both, and `%word` and `%tabs` the grammar's where it gives them, otherwise `m`'s.
 
+A grammar with `%import m (a, b)` then adds rules of `m`, joined with what it extends and imports first:
+
+- `a` and `b` under their names, and every rule they need, directly or through others, under `m.r` for its name `r`, a name no grammar can write. The levels of a precedence block come under `m.l`. References in the rules added follow the new names.
+- A name keeps the kind of the name it replaces: `m.R` is a terminal as `R` is, and `m._r` makes no node as `_r` makes none.
+- The flags of `m` join the grammar's. Its other directives do not count.
+- All imports of one grammar `m` add one set of rules, and one without names takes every rule of `m`.
+
 ## Translation into the core
 
 The translation runs in this order.

@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Grammars that extend others: the rules they replace for every reference, where `...` puts the
-//! inherited alternatives, the directives they add, and the problems of modules with their codes.
+//! Grammars that extend and import others: the rules they replace for every reference, where
+//! `...` puts the inherited alternatives, the directives they add, the rules an import brings in
+//! and under which names, and the problems of modules with their codes.
 
 use fpeg::{Diagnostic, DiagnosticCode, Grammar, Parser};
 
@@ -129,5 +130,53 @@ fn a_problem_in_a_module_s_rules_stands_at_the_directive_that_takes_the_module_i
             &text[diagnostic.span.start as usize..diagnostic.span.end as usize],
             "\"json\""
         );
+    }
+}
+
+#[test]
+fn an_import_takes_the_rules_it_names_and_what_they_need_under_private_names() {
+    let text = "%import common (NUMBER)\nstart: NUMBER+\n%ignore \" \"+";
+    assert_eq!(tree(text, "1 2.5"), "(start NUMBER\"1\" NUMBER\"2.5\")");
+    // json's ?value needs the array and the number, which carry the name of their grammar.
+    let text = "%import json (value)\nstart: value";
+    assert_eq!(
+        tree(text, "[1]"),
+        "(start (json.array ~\"[\" json.INT\"1\" ~\"]\"))"
+    );
+}
+
+#[test]
+fn imports_of_one_grammar_share_what_they_need() {
+    // INT and NUMBER both need DIGIT, which comes once.
+    let text = "%import common (INT)\n%import common (NUMBER)\nstart: INT \"-\" NUMBER";
+    assert_eq!(tree(text, "1-2"), "(start INT\"1\" ~\"-\" NUMBER\"2\")");
+}
+
+#[test]
+fn the_levels_of_an_imported_precedence_block_take_a_private_name() {
+    // Python's expression is a block with a level sum, which the grammar's own sum does not meet.
+    let text = "%import python (expression)\nstart: expression | sum\nsum: \"x\"\n%ignore \" \"+";
+    let found = found(text);
+    assert!(
+        found.iter().all(|d| d.code != DiagnosticCode::Duplicate),
+        "{found:?}"
+    );
+    assert!(tree(text, "1 + 2").contains("python.NUMBER"));
+}
+
+#[test]
+fn an_import_of_a_name_defined_twice_or_not_at_all_is_an_error() {
+    for (text, code) in [
+        (
+            "%import common (NUMBER)\nstart: NUMBER\nNUMBER: [0-9]+",
+            DiagnosticCode::ImportClash,
+        ),
+        (
+            "%import common (NUMBR)\nstart: \"a\"",
+            DiagnosticCode::UnknownImport,
+        ),
+    ] {
+        let found = found(text);
+        assert!(found.iter().any(|d| d.code == code), "{text}: {found:?}");
     }
 }

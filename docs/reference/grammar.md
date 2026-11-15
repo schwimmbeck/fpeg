@@ -351,27 +351,34 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 
 ## Modules
 
-A grammar can start from another one and change it. The grammars that come with fpeg are `json` and `python`.
+A grammar can start from another one and change it, and take single rules from others. The grammars that come with fpeg are `common`, `json` and `python`.
 
 ```fpeg
 %extends "json"
+%import common (CPP_COMMENT)
 ?value: ... | NAME
 NAME: [a-z]+
-%ignore "//" [^\n]*
+%ignore CPP_COMMENT
 ```
 
 | Form | Meaning | Status |
 |---|---|---|
 | `%extends "json"` | start from the rules and directives of another grammar | now |
 | `...` | in a rule that replaces an inherited one, the inherited alternatives | now |
-| `%import common (WS, INT)` | take the named rules from another grammar, with what they depend on | M7 |
+| `%import common (WS, INT)` | take the named rules from another grammar, with what they depend on | now |
 | `%import python as py` | take a whole grammar under a prefix | M9 |
 
 - A rule defined again replaces the inherited one for every reference, also in the inherited rules. Replacing `?value` above lets every array and member hold a name.
 - `...` stands as a whole alternative, at most once, and puts the inherited alternatives there, with their aliases and builders: `?value: ... | NAME` tries them first, `?value: NAME | ...` last. A rule that uses it takes the parameters of the rule it replaces ([E605](diagnostics/E605.md)). In a precedence block, or for one, it waits for M9 ([E501](diagnostics/E501.md)).
 - A rule that replaces another says its own markers and attributes, `?` and `@memo` included.
 - The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's.
-- A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn. A problem that `check` finds in the rules of a grammar extended is reported at `%extends`, with the line and column in that grammar.
+- A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn.
+- An import takes the rules it names under their names, and the rules they need under the grammar's name and a dot, as `common.DIGIT`, which no grammar can write, so they clash with none. Each keeps its kind, so `common.DIGIT` is a terminal as `DIGIT` is, and its nodes and tokens carry that name. The levels of a precedence block taken in come under such names too, also those of a block taken by name. `%import common` without names takes every rule.
+- A rule the grammar defines too cannot be imported ([E603](diagnostics/E603.md)), nor one the other grammar lacks ([E604](diagnostics/E604.md)).
+- The flags of the rules imported join the grammar's under their names, so its skip expression can test one they set. Their grammar's other directives stay behind: the grammar that imports says what it skips and what its words are.
+- A problem that `check` finds in the rules of a grammar extended or imported is reported at `%extends` or `%import`, with the line and column in that grammar.
+
+`common` holds terminals that many grammars need: `DIGIT`, `HEXDIGIT`, `INT`, `SIGNED_INT`, `DECIMAL`, `FLOAT`, `SIGNED_FLOAT`, `NUMBER`, `SIGNED_NUMBER`, `ESCAPED_STRING`, `LCASE_LETTER`, `UCASE_LETTER`, `LETTER`, `WORD`, `CNAME`, `WS_INLINE`, `WS`, `CR`, `LF`, `NEWLINE`, `SH_COMMENT`, `CPP_COMMENT`, `C_COMMENT` and `SQL_COMMENT`.
 
 ## The grammar of grammars
 

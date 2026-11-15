@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Every acceptance grammar in `grammars/` reads from its text, prints back to the same grammar
-//! and parses its samples.
+//! and parses its samples. A grammar without a rule `start` is a module for others to extend or
+//! import from, which resolves but has no samples.
 //!
 //! The samples of `grammars/<name>.fpeg` are the files in `grammars/samples/<name>/`. Each must
 //! parse from the rule `start`, and where a file `<sample>.tree` sits beside it, the tree must
@@ -63,6 +64,9 @@ fn acceptance_grammars_parse_their_samples() {
                 continue;
             }
         };
+        if !grammar.rules.iter().any(|rule| rule.name.text == "start") {
+            continue;
+        }
         let samples = root.join("samples").join(name);
         let valid = files_in(&samples);
         if valid.is_empty() {
