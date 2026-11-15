@@ -82,14 +82,17 @@ convention = "pep257"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D"]
+# The methods of the transformer are named after the rules of the Python grammar, one for each
+# kind of node, and the class says what they give.
+"python/fpeg/python.py" = ["D102"]
 
 [tool.pyright]
 # Benchmarks and docs import their own dependency groups, ruff lints them.
 include = ["python", "tests", "scripts"]
 strict = ["python"]
 pythonVersion = "3.11"
-# The tests import helper modules of their own folder, as pytest lets them, and the corpora.
-extraPaths = ["tests", "benchmarks"]
+# The tests import the corpora that the benchmarks fetch.
+extraPaths = ["benchmarks"]
 venvPath = "."
 venv = ".venv"
 

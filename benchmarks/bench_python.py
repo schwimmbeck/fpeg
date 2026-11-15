@@ -9,10 +9,8 @@ Run through ``run.py``, or directly with pyperf options.
 import _symtable
 import ast
 import inspect
-import sys
 from collections.abc import Callable
 from functools import partial
-from pathlib import Path
 from typing import Any
 
 import fpeg
@@ -21,14 +19,10 @@ import libcst
 import pyperf
 import tree_sitter_python
 from corpus import PYTHON_FILE
+from fpeg import python
 from lark import Lark
 from lark.indenter import PythonIndenter
 from tree_sitter import Language, Parser, Tree
-
-# The transformer to ast lives with the tests, whose oracle it is.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
-
-import python_ast
 
 # Lark's Python grammar expects the file to end with a newline token.
 LARK_FINAL_NEWLINE = "\n"
@@ -73,7 +67,7 @@ def from_token(function: Callable[..., Any], set_positions: bool) -> Callable[..
 def wrapped(base: type, set_positions: bool) -> type:
     """Make a subclass of a transformer to `ast` with each method in such a wrapper."""
     methods = {}
-    for name, function in vars(python_ast.ToAstBase).items():
+    for name, function in vars(python.ToAstBase).items():
         if inspect.isfunction(function) and not name.startswith("_"):
             wrap = from_token if name.isupper() else from_meta
             methods[name] = wrap(function, set_positions)
@@ -82,10 +76,10 @@ def wrapped(base: type, set_positions: bool) -> type:
 
 # Positions set in Python, as without native stamping. Columns count code points, which are
 # the bytes `ast` counts on the ASCII benchmark file.
-ToAstFromMeta = wrapped(python_ast.ToAstBase, set_positions=True)
+ToAstFromMeta = wrapped(python.ToAstBase, set_positions=True)
 # The same wrappers around a transformer that stamps natively, so that the difference to it
 # is the setting of positions in Python alone.
-ToAstInWrappers = wrapped(python_ast.ToAst, set_positions=False)
+ToAstInWrappers = wrapped(python.ToAst, set_positions=False)
 
 
 def add_fpeg(runner: pyperf.Runner, text: str) -> None:
@@ -94,7 +88,7 @@ def add_fpeg(runner: pyperf.Runner, text: str) -> None:
 
     def checked(transformer: fpeg.Transformer) -> Callable[[], object]:
         def to_ast() -> object:
-            return transformer.transform(python_ast.GRAMMAR.parse(text))
+            return transformer.transform(python.GRAMMAR.parse(text))
 
         if ast.dump(to_ast(), include_attributes=True) != expected:
             raise RuntimeError("the transformer does not give the tree of ast.parse")
@@ -103,15 +97,15 @@ def add_fpeg(runner: pyperf.Runner, text: str) -> None:
     harness.add(
         runner,
         "fpeg Python grammar load",
-        lambda: partial(fpeg.Grammar.open, python_ast.GRAMMAR_PATH),
+        lambda: partial(fpeg.Grammar, '%extends "python"'),
     )
     harness.add(
-        runner, "fpeg parse, tree", lambda: partial(python_ast.GRAMMAR.parse, text), PYTHON_FILE
+        runner, "fpeg parse, tree", lambda: partial(python.GRAMMAR.parse, text), PYTHON_FILE
     )
     harness.add(
         runner,
         "fpeg parse and transform to ast, positions stamped natively",
-        lambda: checked(python_ast.ToAst()),
+        lambda: checked(python.ToAst()),
         PYTHON_FILE,
     )
     harness.add(

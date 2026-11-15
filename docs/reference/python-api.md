@@ -392,3 +392,28 @@ except fpeg.LimitError as error:
 .. autoclass:: fpeg.Diagnostic
    :members:
 ```
+
+## The Python grammar
+
+`fpeg.python` turns Python source into Python's own `ast`, with the Python grammar that comes with fpeg, and gives what `ast.parse` gives, positions included. The tests check it against CPython over the whole standard library. It builds the `ast` of Python 3.15 and needs that version.
+
+```python
+import ast
+
+from fpeg import python
+
+module = python.parse("total = price * (1 + rate)\n")
+print(ast.dump(module.body[0].value))
+```
+
+```output
+BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=Add(), right=Name(id='rate')))
+```
+
+`python.GRAMMAR` is the grammar and `python.ToAst` the transformer behind `parse`, with a method for each kind of node and positions stamped as `ast` counts them. A language that adds to Python extends both: a grammar that starts with `%extends "python"`, and a subclass of `ToAst` with methods for its new rules. `python.ToAstBase` holds the same methods without stamping, for a subclass that sets positions its own way.
+
+```{eval-rst}
+.. autofunction:: fpeg.python.parse
+
+.. autoclass:: fpeg.python.ToAst
+```

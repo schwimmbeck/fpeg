@@ -1,17 +1,18 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""A transformer from the tree of the Python grammar to Python's `ast`, which makes CPython's
-parser the oracle of the grammar.
+"""Python's own `ast` from the Python grammar that comes with fpeg, positions included.
 
-The tests compare what it gives with what `ast.parse` gives, by `ast.dump` and by the positions
-of the nodes, which the Transformer stamps natively.
+`parse(source)` gives what `ast.parse(source)` gives, which the tests check over CPython's
+library. `ToAst` is the transformer behind it, to extend together with the grammar: a grammar
+that starts with `%extends "python"` and a subclass of `ToAst` with methods for its new rules.
+Both build the `ast` of Python 3.15 and need it.
 """
 
 import ast as python_ast
+import sys
 import unicodedata
-from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import fpeg
 
@@ -19,10 +20,15 @@ import fpeg
 # not know whole.
 ast: Any = python_ast
 
-GRAMMAR_PATH = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "python.fpeg"
-GRAMMAR = fpeg.Grammar.open(GRAMMAR_PATH)
+__all__ = ["GRAMMAR", "ToAst", "ToAstBase", "parse"]
 
-BINARY = {
+#: The Python grammar that comes with fpeg, Python 3.15.
+GRAMMAR = fpeg.Grammar('%extends "python"')
+
+# The Python whose ast holds every node the transformer makes. An older one lacks some.
+_AST_PYTHON = (3, 15)
+
+_BINARY = {
     "+": ast.Add,
     "-": ast.Sub,
     "*": ast.Mult,
@@ -37,9 +43,9 @@ BINARY = {
     "^": ast.BitXor,
     "@": ast.MatMult,
 }
-AUGMENTED = {op + "=": kind for op, kind in BINARY.items()}
-UNARY = {"+": ast.UAdd, "-": ast.USub, "~": ast.Invert}
-COMPARE = {
+_AUGMENTED = {op + "=": kind for op, kind in _BINARY.items()}
+_UNARY = {"+": ast.UAdd, "-": ast.USub, "~": ast.Invert}
+_COMPARE = {
     "==": ast.Eq,
     "!=": ast.NotEq,
     "<": ast.Lt,
@@ -49,7 +55,7 @@ COMPARE = {
     "in": ast.In,
     "is": ast.Is,
 }
-SIMPLE_ESCAPES = {
+_SIMPLE_ESCAPES = {
     "\\": "\\",
     "'": "'",
     '"': '"',
@@ -62,15 +68,15 @@ SIMPLE_ESCAPES = {
     "v": "\v",
 }
 # The hex digits that follow each letter of an escape by code.
-HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
+_HEX_ESCAPES = {"x": 2, "u": 4, "U": 8}
 
 
-def name_of(value: Any) -> str:
-    """The identifier of a NAME, which the transformer gives as a `Name`."""
+def _name_of(value: Any) -> str:
+    """Return the identifier of a NAME, which the transformer gives as a `Name`."""
     return value.id if isinstance(value, ast.Name) else str(value)
 
 
-def with_context(expr: Any, context: Any) -> Any:
+def _with_context(expr: Any, context: Any) -> Any:
     """Give a target and the targets inside it the context of a store or a deletion."""
     todo = [expr]
     while todo:
@@ -86,48 +92,57 @@ def with_context(expr: Any, context: Any) -> Any:
     return expr
 
 
-def block(statements: list[Any]) -> list[Any]:
-    """The statements of a block or a module, where a line of simple statements gives a list of
-    them, each compound statement ending where its last statement ends."""
+def _block(statements: list[Any]) -> list[Any]:
+    """Return the statements of a block or a module.
+
+    A line of simple statements gives a list of them, and each compound statement ends where
+    its last statement ends.
+    """
     out: list[Any] = []
     for statement in statements:
-        out.extend(statement if isinstance(statement, list) else [statement])
+        out.extend(cast(list[Any], statement) if isinstance(statement, list) else [statement])
     for statement in out:
-        statement_end(statement)
+        _statement_end(statement)
     return out
 
 
-def statement_end(statement: Any) -> tuple[int, int]:
-    """Where a statement ends, a compound one where its last statement ends, which this sets.
-    The node of a block also holds the line breaks after that statement."""
+def _statement_end(statement: Any) -> tuple[int, int]:
+    """Return where a statement ends, a compound one where its last statement ends.
+
+    The end of a compound statement is set here. The node of a block also holds the line
+    breaks after that statement.
+    """
     for name in ("finalbody", "orelse", "handlers", "cases", "body"):
         items = getattr(statement, name, None)
         if items:
-            end = statement_end(items[-1])
+            end = _statement_end(items[-1])
             if "end_lineno" in statement._attributes:
                 statement.end_lineno, statement.end_col_offset = end
             return end
     return statement.end_lineno, statement.end_col_offset
 
 
-def spanning(value: Any, first: Any, last: Any) -> Any:
+def _spanning(value: Any, first: Any, last: Any) -> Any:
     """Give a value the position from the start of one node to the end of another."""
     value.lineno, value.col_offset = first.lineno, first.col_offset
     value.end_lineno, value.end_col_offset = last.end_lineno, last.end_col_offset
     return value
 
 
-def parameter_arg(name: Any, annotation: Any) -> Any:
-    """A parameter from its name to its annotation. Its node also holds its stars or default."""
-    return spanning(ast.arg(name_of(name), annotation), name, annotation or name)
+def _parameter_arg(name: Any, annotation: Any) -> Any:
+    """Return a parameter from its name to its annotation.
+
+    Its node also holds its stars or default.
+    """
+    return _spanning(ast.arg(_name_of(name), annotation), name, annotation or name)
 
 
-def no_arguments() -> Any:
+def _no_arguments() -> Any:
     return ast.arguments([], [], None, [], [], None, [])
 
 
-def arguments_of(items: list[Any]) -> Any:
-    """The parameters of a function or a lambda, sorted into the lists of `ast.arguments`."""
+def _arguments_of(items: list[Any]) -> Any:
+    """Sort the parameters of a function or a lambda into the lists of `ast.arguments`."""
     posonly: list[Any] = []
     args: list[Any] = []
     defaults: list[Any] = []
@@ -155,22 +170,25 @@ def arguments_of(items: list[Any]) -> Any:
     return ast.arguments(posonly, args, vararg, kwonly, kw_defaults, kwarg, defaults)
 
 
-def dotted(parts: list[Any]) -> Any:
+def _dotted(parts: list[Any]) -> Any:
     """Names joined by dots as attributes of the first, each spanning the names up to it."""
     value = parts[0]
     for part in parts[1:]:
-        value = spanning(ast.Attribute(value, name_of(part), ast.Load()), value, part)
+        value = _spanning(ast.Attribute(value, _name_of(part), ast.Load()), value, part)
     return value
 
 
-def line_feeds(text: str) -> str:
+def _line_feeds(text: str) -> str:
     """Source text with each line break as one line feed, as CPython reads it."""
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def decode(text: str, raw: bool, braces: bool) -> str:
-    """The value of the text of a string part: escapes taken where it is not raw, and doubled
-    braces made single in an f-string or t-string."""
+def _decode(text: str, raw: bool, braces: bool) -> str:
+    """Return the value of the text of a string part.
+
+    Escapes are taken where it is not raw, and doubled braces made single in an f-string or
+    t-string.
+    """
     out: list[str] = []
     i = 0
     while i < len(text):
@@ -184,8 +202,8 @@ def decode(text: str, raw: bool, braces: bool) -> str:
             i += 1
             continue
         nxt = text[i + 1 : i + 2]
-        if nxt in SIMPLE_ESCAPES:
-            out.append(SIMPLE_ESCAPES[nxt])
+        if nxt in _SIMPLE_ESCAPES:
+            out.append(_SIMPLE_ESCAPES[nxt])
             i += 2
         elif nxt == "\r":
             i += 3 if text.startswith("\r\n", i + 1) else 2
@@ -197,8 +215,8 @@ def decode(text: str, raw: bool, braces: bool) -> str:
                 j += 1
             out.append(chr(int(text[i + 1 : j], 8)))
             i = j
-        elif nxt in HEX_ESCAPES:
-            size = HEX_ESCAPES[nxt]
+        elif nxt in _HEX_ESCAPES:
+            size = _HEX_ESCAPES[nxt]
             out.append(chr(int(text[i + 2 : i + 2 + size], 16)))
             i += 2 + size
         elif nxt == "N" and text.startswith("{", i + 2):
@@ -211,27 +229,32 @@ def decode(text: str, raw: bool, braces: bool) -> str:
     return "".join(out)
 
 
-def finished(pieces: list[Any], raw: bool, braces: bool) -> list[Any]:
-    """The values of an f-string, a t-string or a format spec: texts decoded, the format specs
-    of fields finished, the text of a field with "=" before the field, adjacent texts joined."""
+def _finished(pieces: list[Any], raw: bool, braces: bool) -> list[Any]:
+    """Return the values of an f-string, a t-string or a format spec.
+
+    The texts are decoded, the format specs of fields finished, the text of a field with "="
+    put before the field, and adjacent texts joined.
+    """
     out: list[Any] = []
     for piece in pieces:
         if isinstance(piece, ast.Constant):
-            piece.value = decode(line_feeds(piece.value), raw, braces)
+            piece.value = _decode(_line_feeds(piece.value), raw, braces)
             out.append(piece)
             continue
         if piece.format_spec is not None:
-            piece.format_spec.values = finished(piece.format_spec.values, raw, False)
+            piece.format_spec.values = _finished(piece.format_spec.values, raw, False)
         debug = getattr(piece, "fpeg_debug", None)
         if debug is not None:
-            out.append(text_at(debug, piece.lineno, piece.col_offset + 1))
+            out.append(_text_at(debug, piece.lineno, piece.col_offset + 1))
         out.append(piece)
-    return joined(out)
+    return _joined(out)
 
 
-def joined(pieces: list[Any]) -> list[Any]:
-    """Values with each run of adjacent texts joined into one constant that spans the run, and
-    empty texts left out."""
+def _joined(pieces: list[Any]) -> list[Any]:
+    """Join each run of adjacent texts into one constant that spans the run.
+
+    Empty texts are left out.
+    """
     out: list[Any] = []
     run: list[Any] = []
     for piece in [*pieces, None]:
@@ -240,15 +263,15 @@ def joined(pieces: list[Any]) -> list[Any]:
             continue
         text = "".join(p.value for p in run)
         if text:
-            out.append(spanning(ast.Constant(text), run[0], run[-1]))
+            out.append(_spanning(ast.Constant(text), run[0], run[-1]))
         run = []
         if piece is not None:
             out.append(piece)
     return out
 
 
-def text_at(text: str, lineno: int, col_offset: int) -> Any:
-    """A constant of source text that starts at a position, ending where the text ends."""
+def _text_at(text: str, lineno: int, col_offset: int) -> Any:
+    """Return a constant of source text that starts at a position and ends with the text."""
     lines = text.split("\n")
     end = len(lines[-1].encode()) + (col_offset if len(lines) == 1 else 0)
     constant = ast.Constant(text)
@@ -257,9 +280,11 @@ def text_at(text: str, lineno: int, col_offset: int) -> Any:
     return constant
 
 
-def field_source(node: Any, ends: tuple[str, ...]) -> str:
-    """The text of a replacement field from after its brace to where the first of the fields
-    `ends` or the closing brace starts."""
+def _field_source(node: Any, ends: tuple[str, ...]) -> str:
+    """Return the text of a replacement field from after its brace.
+
+    It ends where the first of the fields `ends` or the closing brace starts.
+    """
     text = node.text[1:]
     end = len(text) - 1
     for name in ends:
@@ -267,11 +292,11 @@ def field_source(node: Any, ends: tuple[str, ...]) -> str:
         if item is not None:
             start = item.start_pos if isinstance(item, fpeg.Token) else item.meta.start_pos
             end = min(end, start - node.meta.start_pos - 1)
-    return line_feeds(text[:end])
+    return _line_feeds(text[:end])
 
 
-def interpolation(value: Any) -> Any:
-    """A replacement field of a t-string as an `Interpolation`, with its source text."""
+def _interpolation(value: Any) -> Any:
+    """Turn a replacement field of a t-string into an `Interpolation` with its source text."""
     if not isinstance(value, ast.FormattedValue):
         return value
     out = ast.Interpolation(value.value, value.fpeg_source, value.conversion, value.format_spec)
@@ -279,33 +304,35 @@ def interpolation(value: Any) -> Any:
 
 
 class ToAstBase(fpeg.Transformer):
-    """The methods that turn the tree of the Python grammar into Python's `ast`. They read the
-    positions of the values they get, which a subclass gives them."""
+    """The methods that turn the tree of the Python grammar into Python's `ast`.
+
+    They read the positions of the values they get, which a subclass gives them.
+    """
 
     # Statements
 
     def start(self, statements: Any) -> Any:
-        return ast.Module(body=block(statements), type_ignores=[])
+        return ast.Module(body=_block(statements), type_ignores=[])
 
     def simple_statements(self, items: Any) -> Any:
         return items
 
     def indented_block(self, statements: Any) -> Any:
-        return block(statements)
+        return _block(statements)
 
     def annotated_assign(self, target: Any, annotation: Any, value: Any, *, node: Any) -> Any:
         written = node.field("target")
         simple = int(isinstance(target, ast.Name) and not isinstance(written, fpeg.Tree))
-        return ast.AnnAssign(with_context(target, ast.Store), annotation, value, simple)
+        return ast.AnnAssign(_with_context(target, ast.Store), annotation, value, simple)
 
     def assign(self, targets: Any, value: Any) -> Any:
-        return ast.Assign([with_context(t, ast.Store) for t in targets], value)
+        return ast.Assign([_with_context(t, ast.Store) for t in targets], value)
 
     def augmented_assign(self, target: Any, op: Any, value: Any) -> Any:
-        return ast.AugAssign(with_context(target, ast.Store), AUGMENTED[str(op)](), value)
+        return ast.AugAssign(_with_context(target, ast.Store), _AUGMENTED[str(op)](), value)
 
     def type_alias(self, name: Any, params: Any, value: Any) -> Any:
-        return ast.TypeAlias(with_context(name, ast.Store), params or [], value)
+        return ast.TypeAlias(_with_context(name, ast.Store), params or [], value)
 
     def return_(self, value: Any) -> Any:
         return ast.Return(value)
@@ -325,7 +352,7 @@ class ToAstBase(fpeg.Transformer):
     def del_(self, targets: Any, *, node: Any) -> Any:
         bare = getattr(node.field("targets"), "data", None) == "tuple_expression"
         items = targets.elts if bare else [targets]
-        return ast.Delete([with_context(t, ast.Del) for t in items])
+        return ast.Delete([_with_context(t, ast.Del) for t in items])
 
     def yield_statement(self, value: Any) -> Any:
         return ast.Expr(value)
@@ -334,10 +361,10 @@ class ToAstBase(fpeg.Transformer):
         return ast.Assert(test, message)
 
     def global_(self, names: Any) -> Any:
-        return ast.Global([name_of(n) for n in names])
+        return ast.Global([_name_of(n) for n in names])
 
     def nonlocal_(self, names: Any) -> Any:
-        return ast.Nonlocal([name_of(n) for n in names])
+        return ast.Nonlocal([_name_of(n) for n in names])
 
     def expression_statement(self, value: Any) -> Any:
         return ast.Expr(value)
@@ -346,14 +373,14 @@ class ToAstBase(fpeg.Transformer):
         return ast.Import(names, is_lazy=int(lazy is not None))
 
     def dotted_as_name(self, name: str, alias: Any) -> Any:
-        return ast.alias(name, None if alias is None else name_of(alias))
+        return ast.alias(name, None if alias is None else _name_of(alias))
 
     def dotted_name(self, parts: Any) -> str:
-        return ".".join(name_of(p) for p in parts)
+        return ".".join(_name_of(p) for p in parts)
 
     def import_from(self, lazy: Any, levels: Any, module: Any, names: Any) -> Any:
         level = sum(len(str(dots)) for dots in levels)
-        listed = names if isinstance(names, list) else [names]
+        listed = cast(list[Any], names) if isinstance(names, list) else [names]
         return ast.ImportFrom(module, listed, level, is_lazy=int(lazy is not None))
 
     def import_all(self) -> Any:
@@ -363,10 +390,11 @@ class ToAstBase(fpeg.Transformer):
         return items
 
     def import_as_name(self, name: Any, alias: Any) -> Any:
-        return ast.alias(name_of(name), None if alias is None else name_of(alias))
+        return ast.alias(_name_of(name), None if alias is None else _name_of(alias))
 
     def decorated(self, decorators: Any, definition: Any) -> Any:
-        definition.decorator_list = decorators
+        # Before any that the method of a subclass gave the definition, which stay last.
+        definition.decorator_list = [*decorators, *definition.decorator_list]
         return definition
 
     def decorator(self, value: Any) -> Any:
@@ -377,15 +405,16 @@ class ToAstBase(fpeg.Transformer):
     ) -> Any:
         # The field async names no parameter, so the node tells.
         kind = ast.AsyncFunctionDef if node.field("async") is not None else ast.FunctionDef
-        arguments = parameters or no_arguments()
-        return kind(name_of(name), arguments, body, [], returns, None, params or [])
+        arguments = parameters or _no_arguments()
+        return kind(_name_of(name), arguments, body, [], returns, None, params or [])
 
     def class_def(self, name: Any, params: Any, bases: Any, body: Any) -> Any:
-        args, keywords = bases or ([], [])
-        return ast.ClassDef(name_of(name), args, keywords, body, [], params or [])
+        none: tuple[list[Any], list[Any]] = ([], [])
+        args, keywords = bases or none
+        return ast.ClassDef(_name_of(name), args, keywords, body, [], params or [])
 
     def if_(self, test: Any, body: Any, branches: Any, orelse: Any) -> Any:
-        rest = orelse or []
+        rest: list[Any] = orelse or []
         for branch in reversed(branches):
             branch.orelse = rest
             rest = [branch]
@@ -399,7 +428,7 @@ class ToAstBase(fpeg.Transformer):
 
     def for_(self, targets: Any, iter: Any, body: Any, orelse: Any, *, node: Any) -> Any:
         kind = ast.AsyncFor if node.field("async") is not None else ast.For
-        return kind(with_context(targets, ast.Store), iter, body, orelse or [])
+        return kind(_with_context(targets, ast.Store), iter, body, orelse or [])
 
     def with_(self, items: Any, body: Any, *, node: Any) -> Any:
         kind = ast.AsyncWith if node.field("async") is not None else ast.With
@@ -409,20 +438,20 @@ class ToAstBase(fpeg.Transformer):
         return items
 
     def with_item(self, context: Any, target: Any) -> Any:
-        return ast.withitem(context, None if target is None else with_context(target, ast.Store))
+        return ast.withitem(context, None if target is None else _with_context(target, ast.Store))
 
     def try_(self, body: Any, handlers: Any, orelse: Any, final: Any, *, node: Any) -> Any:
         star = any(getattr(h, "data", None) == "except_star" for h in node.field("handlers"))
         kind = ast.TryStar if star else ast.Try
         for handler in handlers:
-            statement_end(handler)
+            _statement_end(handler)
         return kind(body, handlers, orelse or [], final or [])
 
     def except_(self, types: Any, name: Any, body: Any) -> Any:
-        return ast.ExceptHandler(types, None if name is None else name_of(name), body)
+        return ast.ExceptHandler(types, None if name is None else _name_of(name), body)
 
     def except_star(self, types: Any, name: Any, body: Any) -> Any:
-        return ast.ExceptHandler(types, None if name is None else name_of(name), body)
+        return ast.ExceptHandler(types, None if name is None else _name_of(name), body)
 
     def match(self, subject: Any, cases: Any) -> Any:
         return ast.Match(subject, cases)
@@ -436,7 +465,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.MatchSequence(items)
 
     def as_pattern(self, pattern: Any, target: Any) -> Any:
-        return ast.MatchAs(pattern, name_of(target))
+        return ast.MatchAs(pattern, _name_of(target))
 
     def or_pattern(self, alternatives: Any) -> Any:
         return ast.MatchOr(alternatives)
@@ -447,43 +476,43 @@ class ToAstBase(fpeg.Transformer):
         return ast.MatchValue(value)
 
     def complex_number(self, real: Any, op: Any, imaginary: Any) -> Any:
-        return ast.BinOp(real, BINARY[str(op)](), imaginary)
+        return ast.BinOp(real, _BINARY[str(op)](), imaginary)
 
     def signed_number(self, sign: Any, number: Any) -> Any:
         if sign is None:
             return number
-        return ast.UnaryOp(UNARY[str(sign)](), number)
+        return ast.UnaryOp(_UNARY[str(sign)](), number)
 
     def class_pattern(self, children: Any) -> Any:
         # The field class names no parameter, and comes first.
         class_, arguments = children[0], children[1:]
         positional = [a for a in arguments if not isinstance(a, tuple)]
-        keywords = [a for a in arguments if isinstance(a, tuple)]
+        keywords = [cast(tuple[Any, Any], a) for a in arguments if isinstance(a, tuple)]
         return ast.MatchClass(
             class_, positional, [k for k, _ in keywords], [p for _, p in keywords]
         )
 
     def keyword_pattern(self, name: Any, pattern: Any) -> Any:
-        return (name_of(name), pattern)
+        return (_name_of(name), pattern)
 
     def value_pattern(self, parts: Any) -> Any:
-        return ast.MatchValue(dotted(parts))
+        return ast.MatchValue(_dotted(parts))
 
     def wildcard_pattern(self) -> Any:
         return ast.MatchAs()
 
     def capture_pattern(self, name: Any) -> Any:
-        return ast.MatchAs(name=name_of(name))
+        return ast.MatchAs(name=_name_of(name))
 
     def group_pattern(self, pattern: Any) -> Any:
         return pattern
 
     def star_pattern(self, target: Any) -> Any:
-        name = name_of(target)
+        name = _name_of(target)
         return ast.MatchStar(None if name == "_" else name)
 
     def mapping_pattern(self, items: Any) -> Any:
-        pairs = [i for i in items if isinstance(i, tuple)]
+        pairs = [cast(tuple[Any, Any], i) for i in items if isinstance(i, tuple)]
         rest = next((i for i in items if isinstance(i, str)), None)
         return ast.MatchMapping([k for k, _ in pairs], [p for _, p in pairs], rest)
 
@@ -495,36 +524,36 @@ class ToAstBase(fpeg.Transformer):
         return (key.value, pattern)
 
     def double_star_pattern(self, target: Any) -> str:
-        return name_of(target)
+        return _name_of(target)
 
     def pattern_name(self, parts: Any) -> Any:
-        return dotted(parts)
+        return _dotted(parts)
 
     # Parameters and arguments
 
     def parameters(self, items: Any) -> Any:
-        return arguments_of(items)
+        return _arguments_of(items)
 
     def lambda_parameters(self, items: Any) -> Any:
-        return arguments_of(items)
+        return _arguments_of(items)
 
     def positional_only(self) -> str:
         return "/"
 
     def parameter(self, name: Any, annotation: Any, default: Any) -> Any:
-        arg = parameter_arg(name, annotation)
+        arg = _parameter_arg(name, annotation)
         arg.fpeg_default = default
         return arg
 
     def var_positional(self, name: Any, annotation: Any) -> Any:
         if name is None:
             return "*"
-        arg = parameter_arg(name, annotation)
+        arg = _parameter_arg(name, annotation)
         arg.fpeg_star = 1
         return arg
 
     def var_keyword(self, name: Any, annotation: Any) -> Any:
-        arg = parameter_arg(name, annotation)
+        arg = _parameter_arg(name, annotation)
         arg.fpeg_star = 2
         return arg
 
@@ -532,13 +561,13 @@ class ToAstBase(fpeg.Transformer):
         return items
 
     def param_spec(self, name: Any, default: Any) -> Any:
-        return ast.ParamSpec(name_of(name), default)
+        return ast.ParamSpec(_name_of(name), default)
 
     def type_var_tuple(self, name: Any, default: Any) -> Any:
-        return ast.TypeVarTuple(name_of(name), default)
+        return ast.TypeVarTuple(_name_of(name), default)
 
     def type_var(self, name: Any, bound: Any, default: Any) -> Any:
-        return ast.TypeVar(name_of(name), bound, default)
+        return ast.TypeVar(_name_of(name), bound, default)
 
     def arguments(self, items: Any) -> Any:
         keywords = [i for i in items if isinstance(i, ast.keyword)]
@@ -551,7 +580,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.keyword(None, value)
 
     def keyword(self, name: Any, value: Any) -> Any:
-        return ast.keyword(name_of(name), value)
+        return ast.keyword(_name_of(name), value)
 
     # Expressions
 
@@ -559,7 +588,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.Tuple(items, ast.Load())
 
     def named_expression(self, target: Any, value: Any) -> Any:
-        return ast.NamedExpr(with_context(target, ast.Store), value)
+        return ast.NamedExpr(_with_context(target, ast.Store), value)
 
     def yield_from(self, value: Any) -> Any:
         return ast.YieldFrom(value)
@@ -568,7 +597,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.Yield(value)
 
     def lambda_(self, parameters: Any, body: Any) -> Any:
-        return ast.Lambda(parameters or no_arguments(), body)
+        return ast.Lambda(parameters or _no_arguments(), body)
 
     def if_expression(self, body: Any, test: Any, orelse: Any) -> Any:
         return ast.IfExp(test, body, orelse)
@@ -592,15 +621,15 @@ class ToAstBase(fpeg.Transformer):
         return ast.IsNot()
 
     def operator(self, op: Any) -> Any:
-        return COMPARE[str(op)]()
+        return _COMPARE[str(op)]()
 
     def binary(self, left: Any, op: Any, right: Any, base: Any, exponent: Any) -> Any:
         if base is not None:
             return ast.BinOp(base, ast.Pow(), exponent)
-        return ast.BinOp(left, BINARY[str(op)](), right)
+        return ast.BinOp(left, _BINARY[str(op)](), right)
 
     def unary(self, op: Any, operand: Any) -> Any:
-        return ast.UnaryOp(UNARY[str(op)](), operand)
+        return ast.UnaryOp(_UNARY[str(op)](), operand)
 
     def await_(self, value: Any) -> Any:
         return ast.Await(value)
@@ -608,7 +637,8 @@ class ToAstBase(fpeg.Transformer):
     def call(self, func: Any, arguments: Any) -> Any:
         if isinstance(arguments, ast.GeneratorExp):
             return ast.Call(func, [arguments], [])
-        args, keywords = arguments or ([], [])
+        none: tuple[list[Any], list[Any]] = ([], [])
+        args, keywords = arguments or none
         return ast.Call(func, args, keywords)
 
     def subscript(self, value: Any, slices: Any) -> Any:
@@ -623,7 +653,7 @@ class ToAstBase(fpeg.Transformer):
         return ast.Slice(lower, upper, step)
 
     def attribute(self, value: Any, attribute: Any) -> Any:
-        return ast.Attribute(value, name_of(attribute), ast.Load())
+        return ast.Attribute(value, _name_of(attribute), ast.Load())
 
     def true(self) -> Any:
         return ast.Constant(True)
@@ -682,7 +712,7 @@ class ToAstBase(fpeg.Transformer):
         return clauses
 
     def for_if(self, targets: Any, iter: Any, conditions: Any, *, node: Any) -> Any:
-        target = with_context(targets, ast.Store)
+        target = _with_context(targets, ast.Store)
         return ast.comprehension(target, iter, conditions, int(node.field("async") is not None))
 
     # Strings
@@ -700,7 +730,7 @@ class ToAstBase(fpeg.Transformer):
             kind = "u" if node.text[:1] in "uU" else None
             return ast.Constant("".join(p.value for p in parts), kind)
         kind = ast.TemplateStr if isinstance(parts[0], ast.TemplateStr) else ast.JoinedStr
-        return kind(joined([v for p in parts for v in (p.values if isinstance(p, kind) else [p])]))
+        return kind(_joined([v for p in parts for v in (p.values if isinstance(p, kind) else [p])]))
 
     # The f-string or t-string decodes the texts in it, since it knows whether it is raw.
 
@@ -711,9 +741,9 @@ class ToAstBase(fpeg.Transformer):
         return ast.Constant(str(token))
 
     def fstring(self, prefix: Any, parts: Any) -> Any:
-        values = finished(parts, "r" in str(prefix).lower(), True)
+        values = _finished(parts, "r" in str(prefix).lower(), True)
         if "t" in str(prefix).lower():
-            return ast.TemplateStr([interpolation(v) for v in values])
+            return ast.TemplateStr([_interpolation(v) for v in values])
         return ast.JoinedStr(values)
 
     def replacement_field(
@@ -724,9 +754,9 @@ class ToAstBase(fpeg.Transformer):
             code = ord("r")
         formatted = ast.FormattedValue(value, code, format)
         # An interpolation keeps the text of its expression, and "=" puts it before the field.
-        formatted.fpeg_source = field_source(node, ("debug", "conversion", "format"))
+        formatted.fpeg_source = _field_source(node, ("debug", "conversion", "format"))
         if debug is not None:
-            formatted.fpeg_debug = field_source(node, ("conversion", "format"))
+            formatted.fpeg_debug = _field_source(node, ("conversion", "format"))
         return formatted
 
     def conversion(self, name: Any) -> str:
@@ -741,5 +771,11 @@ class ToAst(ToAstBase, positions="ast"):
 
 
 def parse(source: str) -> Any:
-    """The `ast` of a source as the Python grammar reads it, positions included."""
+    """Return the `ast` of a source as the Python grammar reads it, positions included.
+
+    It needs Python 3.15, whose `ast` it builds, and raises `RuntimeError` on an older one.
+    """
+    if sys.version_info < _AST_PYTHON:
+        running = f"{sys.version_info.major}.{sys.version_info.minor}"
+        raise RuntimeError(f"fpeg.python builds the ast of Python 3.15 and needs it, not {running}")
     return ToAst().transform(GRAMMAR.parse(source))

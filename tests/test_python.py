@@ -3,7 +3,7 @@
 
 """The Python grammar against CPython's `ast`: the same tree with the same positions.
 
-The transformer of `python_ast.py` turns the grammar's tree into `ast` nodes, which are compared
+The transformer of `fpeg.python` turns the grammar's tree into `ast` nodes, which are compared
 with those of `ast.parse` by `ast.dump`, then node by node by their positions.
 """
 
@@ -14,7 +14,7 @@ import warnings
 from pathlib import Path
 
 import pytest
-import python_ast
+from fpeg import python
 
 pytestmark = pytest.mark.skipif(
     sys.version_info < (3, 15), reason="the Python grammar follows Python 3.15"
@@ -187,7 +187,7 @@ def compare(source: str) -> None:
         # Some samples use unknown escapes on purpose, which Python only warns about.
         warnings.simplefilter("ignore", SyntaxWarning)
         theirs = ast.parse(source)
-    mine = python_ast.parse(source)
+    mine = python.parse(source)
     assert ast.dump(mine, indent=1) == ast.dump(theirs, indent=1)
     assert positions(mine) == positions(theirs)
 
