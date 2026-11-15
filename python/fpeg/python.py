@@ -846,7 +846,8 @@ def parse(
     """Return the `ast` of a source as the Python grammar reads it, positions included.
 
     The limits are those of `Grammar.parse`. It needs Python 3.15, whose `ast` it builds, and
-    raises `RuntimeError` on an older one.
+    raises `RuntimeError` on an older one before it parses.
     """
+    transformer = ToAst()
     tree = GRAMMAR.parse(source, max_steps=max_steps, max_depth=max_depth, max_memory=max_memory)
-    return ToAst().transform(tree)
+    return transformer.transform(tree)

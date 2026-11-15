@@ -248,6 +248,9 @@ def test_the_transformer_refuses_a_python_older_than_its_ast(
     monkeypatch.setattr(python, "_AST_PYTHON", (99, 0))
     with pytest.raises(RuntimeError, match="needs it"):
         python.ToAst()
+    # parse refuses before it parses, also a text it would refuse.
+    with pytest.raises(RuntimeError, match="needs it"):
+        python.parse("(")
 
 
 def test_the_default_depth_takes_the_deepest_nesting_cpython_takes() -> None:
