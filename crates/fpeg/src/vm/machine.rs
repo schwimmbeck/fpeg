@@ -150,7 +150,7 @@ struct Furthest {
 
 /// An error alternative matched outside a lookahead: which, where, and the context there, so
 /// that it can be tested once the parse has failed.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Attempt {
     index: u32,
     pos: u32,
@@ -587,8 +587,8 @@ pub(crate) struct Machine<'p, 'i> {
     ended: Vec<Found>,
     /// Whether the run records the attempts of error alternatives, to explain a failed parse.
     explaining: bool,
-    /// The attempts of error alternatives made outside lookaheads.
-    attempts: Vec<Attempt>,
+    /// The attempts of error alternatives made outside lookaheads, each once.
+    attempts: HashMap<Attempt, ()>,
     /// How many lookaheads enclose the code in progress.
     looking: u32,
     /// The ids of the captured texts met, one for equal texts, and the texts by id.
@@ -664,7 +664,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             labels: HashMap::new(),
             ended: Vec::new(),
             explaining: false,
-            attempts: Vec::new(),
+            attempts: HashMap::new(),
             looking: 0,
             texts: HashMap::new(),
             text_list: Vec::new(),
@@ -709,7 +709,7 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// left. The index of the first that matches, and where its longest match starts and ends,
     /// or none where none matches, or the limit the tests reach.
     pub fn explain(&self, floor: Option<u32>) -> Result<Option<(u32, u32, u32)>, Stop> {
-        let mut attempts: Vec<Attempt> = (self.attempts.iter())
+        let mut attempts: Vec<Attempt> = (self.attempts.keys())
             .filter(|attempt| attempt.floor == floor)
             .copied()
             .collect();
@@ -717,8 +717,10 @@ impl<'p, 'i> Machine<'p, 'i> {
         let key = |a: &Attempt| (a.pos, rank(a), a.index, a.flags, a.column, a.map);
         attempts.sort_by_key(key);
         attempts.dedup_by_key(|a| key(a));
+        // The tests take what the run left, so that the parse holds no more than its limits.
         let left = Limits {
             max_steps: self.limits.max_steps.saturating_sub(self.steps),
+            max_memory_bytes: Some(self.memory.limit.saturating_sub(self.memory.held)),
             ..self.limits
         };
         let mut tester = Machine::new(self.program, self.input, left, &[]);
@@ -1106,15 +1108,16 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
                 Inst::ErrorAttempt(index) => {
                     if self.explaining && self.looking == 0 {
-                        self.memory.room(&mut self.attempts, 1)?;
-                        self.attempts.push(Attempt {
+                        self.memory.room_in(&mut self.attempts)?;
+                        let attempt = Attempt {
                             index,
                             pos: self.pos,
                             flags: self.flags,
                             column: self.column,
                             map: self.map(),
                             floor: self.floor,
-                        });
+                        };
+                        self.attempts.insert(attempt, ());
                     }
                     self.fail()?;
                 }

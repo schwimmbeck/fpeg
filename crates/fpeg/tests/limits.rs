@@ -694,6 +694,41 @@ fn a_failed_recovering_parse_lists_the_error_items_its_shared_nodes_repeat_withi
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
 }
 
+/// The steps limits the next test tries, from 1.
+const EXPLAINED_MAX_STEPS: u64 = 1_000;
+
+#[test]
+fn a_failed_parse_is_explained_in_full_or_ends_at_a_limit() {
+    // While attempts are recorded, a skip inside a lookahead is kept apart from one outside,
+    // so the run that explains the parse skips the spaces again, and takes more steps than the
+    // first before it reaches the attempt.
+    let grammar = Grammar::from_text(
+        "start: !\"b\" \"a\" z\nz: \"b\" | \"c\" %error(\"no b\")\n%ignore \" \"+ | \"#\"\n",
+    );
+    let parser = Parser::new(&grammar.expect("the grammar reads")).expect("it compiles");
+    let input = " ".repeat(1_000) + "ac";
+    let full = parser.parse(&input, "start").expect_err("there is no b");
+    let message = "no b".to_owned();
+    assert_eq!(
+        full.kind,
+        ParseErrorKind::ErrorAlternative {
+            message,
+            end: 1_002
+        }
+    );
+    for max_steps in 1..EXPLAINED_MAX_STEPS {
+        let limits = Limits {
+            max_steps,
+            ..Limits::default()
+        };
+        let error = parser
+            .parse_with(&input, "start", limits)
+            .expect_err("no b");
+        let limited = error.kind == ParseErrorKind::Limit(Limit::Steps);
+        assert!(error == full || limited, "{max_steps}: {error:?}");
+    }
+}
+
 #[test]
 fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
     // An empty seed, and a remembered match given once, mark a tree as one that may repeat

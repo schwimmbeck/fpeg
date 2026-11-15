@@ -445,16 +445,17 @@ fn attempt(
         return refused(ParseErrorKind::Limit(Limit::InputSize));
     }
     let machine = |diagnose: &[(u32, Option<u32>)]| {
-        let machine = Machine::new(program, input, limits, diagnose).budgeted(budget);
+        let machine = Machine::new(program, input, limits, diagnose);
         if how.recovering {
             machine.recovering()
         } else {
             machine
         }
     };
-    // A run after the first collects what failed where the errors stand, and for a failed
-    // parse the attempts of error alternatives. It follows the first exactly, so it ends the
-    // same way.
+    // A run after the first collects what failed where the errors stand, explains the
+    // recoveries, and for a failed parse records the attempts of error alternatives. It follows
+    // the first, but the attempts and the matches it keeps apart for them cost steps and memory
+    // of their own, so it may take all the limits allow, and a limit it reaches ends the parse.
     let diagnosed = |positions: &[(u32, Option<u32>)], explain: bool, found: &[Found]| {
         let mut again = machine(positions);
         if !found.is_empty() {
@@ -463,10 +464,12 @@ fn attempt(
         if explain && program.explains {
             again = again.explaining();
         }
-        let _ = again.run(entry);
-        again
+        match again.run(entry) {
+            Err(Stop::Limit(limit)) => Err(limit),
+            _ => Ok(again),
+        }
     };
-    let mut first = machine(&[]);
+    let mut first = machine(&[]).budgeted(budget);
     if how.profiling {
         first = first.profiling();
     }
@@ -476,6 +479,17 @@ fn attempt(
     let farthest = first.farthest();
     let position = farthest.unwrap_or(0) as usize;
     let ended = first.take_recoveries();
+    let limited = |limit| ParseError {
+        position,
+        kind: ParseErrorKind::Limit(limit),
+        recoveries: Vec::new(),
+    };
+    // A run after the first that reaches a limit ends the parse at it.
+    let stopped = |limit| Attempt {
+        result: Some(Err(limited(limit))),
+        steps,
+        profile: profile.clone(),
+    };
     // The error of a failed parse as the error alternatives explain it under its floor.
     // Explaining is part of the parse, so a limit it reaches ends the parse at it.
     let explain = |again: &Machine<'_, '_>, error: ParseError, floor: Option<u32>| match again
@@ -489,11 +503,7 @@ fn attempt(
             },
             recoveries: error.recoveries,
         },
-        Err(Stop::Limit(limit)) => ParseError {
-            position,
-            kind: ParseErrorKind::Limit(limit),
-            recoveries: Vec::new(),
-        },
+        Err(Stop::Limit(limit)) => limited(limit),
         Ok(None) | Err(_) => error,
     };
     let result = match outcome {
@@ -502,15 +512,14 @@ fn attempt(
             Ok((mut tree, found)) => {
                 // The second run holds its own memory, so the first gives its back.
                 drop(first);
-                let again = diagnosed(&[], false, &found);
+                let again = match diagnosed(&[], false, &found) {
+                    Ok(again) => again,
+                    Err(limit) => return stopped(limit),
+                };
                 tree.set_recoveries(explained(&again, &found));
                 Ok(tree)
             }
-            Err(limit) => Err(ParseError {
-                position,
-                kind: ParseErrorKind::Limit(limit),
-                recoveries: Vec::new(),
-            }),
+            Err(limit) => Err(limited(limit)),
         },
         Err(Stop::NoMatch) => {
             drop(first);
@@ -525,7 +534,10 @@ fn attempt(
                     recoveries: Vec::new(),
                 })
             } else {
-                let again = diagnosed(&positions, true, &ended);
+                let again = match diagnosed(&positions, true, &ended) {
+                    Ok(again) => again,
+                    Err(limit) => return stopped(limit),
+                };
                 let expected = farthest.map_or_else(Vec::new, |at| again.expected(at, None));
                 let error = ParseError {
                     position,
@@ -544,7 +556,10 @@ fn attempt(
             // The parse got further than the label, so the farthest failure says more.
             let further = farthest.filter(|&at| floor.is_none() && at > position);
             if let Some(at) = further {
-                let again = diagnosed(&[(at, None)], true, &ended);
+                let again = match diagnosed(&[(at, None)], true, &ended) {
+                    Ok(again) => again,
+                    Err(limit) => return stopped(limit),
+                };
                 let error = ParseError {
                     position: at as usize,
                     kind: ParseErrorKind::NoMatch {
@@ -558,7 +573,10 @@ fn attempt(
                     profile,
                 };
             }
-            let again = diagnosed(&[(position, floor)], true, &ended);
+            let again = match diagnosed(&[(position, floor)], true, &ended) {
+                Ok(again) => again,
+                Err(limit) => return stopped(limit),
+            };
             let (label, named) = match program.labels.get(label as usize) {
                 Some(ir::Label::Named(name)) => (name.clone(), true),
                 Some(ir::Label::Message(text)) => (text.clone(), false),
@@ -575,11 +593,7 @@ fn attempt(
             };
             Err(explain(&again, error, floor))
         }
-        Err(Stop::Limit(limit)) => Err(ParseError {
-            position,
-            kind: ParseErrorKind::Limit(limit),
-            recoveries: Vec::new(),
-        }),
+        Err(Stop::Limit(limit)) => Err(limited(limit)),
         Err(Stop::Budget) => {
             return Attempt {
                 result: None,
