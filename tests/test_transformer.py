@@ -4,6 +4,7 @@
 import gc
 import pickle
 import sys
+import time
 import weakref
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -715,6 +716,13 @@ def test_a_subclass_keeps_the_positions_of_its_base() -> None:
     assert Again().transform(SUMS.parse("b")).end_col_offset == 1
 
 
+# A line of names long enough that counting each column from the line's start takes seconds,
+# and the time its transform may take, about ten times what it needs.
+LONG_LINE_NAMES = 20_000
+LONG_NAME_CHARS = 40
+LONG_LINE_SECONDS = 0.5
+
+
 class Spot:
     line: int
     column: int
@@ -744,6 +752,23 @@ def test_a_positions_record_names_the_attributes_the_units_and_the_classes() -> 
     # Basic Multilingual Plane, takes two UTF-16 units.
     assert first == fraktur_a
     assert (second.line, second.column, second.end_line, second.end_column) == (0, 6, 0, 7)
+
+
+def test_utf16_columns_take_no_longer_on_one_long_line() -> None:
+    names = fpeg.Grammar('start: NAME*\nNAME: [a-z\\u{1D51E}]+\n%ignore " "+')
+    record = fpeg.Positions("line", "column", "end_line", "end_column", Spot, 0, 0, "utf-16")
+
+    class Spots(fpeg.Transformer, positions=record):
+        def NAME(self, token: fpeg.Token) -> Any:
+            return Spot()
+
+    tree = names.parse("\U0001d51e " + ("b" * LONG_NAME_CHARS + " ") * LONG_LINE_NAMES)
+    begin = time.perf_counter()
+    spots = Spots().transform(tree).children
+    # Encoding the line from its start again at every value takes seconds.
+    assert time.perf_counter() - begin < LONG_LINE_SECONDS
+    width = LONG_NAME_CHARS + 1
+    assert (spots[1].column, spots[-1].end_column) == (3, 2 + LONG_LINE_NAMES * width)
 
 
 def test_positions_take_ast_or_a_record() -> None:

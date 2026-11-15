@@ -9,6 +9,7 @@
 //! nothing. An entry that no method reaches pushes no Python object, and a node whose children
 //! are all such entries stays one, so a subtree without methods costs no object at all.
 
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -331,6 +332,9 @@ struct Scan<'py, 'p> {
     spliced: Option<u32>,
     /// Positions of the tokens the scan makes, which come in input order.
     cursor: Option<LineCursor<'p>>,
+    /// The byte offsets of the characters beyond the BMP, which take two UTF-16 units, found
+    /// at the first stamp in that unit.
+    beyond_bmp: OnceCell<Vec<u32>>,
     discard: Bound<'py, PyAny>,
 }
 
@@ -497,13 +501,20 @@ impl<'py, 'p> Scan<'py, 'p> {
         let lines = parsed.lines();
         let offset = offset as usize;
         let start = lines.line_start(offset);
+        let code_points =
+            || lines.char_offset(&parsed.source, offset) - lines.char_offset(&parsed.source, start);
         let column = match stamp.unit {
             Unit::Utf8 => offset - start,
-            Unit::CodePoints => {
-                lines.char_offset(&parsed.source, offset) - lines.char_offset(&parsed.source, start)
-            }
+            Unit::CodePoints => code_points(),
             Unit::Utf16 => {
-                (parsed.source.get(start..offset)).map_or(0, |text| text.encode_utf16().count())
+                let beyond = self.beyond_bmp.get_or_init(|| {
+                    (parsed.source.char_indices())
+                        .filter(|(_, c)| c.len_utf16() == 2)
+                        .map(|(at, _)| at as u32)
+                        .collect()
+                });
+                let before = |at: usize| beyond.partition_point(|&b| (b as usize) < at);
+                code_points() + before(offset) - before(start)
             }
         };
         // Lines and columns of a text that fits in memory fit 63 bits.
@@ -808,6 +819,7 @@ pub fn scan<'py>(
         arguments: Vec::new(),
         spliced: None,
         cursor: None,
+        beyond_bmp: OnceCell::new(),
         discard: discard(py)?.clone(),
     };
     scan.run(index as usize)?;
