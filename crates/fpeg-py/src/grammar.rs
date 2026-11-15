@@ -332,20 +332,22 @@ impl Grammar {
         let mut seen = std::collections::HashSet::new();
         for (id, kind) in kinds.iter().enumerate() {
             let kind_name = kind.name.as_str();
+            // A rule an import brings in for the rules it takes, `m.r`, has its method `m__r`.
+            let method_name = kind_name.replace('.', "__");
             // Rules `_name` make no node, and hidden terminals no visible token. Nor does a
             // transparent rule that always gives way to its one child.
             let made = kinds.iter().any(|k| k.name == kind_name && k.made);
             if kind_name.starts_with('_')
                 || !made
-                || !is_identifier(kind_name)?
+                || !is_identifier(&method_name)?
                 || !seen.insert(kind_name)
             {
                 continue;
             }
-            let method = if keywords.iter().any(|k| k == kind_name) || kind_name == "transform" {
-                format!("{kind_name}_")
+            let method = if keywords.contains(&method_name) || method_name == "transform" {
+                format!("{method_name}_")
             } else {
-                kind_name.to_owned()
+                method_name
             };
             out.push('\n');
             let mut builders: Vec<String> = (kinds.iter())

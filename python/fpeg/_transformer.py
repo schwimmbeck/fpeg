@@ -363,8 +363,10 @@ def handler(cls: type, name: str) -> str | None:
     No method in a class body can be named like a Python keyword, and none can take the name
     of a method the class needs itself, such as `transform`. A rule of such a name has its
     method under the name with an underscore added, as `if_` for `if`, which is how PEP 8
-    writes such names.
+    writes such names. A rule that an import brings in for the rules it takes, `m.r`, has its
+    method under `m__r`.
     """
+    name = name.replace(".", "__")
     if is_handler(cls, name):
         return name
     if _taken(cls, name) and is_handler(cls, name + "_"):
@@ -559,7 +561,7 @@ def _make_plan(
 
 
 def check_strict(cls: type, names: Iterable[str]) -> None:
-    known = set(names)
+    known = {name.replace(".", "__") for name in names}
     known |= {name + "_" for name in known if _taken(cls, name)}
     # An override of a method of the base class names no rule, and needs none.
     reserved: frozenset[str] = getattr(cls, "__fpeg_reserved__", frozenset[str]())

@@ -110,7 +110,7 @@ assert fpeg.Token("NAME", "x") == "x"
 
 ## Transformer
 
-A `Transformer` turns a tree into values. A method named like a rule gives the value of its nodes, a method named like a terminal the value of its tokens, and each is called after the children of its node, with their values. A rule named like a Python keyword, such as `if`, or like a method the class needs itself, such as `transform`, has its method under the name with an underscore added, `if_`, as PEP 8 writes such names. What a method gets, its signature says:
+A `Transformer` turns a tree into values. A method named like a rule gives the value of its nodes, a method named like a terminal the value of its tokens, and each is called after the children of its node, with their values. A rule named like a Python keyword, such as `if`, or like a method the class needs itself, such as `transform`, has its method under the name with an underscore added, `if_`, as PEP 8 writes such names. A rule that an import brings in for the rules it takes, such as `common.DIGIT`, has its method under the dot written as two underscores, `common__DIGIT`. What a method gets, its signature says:
 
 | Method | Gets |
 |---|---|

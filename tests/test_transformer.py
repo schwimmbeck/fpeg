@@ -484,6 +484,24 @@ def test_a_rule_named_like_a_keyword_or_a_method_of_the_class_takes_an_underscor
     assert Names().transform(fpeg.Tree("if", [fpeg.Token("None", "n")])) == "if(none)"
 
 
+def test_a_rule_an_import_brings_in_has_its_method_under_its_grammar_and_two_underscores() -> None:
+    # json's value needs its array and its INT, which come in as json.array and json.INT.
+    grammar = fpeg.Grammar("%import json (value)\nstart: value")
+
+    class Imported(fpeg.Transformer, strict=True):
+        def json__array(self, *items: Any) -> tuple[Any, ...]:
+            return items
+
+        def json__INT(self, token: fpeg.Token) -> str:
+            return f"int {token}"
+
+        def start(self, *children: Any) -> Any:
+            return children[0]
+
+    assert Imported().transform(grammar.parse("[1,[2]]")) == ("int 1", ("int 2",))
+    assert "    def json__array(self, *children: Any) -> Any:" in grammar.transformer_template()
+
+
 def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
     class Built(fpeg.Transformer):
         def pair(self, children: list[Any]) -> tuple[Any, ...]:
