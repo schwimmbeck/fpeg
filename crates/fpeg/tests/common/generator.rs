@@ -11,8 +11,8 @@ use std::sync::Mutex;
 
 use fpeg::builder::*;
 use fpeg::{
-    Alternative, ClassItem, Expr, ExprKind, Grammar, Level, Limits, Passes, Rule, RuleBody, Span,
-    Text,
+    Alternative, ClassItem, Count, Expr, ExprKind, Grammar, Level, Limits, Passes, Rule, RuleBody,
+    Span, Text,
 };
 
 /// Grammars a normal test run tries.
@@ -46,8 +46,15 @@ const PASSES_SALT: u64 = 0x7061_7373_6573;
 const PASS_OFF_PERCENT: u64 = 25;
 
 /// The characters inputs are made of: the letters the grammars use, layout with the tab and the
-/// carriage return that columns count apart, and a two-byte one.
-const INPUT_CHARS: [char; 8] = ['a', 'b', 'c', ' ', '\n', '\t', '\r', 'é'];
+/// carriage return that columns count apart, a two-byte one, and those of the skip expressions.
+const INPUT_CHARS: [char; 10] = ['a', 'b', 'c', ' ', '\n', '\t', '\r', 'é', '#', 'x'];
+
+/// The largest tab width a generated grammar sets.
+const MAX_TAB_WIDTH: u64 = 8;
+
+/// The layout a derived input puts between the parts of a sequence: what the skip expressions
+/// skip, line breaks with and without indentation, and the start of what one form labels.
+const LAYOUT: [&str; 7] = [" ", " ", "\n", "\n  ", "\t\t", "\n\t", "#x"];
 
 /// SplitMix64, enough to spread seeds over the choices below.
 struct Rng(u64);
@@ -112,6 +119,17 @@ struct Generator {
 }
 
 impl Generator {
+    /// One of the two capture names, so that a map holds two captures and keeps one of them
+    /// while the other changes.
+    fn capture(&mut self) -> &'static str {
+        if self.rng.chance(60) { "c" } else { "d" }
+    }
+
+    /// One of the two flags.
+    fn flag(&mut self) -> &'static str {
+        if self.rng.chance(60) { "f" } else { "g" }
+    }
+
     fn terminal_or_literal(&mut self) -> Expr {
         match self.terminals.is_empty() {
             true => lit("c"),
@@ -120,7 +138,7 @@ impl Generator {
     }
 
     fn atom(&mut self, terminal: bool) -> Expr {
-        match self.rng.below(13) {
+        match self.rng.below(14) {
             0 => lit("a"),
             1 => lit("b"),
             2 => lit("ab"),
@@ -129,7 +147,8 @@ impl Generator {
             5 => any(),
             6 => empty(),
             7 => lit_i("ab"),
-            8 => capture_ref("c"),
+            8 => capture_ref(self.capture()),
+            13 => lit("\n"),
             9 if !self.params.is_empty() => r(self.rng.pick(&self.params)),
             10 if !self.levels.is_empty() => r(self.rng.pick(&self.levels)),
             // Mostly closed arguments, which keep the number of template instances small. One
@@ -204,7 +223,10 @@ impl Generator {
                 true => and(self.expr(depth + 1, terminal)),
                 false => not(self.expr(depth + 1, terminal)),
             },
-            7 => def("c", self.expr(depth + 1, terminal)),
+            7 => {
+                let name = self.capture();
+                def(name, self.expr(depth + 1, terminal))
+            }
             8 => label_message(self.expr(depth + 1, terminal), "oops"),
             9 | 10 => {
                 let name = if self.rng.chance(50) { "x" } else { "y" };
@@ -214,11 +236,15 @@ impl Generator {
                 let (first, second) = (self.expr(depth + 1, false), self.expr(depth + 1, false));
                 flat(vec![first, cut(), second], false)
             }
-            12 => match self.rng.below(3) {
-                0 => on("f", self.expr(depth + 1, false)),
-                1 => off("f", self.expr(depth + 1, false)),
-                _ => flat(vec![if_flag("f"), self.expr(depth + 1, false)], false),
-            },
+            12 => {
+                let flag = self.flag();
+                match self.rng.below(4) {
+                    0 => on(flag, self.expr(depth + 1, false)),
+                    1 => off(flag, self.expr(depth + 1, false)),
+                    2 => flat(vec![if_not_flag(flag), self.expr(depth + 1, false)], false),
+                    _ => flat(vec![if_flag(flag), self.expr(depth + 1, false)], false),
+                }
+            }
             13 => match self.rng.chance(50) {
                 true => indent(self.expr(depth + 1, false)),
                 false => flat(vec![same(), self.expr(depth + 1, false)], false),
@@ -227,16 +253,31 @@ impl Generator {
         }
     }
 
-    fn alternatives(&mut self) -> Vec<Alternative> {
-        (0..1 + self.rng.below(3))
-            .map(|_| {
-                let expr = self.expr(0, false);
-                match self.rng.chance(20) {
+    fn alternatives(&mut self, name: &str) -> Vec<Alternative> {
+        let mut alternatives = Vec::new();
+        // Direct left recursion first, so that the loop form meets columns and captures.
+        if self.rng.chance(25) {
+            for _ in 0..1 + self.rng.below(2) {
+                let lead = if self.rng.chance(30) {
+                    field("x", r(name))
+                } else {
+                    r(name)
+                };
+                let expr = flat(vec![lead, self.expr(1, false)], false);
+                alternatives.push(match self.rng.chance(30) {
                     true => alt(expr).alias("node"),
                     false => alt(expr),
-                }
-            })
-            .collect()
+                });
+            }
+        }
+        for _ in 0..1 + self.rng.below(3) {
+            let expr = self.expr(0, false);
+            alternatives.push(match self.rng.chance(20) {
+                true => alt(expr).alias("node"),
+                false => alt(expr),
+            });
+        }
+        alternatives
     }
 
     /// The levels of the precedence block `prec`: operators of each kind, and at the bottom
@@ -255,10 +296,14 @@ impl Generator {
                         let left = seq([field("left", r(name)), lit("a"), field("right", r(next))]);
                         let right =
                             seq([field("left", r(next)), lit("b"), field("right", r(name))]);
-                        alternatives.push(match self.rng.below(4) {
+                        alternatives.push(match self.rng.below(5) {
                             0 => alt(left).alias("binary"),
                             1 => alt(right).alias("binary"),
                             2 => alt(seq([lit("b"), field("operand", r(name))])).alias("unary"),
+                            3 => {
+                                let suffix = self.expr(2, false);
+                                alt(seq([field("left", r(name)), suffix])).alias("post")
+                            }
                             _ => alt(self.expr(1, false)).alias("other"),
                         });
                     }
@@ -274,24 +319,69 @@ impl Generator {
         levels
     }
 
+    /// A skip expression: a class repeated, which the machine takes as one run, or a choice for
+    /// its skip routine with one alternative of each kind that the skip treats apart.
+    fn skip(&mut self) -> Expr {
+        let space = || lit(" ");
+        match self.rng.below(22) {
+            0 => some(class([ch(' ')])),
+            // Flags, tested and cleared.
+            1 => choice([some(class([ch(' ')])), seq([if_flag("f"), lit("\n")])]),
+            2 => choice([space(), seq([lit("\n"), if_not_flag("g"), lit("\t")])]),
+            // The reference column, checked after a line break that goes on right of it or
+            // at it, and around what it skips.
+            3 => choice([
+                some(class([ch(' ')])),
+                seq([lit("\n"), many(class([ch(' '), ch('\t')])), indent(empty())]),
+            ]),
+            4 => choice([space(), seq([lit("\n"), same()])]),
+            5 => choice([space(), seq([lit("\n"), many(space()), same()])]),
+            6 => choice([space(), seq([lit("\n"), indent(many(space()))])]),
+            7 => choice([space(), indent(lit("\n"))]),
+            8 => choice([
+                space(),
+                seq([lit("\r"), many(class([ch('\t')])), indent(empty())]),
+            ]),
+            // Captures of the activation that skips, and made and matched in the skip.
+            9 => choice([space(), seq([lit("\n"), capture_ref("c")])]),
+            10 => choice([space(), seq([def("d", lit("\t")), capture_ref("d")])]),
+            11 => choice([
+                space(),
+                seq([lit("\n"), def("d", many(space())), capture_ref("c")]),
+            ]),
+            // Error labels, where the skip ends in an error.
+            12 => choice([space(), seq([lit("#"), label_message(lit("x"), "bad")])]),
+            13 => choice([
+                space(),
+                seq([if_flag("f"), lit("#"), label_message(lit("a"), "bad")]),
+            ]),
+            14 => choice([
+                space(),
+                seq([and(lit("#")), label_message(lit("#a"), "bad")]),
+            ]),
+            // Lookahead and a cut.
+            15 => choice([space(), seq([not(lit("\n\n")), lit("\n")])]),
+            16 => choice([space(), seq([lit("\n"), cut(), space()])]),
+            // A terminal.
+            17 => match self.terminals.first() {
+                Some(terminal) => choice([space(), r(terminal)]),
+                None => space(),
+            },
+            // Forms that can match nothing, which end the skip loop.
+            18 => many(choice([space(), lit("\t")])),
+            19 => choice([space(), capture_ref("c")]),
+            20 => choice([space(), seq([lit("\n"), opt(capture_ref("d"))])]),
+            _ => choice([space(), lit("\u{e9}\u{e9}")]),
+        }
+    }
+
     fn grammar(&mut self) -> Grammar {
         let mut g = GrammarBuilder::new();
         g.flag("f");
+        g.flag("g");
         if self.rng.chance(50) {
-            // A class repeated, which the machine takes as one run, or a choice for its skip
-            // routine, one of which tests the flag, one of which reads the reference column, a
-            // line break where the next line goes on right of it, and one of which matches a
-            // capture of the activation that skips.
-            g.ignore(match self.rng.below(5) {
-                0 => some(class([ch(' ')])),
-                1 => choice([some(class([ch(' ')])), seq([if_flag("f"), lit("\n")])]),
-                2 => choice([
-                    some(class([ch(' ')])),
-                    seq([lit("\n"), many(class([ch(' '), ch('\t')])), indent(empty())]),
-                ]),
-                3 => choice([lit(" "), seq([lit("\n"), capture_ref("c")])]),
-                _ => choice([lit(" "), lit("\u{e9}\u{e9}")]),
-            });
+            let skip = self.skip();
+            g.ignore(skip);
         }
         let word = self.rng.chance(30);
         if word {
@@ -303,7 +393,7 @@ impl Generator {
                 self.memo_mark(g.precedence(&name, levels));
                 continue;
             }
-            let alternatives = self.alternatives();
+            let alternatives = self.alternatives(&name);
             let rule = g.rule_alternatives(&name, alternatives);
             if !name.starts_with('_') && name != "start" && self.rng.chance(20) {
                 rule.transparent();
@@ -331,6 +421,12 @@ impl Generator {
             self.memo_mark(rule);
         }
         let mut grammar = g.build();
+        if self.rng.chance(30) {
+            grammar.tabs = Some(Count {
+                value: 1 + self.rng.below(MAX_TAB_WIDTH) as u32,
+                span: Span::default(),
+            });
+        }
         if word && self.rng.chance(50) {
             grammar.soft_keywords.push(Text {
                 value: "ab".to_owned(),
@@ -465,7 +561,7 @@ impl Generator {
             ExprKind::Sequence(items) => {
                 for item in items {
                     if !grammar.ignore.is_empty() && self.rng.chance(20) {
-                        out.push(' ');
+                        out.push_str(LAYOUT[self.rng.below(LAYOUT.len() as u64) as usize]);
                     }
                     self.derive(grammar, item, scope, depth + 1, out);
                 }
@@ -507,8 +603,14 @@ impl Generator {
             ExprKind::Field { expr, .. }
             | ExprKind::Label { expr, .. }
             | ExprKind::FlagOn { expr, .. }
-            | ExprKind::FlagOff { expr, .. }
-            | ExprKind::Indent(expr) => self.derive(grammar, expr, scope, depth + 1, out),
+            | ExprKind::FlagOff { expr, .. } => self.derive(grammar, expr, scope, depth + 1, out),
+            ExprKind::Indent(expr) => {
+                // A block mostly starts on a line of its own, further right.
+                if self.rng.chance(20) {
+                    out.push_str("\n  ");
+                }
+                self.derive(grammar, expr, scope, depth + 1, out);
+            }
             _ => {}
         }
     }
