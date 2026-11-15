@@ -209,6 +209,13 @@ start: "a"
 --- grammar
 an import under a prefix is not supported yet
 
+=== @sync is not supported yet
+start: item+
+@sync
+item: "a"
+--- grammar
+@sync is not supported yet
+
 === a word set that is no class is an error in a grammar that extends and imports others, and recoveries and builders print back
 %extends "json"
 %import common (WS, LETTER)

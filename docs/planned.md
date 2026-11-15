@@ -12,7 +12,7 @@ What later releases of fpeg are planned to bring, the next release first. Each r
 
 - **A converter** for grammars written for other parsing tools, with notes on porting them.
 - **Python objects built natively**, without a Python call for each node.
-- **Recovery for grammars that declare none**, from labels found where a failure can only be a mistake, with `@sync` marking where a parse may resume.
+- **Recovery for grammars that declare none**, from labels found where a failure can only be a mistake, with `@sync` marking where a parse may resume. The attribute is part of the language already, and a grammar that uses it gets [E501](reference/diagnostics/E501.md).
 - **Imports under a prefix**, `%import m as p`, which need a syntax for prefixed names, and **`...` in a precedence block**, which needs a rule for where inherited alternatives go among levels. Both are part of the language already, and a grammar that uses them gets [E501](reference/diagnostics/E501.md).
 - **Regular expressions as terminals.**
 - **A compiled backend**, which turns a grammar into machine code in place of the program of the parsing machine.

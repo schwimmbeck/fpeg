@@ -937,7 +937,10 @@ impl<'g> Resolver<'g> {
         }
         let kind = rule.kind();
         for attribute in &rule.attributes {
-            if !ATTRIBUTES.contains(&attribute.text.as_str()) {
+            if attribute.text == "sync" {
+                let message = "@sync is not supported yet".to_owned();
+                self.error(DiagnosticCode::NotYet, message, attribute.span);
+            } else if !ATTRIBUTES.contains(&attribute.text.as_str()) {
                 self.error(
                     DiagnosticCode::UnknownAttribute,
                     format!("unknown attribute @{}", attribute.text),
