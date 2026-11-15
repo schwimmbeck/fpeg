@@ -2,7 +2,7 @@
 
 fpeg is built in milestones. Each one ends with code that works, tests, benchmarks and documentation. None of them is a throwaway prototype.
 
-M0 to M8 are done. Work continues with M9.
+M0 to M9 are done. Work continues with M10.
 
 ## M0 Foundations
 
@@ -69,7 +69,9 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## M9 Known limits, revisited
 
-- Every known limit of the engine, the Python binding, the checks and the bundled grammars, collected since M1 and decided one by one before the first release: fixed where a fix pays, otherwise kept and stated on a page of known limits.
+- Every known limit of the engine, the Python binding, the checks and the bundled grammars, collected since M1 and decided one by one before the first release: fixed where a fix paid, otherwise kept and stated on a page of known limits.
+- Fixed: a default depth that takes the deepest nesting CPython takes, `MemoryError` for a text too large for memory, a display name for every terminal that an error of a bundled or example grammar can name, messages a grammar wrote shown so that a terminal acts on none of their characters, a profile whose advice counts what repeated calls spend, and the text of a parse error listing at most ten errors.
+- A fuzz target that lets the fuzzer's bytes choose the grammars it tests.
 
 ## M10 Tooling and the first release
 
