@@ -29,15 +29,19 @@ pub struct Parsed {
     pub source: PyBackedStr,
     pub grammar: Arc<GrammarCore>,
     lines: OnceLock<LineIndex>,
+    /// The byte offsets of the characters beyond the BMP, which take two UTF-16 units.
+    beyond_bmp: OnceLock<Vec<u32>>,
 }
 
 impl Parsed {
+    /// A parse of `source` by `grammar`, whose lines are indexed when first asked for.
     pub fn new(tree: fpeg::Tree, source: PyBackedStr, grammar: Arc<GrammarCore>) -> Parsed {
         Parsed {
             tree,
             source,
             grammar,
             lines: OnceLock::new(),
+            beyond_bmp: OnceLock::new(),
         }
     }
 
@@ -46,8 +50,20 @@ impl Parsed {
         self.lines.get_or_init(|| LineIndex::new(&self.source))
     }
 
+    /// The line, column and code point offset of a byte offset of the text.
     pub fn position(&self, offset: u32) -> Position {
         self.lines().position(&self.source, offset as usize)
+    }
+
+    /// The byte offsets of the characters beyond the BMP, found on first need, once for every
+    /// transform of the parse.
+    pub fn beyond_bmp(&self) -> &[u32] {
+        self.beyond_bmp.get_or_init(|| {
+            (self.source.char_indices())
+                .filter(|(_, c)| c.len_utf16() == 2)
+                .map(|(at, _)| at as u32)
+                .collect()
+        })
     }
 
     /// The text of a byte span.

@@ -9,7 +9,6 @@
 //! nothing. An entry that no method reaches pushes no Python object, and a node whose children
 //! are all such entries stays one, so a subtree without methods costs no object at all.
 
-use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -332,9 +331,6 @@ struct Scan<'py, 'p> {
     cursor: Option<LineCursor<'p>>,
     /// The classes whose instances get positions, from the class's record at this transform.
     position_types: Option<Bound<'py, PyTuple>>,
-    /// The byte offsets of the characters beyond the BMP, which take two UTF-16 units, found
-    /// at the first stamp in that unit.
-    beyond_bmp: OnceCell<Vec<u32>>,
     discard: Bound<'py, PyAny>,
 }
 
@@ -512,12 +508,7 @@ impl<'py, 'p> Scan<'py, 'p> {
             Unit::Utf8 => offset - start,
             Unit::CodePoints => code_points(),
             Unit::Utf16 => {
-                let beyond = self.beyond_bmp.get_or_init(|| {
-                    (parsed.source.char_indices())
-                        .filter(|(_, c)| c.len_utf16() == 2)
-                        .map(|(at, _)| at as u32)
-                        .collect()
-                });
+                let beyond = parsed.beyond_bmp();
                 let before = |at: usize| beyond.partition_point(|&b| (b as usize) < at);
                 code_points() + before(offset) - before(start)
             }
@@ -834,7 +825,6 @@ pub fn scan<'py>(
         spliced: None,
         cursor: None,
         position_types,
-        beyond_bmp: OnceCell::new(),
         discard: discard(py)?.clone(),
     };
     scan.run(index as usize)?;
