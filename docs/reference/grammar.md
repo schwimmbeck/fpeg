@@ -351,7 +351,7 @@ A label stops the parse however `e` fails, also after a cut inside `e`. The erro
 
 ## Modules
 
-A grammar can start from another one and change it, and take single rules from others. The grammars that come with fpeg are `common`, `json` and `python`.
+A grammar can start from another one and change it, and take single rules from others. The grammars that come with fpeg are `common`, `json` and `python`. The [guide to composing grammars](../guide/composing-grammars.md) shows each form at work.
 
 ```fpeg
 %extends "json"

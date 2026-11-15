@@ -61,6 +61,8 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 - [Building an AST](guide/building-an-ast.md): your own classes from a parse, by methods or by builders in the grammar, and running the result.
 - [Indentation](guide/indentation.md): blocks by columns, brackets that turn layout off, continuation lines and tabs.
 - [Interpolated strings](guide/interpolated-strings.md): expressions inside strings, quotes as parameters, and delimiters that the input chooses.
+- [Composing grammars](guide/composing-grammars.md): a grammar that extends another, rules taken from others, modules of your own, and Python extended with its transformer.
+- [A language over Python](guide/a-language-over-python.md): ORD, a grammar over Python with its transformer to `ast`, checked against the language's own parser.
 - [Performance](guide/performance.md): seeing where a parse spends its work, and what to change in a grammar.
 
 ## Reference
@@ -83,6 +85,8 @@ guide/operator-precedence
 guide/building-an-ast
 guide/indentation
 guide/interpolated-strings
+guide/composing-grammars
+guide/a-language-over-python
 guide/performance
 reference/grammar
 reference/semantics
