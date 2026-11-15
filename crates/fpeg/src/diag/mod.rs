@@ -150,11 +150,13 @@ pub enum DiagnosticCode {
     UnusedFlag,
     /// W402: a parameter that its rule never uses.
     UnusedParameter,
+    /// W403: a recovery for a label that no expression raises.
+    UnusedRecovery,
 }
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 40] = [
+    pub const ALL: [DiagnosticCode; 41] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -195,6 +197,7 @@ impl DiagnosticCode {
         DiagnosticCode::UnusedBuilder,
         DiagnosticCode::UnusedFlag,
         DiagnosticCode::UnusedParameter,
+        DiagnosticCode::UnusedRecovery,
     ];
 
     /// The code, such as `E201`.
@@ -240,6 +243,7 @@ impl DiagnosticCode {
             DiagnosticCode::UnusedBuilder => "W302",
             DiagnosticCode::UnusedFlag => "W401",
             DiagnosticCode::UnusedParameter => "W402",
+            DiagnosticCode::UnusedRecovery => "W403",
         }
     }
 

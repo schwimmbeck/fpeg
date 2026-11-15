@@ -144,12 +144,14 @@ fn shapes(grammar: &Grammar, resolved: &ir::Grammar, counts: &Counts, found: &mu
     }
 }
 
-/// The names that expressions refer to, and the flags that they set and test.
+/// The names that expressions refer to, the flags that they set and test, and the labels
+/// that they raise.
 #[derive(Default)]
 struct Uses<'g> {
     names: HashSet<&'g str>,
     set: HashSet<&'g str>,
     tested: HashSet<&'g str>,
+    labels: HashSet<&'g str>,
 }
 
 impl<'g> Uses<'g> {
@@ -160,6 +162,10 @@ impl<'g> Uses<'g> {
                 ExprKind::Reference { name, .. } => self.names.insert(&name.text),
                 ExprKind::FlagOn { flag, .. } => self.set.insert(&flag.text),
                 ExprKind::FlagTest { flag, .. } => self.tested.insert(&flag.text),
+                ExprKind::Label {
+                    label: ErrorLabel::Named(name),
+                    ..
+                } => self.labels.insert(&name.text),
                 _ => false,
             };
             pending.extend(expr.children());
@@ -167,8 +173,8 @@ impl<'g> Uses<'g> {
     }
 }
 
-/// Warn about the parameters that their rules never use, and about the flags that are never
-/// set or never tested.
+/// Warn about the parameters that their rules never use, the flags that are never set or
+/// never tested, and the recoveries of labels that nothing raises.
 fn unused(grammar: &Grammar, bodies: &[Body<'_>], found: &mut Vec<Diagnostic>) {
     let mut uses = Uses::default();
     for body in bodies {
@@ -204,6 +210,18 @@ fn unused(grammar: &Grammar, bodies: &[Body<'_>], found: &mut Vec<Diagnostic>) {
             message,
             span: flag.span,
         });
+    }
+    for recover in &grammar.recovers {
+        let label = recover.label.text.as_str();
+        if !uses.labels.contains(label) {
+            found.push(Diagnostic {
+                code: DiagnosticCode::UnusedRecovery,
+                message: format!(
+                    "no expression raises the label {label}, so its recovery never runs"
+                ),
+                span: recover.label.span,
+            });
+        }
     }
 }
 
