@@ -55,7 +55,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 ## M7 Modules
 
 - `%import` and `%extends`, with the bundled grammars as a base for your own.
-- A large grammar extension as acceptance test, and a converter for grammars written for other parsing tools.
+- Two grammar extensions as acceptance tests: JSON with comments, and the first real application over the Python grammar, with its benchmark from source text to `ast`.
 
 ## M8 Errors, complete
 
@@ -70,6 +70,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 ## M10 Tooling and the first release
 
 - A language server for grammar files, a formatter and editor highlighting.
+- A converter for grammars written for other parsing tools.
 - Wheels for all platforms and version 0.1.0.
 - This roadmap gives way to a list of the features planned for later releases, and no page refers to milestones any more.
 
