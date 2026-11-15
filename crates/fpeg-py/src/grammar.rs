@@ -4,12 +4,13 @@
 //! `Grammar`: a grammar compiled for the parsing machine, and parses with it.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 
 use fpeg::{
-    DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, DiagnosticCode, FieldCount, FieldId, Limits, Parser,
+    DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, DiagnosticCode, FieldCount, FieldId, Limits, ModuleFiles,
+    Parser,
 };
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyUnicodeDecodeError, PyValueError};
 use pyo3::prelude::*;
@@ -150,14 +151,26 @@ pub struct Grammar {
 }
 
 impl Grammar {
+    /// Compile a grammar text, joined with the modules given and then, for a grammar read
+    /// from a file, with the grammar files of its folder.
     fn compile(
         py: Python<'_>,
         text: &str,
-        path: Option<&str>,
+        file: Option<&Path>,
         functions: Option<&Bound<'_, PyAny>>,
+        modules: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Grammar> {
+        let shown = file.map(|file| file.display().to_string());
+        let path = shown.as_deref();
+        let given = given_modules(modules)?;
         let grammar = fpeg::Grammar::from_text(text)
             .map_err(|errors| grammar_error(py, text, path, &errors))?;
+        let folder = file.map(|file| ModuleFiles::new(file.parent().unwrap_or(Path::new(""))));
+        let grammar = match folder {
+            Some(files) => grammar.link(&(given, files)),
+            None => grammar.link(&given),
+        }
+        .map_err(|errors| grammar_error(py, text, path, &errors))?;
         let parser =
             Parser::new(&grammar).map_err(|errors| grammar_error(py, text, path, &errors))?;
         let functions = given_functions(functions)?;
@@ -180,7 +193,7 @@ impl Grammar {
         }
         if !missing.is_empty() {
             missing.sort_by_key(|error| error.span.start);
-            return Err(grammar_error(py, text, path, &missing));
+            return Err(grammar_error(py, text, path, &grammar.locate(missing)));
         }
         let core = Arc::new(GrammarCore::new(py, parser, &functions)?);
         let mut grammars = GRAMMARS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -196,13 +209,31 @@ impl Grammar {
 /// warnings, about forms that work and are likely not meant, and an error where the grammar is
 /// too large to compile. The functions that its value builders call are not asked for, so a
 /// missing one is not among them.
+///
+/// `modules` maps the names of the grammars it extends and imports to their texts, which come
+/// before the grammars that come with fpeg.
 #[pyfunction]
-pub fn check(text: &str) -> Vec<Diagnostic> {
-    let found = match fpeg::Grammar::from_text(text) {
+#[pyo3(signature = (text, *, modules = None))]
+pub fn check(text: &str, modules: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<Diagnostic>> {
+    let given = given_modules(modules)?;
+    let found = match fpeg::Grammar::from_text(text).and_then(|g| g.link(&given)) {
         Ok(grammar) => fpeg::check(&grammar),
         Err(errors) => errors,
     };
-    diagnostics(text, None, &found)
+    Ok(diagnostics(text, None, &found))
+}
+
+/// The modules given with a grammar, by name: a mapping of str to grammar texts.
+fn given_modules(modules: Option<&Bound<'_, PyAny>>) -> PyResult<HashMap<String, String>> {
+    let mut given = HashMap::new();
+    let Some(modules) = modules.filter(|m| !m.is_none()) else {
+        return Ok(given);
+    };
+    for item in modules.call_method0("items")?.try_iter()? {
+        let (name, text): (String, String) = item?.extract()?;
+        given.insert(name, text);
+    }
+    Ok(given)
 }
 
 /// The functions given with a grammar, by name: a mapping of str to callables.
@@ -227,21 +258,31 @@ impl Grammar {
     /// Compile a grammar given as text, or raise `GrammarError` with its problems.
     ///
     /// `functions` maps the names of the functions that the grammar's value builders call
-    /// to the callables, every one of them given.
+    /// to the callables, every one of them given. `modules` maps the names of the grammars it
+    /// extends and imports to their texts, which come before the grammars that come with fpeg.
     #[new]
-    #[pyo3(signature = (text, *, functions = None))]
-    fn new(py: Python<'_>, text: &str, functions: Option<&Bound<'_, PyAny>>) -> PyResult<Grammar> {
-        Grammar::compile(py, text, None, functions)
+    #[pyo3(signature = (text, *, functions = None, modules = None))]
+    fn new(
+        py: Python<'_>,
+        text: &str,
+        functions: Option<&Bound<'_, PyAny>>,
+        modules: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Grammar> {
+        Grammar::compile(py, text, None, functions, modules)
     }
 
     /// Read a grammar file, UTF-8 with or without a byte order mark, and compile it.
+    ///
+    /// The grammars it extends and imports come from `modules`, then from the files beside
+    /// it, `m.fpeg` for the module `m`, then from the grammars that come with fpeg.
     #[classmethod]
-    #[pyo3(signature = (path, *, functions = None))]
+    #[pyo3(signature = (path, *, functions = None, modules = None))]
     fn open(
         _cls: &Bound<'_, PyType>,
         py: Python<'_>,
         path: PathBuf,
         functions: Option<&Bound<'_, PyAny>>,
+        modules: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Grammar> {
         let bytes = std::fs::read(&path)?;
         let text = match std::str::from_utf8(&bytes) {
@@ -253,7 +294,7 @@ impl Grammar {
             }
         };
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        Grammar::compile(py, text, Some(&path.display().to_string()), functions)
+        Grammar::compile(py, text, Some(&path), functions, modules)
     }
 
     /// Parse the whole text from the rule `start` and return its one visible item at the top:

@@ -6,8 +6,9 @@
 //! `fpeg check` prints for it, and the grammar fixed. The first grammar must report the
 //! page's code and the text block must hold its messages exactly, while the fix must give
 //! neither an error nor a warning.
-//! A page without grammars is one no input can trigger. The page of a code that only the Python
-//! binding reports shows Python instead, which the docs build runs.
+//! A page without grammars is one no input can trigger. The page of a code that one grammar text
+//! cannot show, since only the Python binding reports it or it needs modules given with the
+//! grammar, shows Python instead, which the docs build runs.
 //!
 //! `FPEG_BLESS=1 cargo test` rewrites the text blocks with the actual messages, to review as
 //! a diff.
@@ -89,11 +90,13 @@ fn every_code_has_a_page_whose_example_and_fix_hold() {
         let shown = path.display();
         match found.as_slice() {
             [] if code == DiagnosticCode::Internal => continue,
-            // Only modules given with a grammar can take it in again, which one text cannot show.
-            [] if code == DiagnosticCode::ModuleCycle => continue,
-            // Only the Python binding is given functions, so its page shows Python, which the
-            // docs build runs.
-            blocks if code == DiagnosticCode::BuilderFunction => {
+            // Only the Python binding is given functions, and one text cannot take itself in
+            // without modules given with it, so these pages show Python, which the docs build
+            // runs.
+            blocks
+                if code == DiagnosticCode::BuilderFunction
+                    || code == DiagnosticCode::ModuleCycle =>
+            {
                 if !blocks.iter().any(|block| block.info == "python") {
                     failures.push(format!("{shown}: needs a python block"));
                 }

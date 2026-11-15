@@ -47,6 +47,14 @@ print(found)
 <grammar>:1:15: warning[W101]: this alternative is never tried, since the one before it cannot fail
 ```
 
+A grammar that extends or imports [modules](grammar.md#modules) takes them from `modules`, a mapping of their names to their texts, then, for `Grammar.open`, from the files beside its own, `m.fpeg` for the module `m`, then from the grammars that come with fpeg. `check` takes `modules` too.
+
+```python
+base = 'start: item+\nitem: WORD\nWORD: [a-z]+\n%ignore " "+'
+words = fpeg.Grammar('%extends "base"\nitem: ... | N\nN: [0-9]+', modules={"base": base})
+assert words.parse("ab 12").children[1] == fpeg.Tree("item", [fpeg.Token("N", "12")])
+```
+
 `parse` returns the one visible item at the top of the tree: a `Tree` for a node, or a `Token` for a token, which a transparent start rule gives when its one child is a token. A start rule that may leave no visible item or several, such as a rule `_name`, is refused before parsing, as an unknown one is.
 
 ```python

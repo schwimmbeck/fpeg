@@ -67,7 +67,7 @@ class Diagnostic:
     def __ne__(self, other: object, /) -> bool: ...
     def __hash__(self) -> int: ...
 
-def check(text: str) -> list[Diagnostic]:
+def check(text: str, *, modules: Mapping[str, str] | None = None) -> list[Diagnostic]:
     """Check a grammar given as text and return what is found, in the order of the text."""
 
 class GrammarError(ValueError):
@@ -95,7 +95,11 @@ class Grammar:
     """A grammar compiled for fpeg's parsing machine."""
 
     def __new__(
-        cls, text: str, *, functions: Mapping[str, Callable[..., Any]] | None = None
+        cls,
+        text: str,
+        *,
+        functions: Mapping[str, Callable[..., Any]] | None = None,
+        modules: Mapping[str, str] | None = None,
     ) -> Grammar: ...
     @classmethod
     def open(
@@ -103,6 +107,7 @@ class Grammar:
         path: str | PathLike[str],
         *,
         functions: Mapping[str, Callable[..., Any]] | None = None,
+        modules: Mapping[str, str] | None = None,
     ) -> Grammar: ...
     def parse(
         self,

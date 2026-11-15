@@ -95,6 +95,30 @@ def test_open_reads_a_file_with_a_byte_order_mark_and_names_it_in_messages(
     assert str(raised.value).startswith(f"{bad}:1:8: error[E201]")
 
 
+def test_a_grammar_takes_its_modules_from_those_given_then_from_the_files_beside_it(
+    tmp_path: Path,
+) -> None:
+    base = 'start: item+\nitem: WORD\nWORD: [a-z]+\n%ignore " "+\n'
+    (tmp_path / "base.fpeg").write_text(base, encoding="utf-8")
+    main = tmp_path / "main.fpeg"
+    main.write_text('%extends "base"\nitem: ... | N\nN: [0-9]+\n', encoding="utf-8")
+    tree = fpeg.Grammar.open(main).parse("ab 12")
+    assert isinstance(tree, fpeg.Tree)
+    assert tree.children[1] == fpeg.Tree("item", [fpeg.Token("N", "12")])
+    # A module given comes before the file of its name.
+    given = {"base": 'start: item\nitem: "x"\n'}
+    tree = fpeg.Grammar.open(main, modules=given).parse("7")
+    assert tree == fpeg.Tree("start", [fpeg.Tree("item", [fpeg.Token("N", "7")])])
+    text = '%extends "base"\nstart: item\nitem: "y" => Missing\n'
+    assert [d.code for d in fpeg.check(text, modules=given)] == []
+    # A function that a module's builder calls, missing, stands at the directive.
+    with pytest.raises(fpeg.GrammarError) as raised:
+        fpeg.Grammar('%extends "base"', modules={"base": 'start: "x" => Missing\n'})
+    (problem,) = raised.value.diagnostics
+    assert (problem.code, problem.line, problem.column) == ("E208", 1, 10)
+    assert problem.message.startswith("in the grammar base, line 1, column 15: ")
+
+
 def test_a_parse_returns_its_one_visible_item_a_token_or_a_tree() -> None:
     grammar = fpeg.Grammar('?start: value\n?value: NUMBER | "[" value "]" -> list\nNUMBER: [0-9]+')
     number = grammar.parse("7")
