@@ -167,21 +167,32 @@ def _arguments_of(items: list[Any]) -> Any:
     for item in items:
         if item == "/":
             posonly, args = args, []
-        elif item == "*":
+            continue
+        if item == "*":
             keyword_only = True
-        elif getattr(item, "fpeg_star", 0) == 1:
+            continue
+        stars, default = _take(item, "fpeg_star", 0), _take(item, "fpeg_default")
+        if stars == 1:
             vararg = item
             keyword_only = True
-        elif getattr(item, "fpeg_star", 0) == 2:
+        elif stars == 2:
             kwarg = item
         elif keyword_only:
             kwonly.append(item)
-            kw_defaults.append(item.fpeg_default)
+            kw_defaults.append(default)
         else:
             args.append(item)
-            if item.fpeg_default is not None:
-                defaults.append(item.fpeg_default)
+            if default is not None:
+                defaults.append(default)
     return ast.arguments(posonly, args, vararg, kwonly, kw_defaults, kwarg, defaults)
+
+
+def _take(node: Any, marker: str, default: Any = None) -> Any:
+    """Return a marker that one method left on a node for another, and remove it."""
+    value = getattr(node, marker, default)
+    if hasattr(node, marker):
+        delattr(node, marker)
+    return value
 
 
 def _dotted(parts: list[Any]) -> Any:
@@ -257,7 +268,10 @@ def _finished(pieces: list[Any], raw: bool, braces: bool) -> list[Any]:
             continue
         if piece.format_spec is not None:
             piece.format_spec.values = _finished(piece.format_spec.values, raw, False)
-        debug = getattr(piece, "fpeg_debug", None)
+        debug = _take(piece, "fpeg_debug")
+        if not braces:
+            # A field inside a format spec stays a field, in a t-string too.
+            _take(piece, "fpeg_source")
         if debug is not None:
             out.append(_text_at(debug, piece.lineno, piece.col_offset + 1))
         out.append(piece)
@@ -313,15 +327,25 @@ def _interpolation(value: Any) -> Any:
     """Turn a replacement field of a t-string into an `Interpolation` with its source text."""
     if not isinstance(value, ast.FormattedValue):
         return value
-    out = ast.Interpolation(value.value, value.fpeg_source, value.conversion, value.format_spec)
+    source = _take(value, "fpeg_source")
+    out = ast.Interpolation(value.value, source, value.conversion, value.format_spec)
     return ast.copy_location(out, value)
 
 
 class ToAstBase(fpeg.Transformer):
     """The methods that turn the tree of the Python grammar into Python's `ast`.
 
-    They read the positions of the values they get, which a subclass gives them.
+    They read the positions of the values they get, which a subclass gives them. They build
+    the `ast` of Python 3.15 and need it, so that an older Python raises `RuntimeError`.
     """
+
+    def __init__(self, visit_tokens: bool = True) -> None:
+        """Make a transformer, or raise `RuntimeError` on a Python older than 3.15."""
+        if sys.version_info < _AST_PYTHON:
+            running = f"{sys.version_info.major}.{sys.version_info.minor}"
+            message = f"fpeg.python builds the ast of Python 3.15 and needs it, not {running}"
+            raise RuntimeError(message)
+        super().__init__(visit_tokens)
 
     # Statements
 
@@ -407,6 +431,8 @@ class ToAstBase(fpeg.Transformer):
         return ast.alias(_name_of(name), None if alias is None else _name_of(alias))
 
     def decorated(self, decorators: Any, definition: Any) -> Any:
+        if isinstance(definition, list):
+            raise TypeError("a decorated definition is one statement, not a list of them")
         # Before any that the method of a subclass gave the definition, which stay last.
         definition.decorator_list = [*decorators, *definition.decorator_list]
         return definition
@@ -758,6 +784,8 @@ class ToAstBase(fpeg.Transformer):
         values = _finished(parts, "r" in str(prefix).lower(), True)
         if "t" in str(prefix).lower():
             return ast.TemplateStr([_interpolation(v) for v in values])
+        for value in values:
+            _take(value, "fpeg_source")
         return ast.JoinedStr(values)
 
     def replacement_field(
@@ -789,7 +817,4 @@ def parse(source: str) -> Any:
 
     It needs Python 3.15, whose `ast` it builds, and raises `RuntimeError` on an older one.
     """
-    if sys.version_info < _AST_PYTHON:
-        running = f"{sys.version_info.major}.{sys.version_info.minor}"
-        raise RuntimeError(f"fpeg.python builds the ast of Python 3.15 and needs it, not {running}")
     return ToAst().transform(GRAMMAR.parse(source))

@@ -12,6 +12,7 @@ import sys
 import sysconfig
 import warnings
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fpeg import python
@@ -222,6 +223,28 @@ def test_a_method_of_a_subclass_may_give_several_statements_for_one() -> None:
     assert [(s.lineno, s.col_offset) for s in loop.body] == [(3, 4), (3, 4)]
     assert (loop.end_lineno, loop.end_col_offset) == (3, 8)
     compile(module, "<twice>", "exec")
+
+    # Decorators need one definition to stand before.
+    class Listed(python.ToAst):
+        def class_def(self, name: Any, params: Any, bases: Any, body: Any) -> list[ast.stmt]:
+            return [super().class_def(name, params, bases, body)]
+
+    with pytest.raises(TypeError, match="one statement"):
+        Listed().transform(python.GRAMMAR.parse("@d\nclass C: pass\n"))
+
+
+def test_the_ast_keeps_no_marks_of_the_transformer() -> None:
+    module = python.parse('def f(a, b=1, *c, d=2, **e): pass\nf"{x=} {y:{z}}"\nt"{x}"\n')
+    left = {name for node in ast.walk(module) for name in vars(node) if name.startswith("fpeg_")}
+    assert left == set()
+
+
+def test_the_transformer_refuses_a_python_older_than_its_ast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(python, "_AST_PYTHON", (99, 0))
+    with pytest.raises(RuntimeError, match="needs it"):
+        python.ToAst()
 
 
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
