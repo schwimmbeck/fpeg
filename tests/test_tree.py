@@ -96,10 +96,15 @@ def test_the_children_of_a_view_read_as_a_list_and_refuse_changes() -> None:
         with pytest.raises(TypeError, match="cannot change"):
             change(children)
     assert call.children == ["f", "a", "b"]
-    # A copy is a tree built in Python, whose children change freely.
+    # A copy is a tree built in Python, whose children change freely, and so is a tree built
+    # from the children of a view.
     shallow = copy.copy(call)
     shallow.children.append("x")
     assert shallow.children == ["f", "a", "b", "x"]
+    built = fpeg.Tree("call", children)
+    built.children.append("x")
+    assert built.children == ["f", "a", "b", "x"]
+    assert call.children == ["f", "a", "b"]
     # The children themselves copy and pickle as a plain list.
     copies = [copy.copy(children), copy.deepcopy(children), pickle.loads(pickle.dumps(children))]
     for again in copies:

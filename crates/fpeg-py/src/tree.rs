@@ -368,7 +368,9 @@ impl Tree {
         children: Bound<'_, PyAny>,
         meta: Option<Py<PyAny>>,
     ) -> PyResult<Tree> {
-        let children = match children.cast_into::<PyList>() {
+        // A list of another class, such as the children of a view, which refuse changes, is
+        // copied into a plain one.
+        let children = match children.cast_into_exact::<PyList>() {
             Ok(list) => list,
             Err(error) => PyList::type_object(py)
                 .call1((error.into_inner(),))?
