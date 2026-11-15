@@ -9,7 +9,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use super::{Grammar, Span, Text};
+use super::{Expr, ExprKind, Grammar, Rule, RuleBody, Span, Text};
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::lines::LineIndex;
 
@@ -131,7 +131,7 @@ impl Linker {
         };
         let module = self.read(&base)?;
         let module = self.extended(module)?;
-        Ok(extend(module, grammar))
+        extend(module, grammar)
     }
 
     /// The grammar model of a module.
@@ -162,16 +162,23 @@ impl Linker {
 
 /// The base with the rules and directives of the extension: a rule defined again replaces the
 /// inherited one, and the extension's directives follow or replace the base's.
-fn extend(mut base: Grammar, extension: Grammar) -> Grammar {
+fn extend(mut base: Grammar, extension: Grammar) -> Result<Grammar, Vec<Diagnostic>> {
     let mut index: HashMap<String, usize> = (base.rules.iter().enumerate())
         .map(|(i, rule)| (rule.name.text.clone(), i))
         .collect();
+    let mut errors = Vec::new();
     for rule in extension.rules {
         // A name replaces once, so that a second definition stays and is reported as one.
         match index.remove(&rule.name.text) {
-            Some(i) => base.rules[i] = rule,
+            Some(i) => match splice(rule, &base.rules[i]) {
+                Ok(replaced) => base.rules[i] = replaced,
+                Err(error) => errors.extend(error),
+            },
             None => base.rules.push(rule),
         }
+    }
+    if !errors.is_empty() {
+        return Err(errors);
     }
     base.ignore.extend(extension.ignore);
     if extension.word.is_some() {
@@ -192,5 +199,86 @@ fn extend(mut base: Grammar, extension: Grammar) -> Grammar {
     }
     base.imports.extend(extension.imports);
     base.recovers.extend(extension.recovers);
-    base
+    Ok(base)
+}
+
+/// The spans of every `...` in an expression.
+fn inherited(expr: &Expr, found: &mut Vec<Span>) {
+    let mut pending = vec![expr];
+    while let Some(expr) = pending.pop() {
+        if matches!(expr.kind, ExprKind::Inherited) {
+            found.push(expr.span);
+        }
+        pending.extend(expr.children());
+    }
+}
+
+/// A rule that replaces an inherited one, with its `...` taking the place of the inherited
+/// alternatives.
+fn splice(mut rule: Rule, old: &Rule) -> Result<Rule, Vec<Diagnostic>> {
+    let misplaced = |span, message: String| problem(DiagnosticCode::Inherited, message, span);
+    let not_yet = |span, form: &str| {
+        let message = format!("... {form} is not supported yet, see the roadmap (M9)");
+        problem(DiagnosticCode::NotYet, message, span)
+    };
+    let alternatives = match &rule.body {
+        RuleBody::Alternatives(alternatives) => alternatives,
+        RuleBody::Precedence(levels) => {
+            let mut found = Vec::new();
+            for level in levels {
+                level
+                    .alternatives
+                    .iter()
+                    .for_each(|a| inherited(&a.expr, &mut found));
+            }
+            return match found.first() {
+                Some(&span) => Err(not_yet(span, "in a precedence block")),
+                None => Ok(rule),
+            };
+        }
+    };
+    let mut nested = Vec::new();
+    for alternative in alternatives {
+        alternative
+            .expr
+            .children()
+            .into_iter()
+            .for_each(|e| inherited(e, &mut nested));
+    }
+    if let Some(&span) = nested.first() {
+        let message = "... stands only as a whole alternative".to_owned();
+        return Err(misplaced(span, message));
+    }
+    let whole: Vec<usize> = (alternatives.iter().enumerate())
+        .filter(|(_, a)| matches!(a.expr.kind, ExprKind::Inherited))
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&at) = whole.first() else {
+        return Ok(rule);
+    };
+    if let Some(&again) = whole.get(1) {
+        let message = "... stands at most once in a rule".to_owned();
+        return Err(misplaced(alternatives[again].expr.span, message));
+    }
+    let span = alternatives[at].expr.span;
+    if let Some(alias) = &alternatives[at].alias {
+        let message = "... keeps the aliases of the inherited alternatives and takes none";
+        return Err(misplaced(alias.span, message.to_owned()));
+    }
+    let RuleBody::Alternatives(inherited) = &old.body else {
+        return Err(not_yet(span, "for a precedence block"));
+    };
+    let same = rule.params.len() == old.params.len()
+        && (rule.params.iter().zip(&old.params)).all(|(new, old)| new.text == old.text);
+    if !same {
+        let message = format!(
+            "{} takes other parameters than the rule it replaces, whose alternatives ... stands for",
+            rule.name.text
+        );
+        return Err(misplaced(span, message));
+    }
+    if let RuleBody::Alternatives(alternatives) = &mut rule.body {
+        alternatives.splice(at..=at, inherited.iter().cloned());
+    }
+    Ok(rule)
 }

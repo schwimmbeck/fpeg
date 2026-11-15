@@ -1326,8 +1326,9 @@ impl<'g> Resolver<'g> {
             }
             ExprKind::Error { .. } => E::ErrorAlternative,
             ExprKind::Inherited => {
-                let message = "... is not supported yet, see the roadmap (M7)";
-                self.error(DiagnosticCode::NotYet, message.into(), expr.span);
+                let message = "... stands for the alternatives of a rule that the grammar \
+                               extends and this rule replaces";
+                self.error(DiagnosticCode::Inherited, message.into(), expr.span);
                 E::Empty
             }
         };

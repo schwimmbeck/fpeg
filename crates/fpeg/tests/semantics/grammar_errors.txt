@@ -257,10 +257,10 @@ e: %precedence {
 the parameter p takes no arguments
 the level b takes no arguments
 
-=== the inherited body is not supported yet
+=== the inherited body needs a rule that replaces an inherited one
 start: ...
 --- grammar
-... is not supported yet, see the roadmap (M7)
+... stands for the alternatives of a rule that the grammar extends and this rule replaces
 
 === a builder on a terminal cannot take children
 start: NAME

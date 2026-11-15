@@ -43,7 +43,7 @@ The definition has two steps. First, every grammar is translated into a small co
 A grammar with `%extends "m"` is joined with the grammar `m` before anything else, into one grammar that the rest of this page reads:
 
 - `m` is joined with what it extends first.
-- Each rule of the grammar whose name `m` defines takes the place of `m`'s rule, and every reference means it.
+- Each rule of the grammar whose name `m` defines takes the place of `m`'s rule, and every reference means it. A `...` that stands as a whole alternative of it is replaced by the alternatives of `m`'s rule, in their order.
 - The other rules are added.
 - The skip expression is the ordered choice of `m`'s `%ignore` expressions and then the grammar's. The flags and soft keywords are those of both, and `%word` and `%tabs` the grammar's where it gives them, otherwise `m`'s.
 

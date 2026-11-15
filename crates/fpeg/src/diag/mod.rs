@@ -122,6 +122,8 @@ pub enum DiagnosticCode {
     NotYet,
     /// E601: a grammar extended that no module provides.
     UnknownModule,
+    /// E605: `...` where it stands for no inherited alternatives.
+    Inherited,
     /// E901: a bug of fpeg itself.
     Internal,
     /// W101: an alternative after one that cannot fail.
@@ -146,7 +148,7 @@ pub enum DiagnosticCode {
 
 impl DiagnosticCode {
     /// Every code, in the order of their numbers.
-    pub const ALL: [DiagnosticCode; 36] = [
+    pub const ALL: [DiagnosticCode; 37] = [
         DiagnosticCode::Syntax,
         DiagnosticCode::Escape,
         DiagnosticCode::Property,
@@ -173,6 +175,7 @@ impl DiagnosticCode {
         DiagnosticCode::TooLarge,
         DiagnosticCode::NotYet,
         DiagnosticCode::UnknownModule,
+        DiagnosticCode::Inherited,
         DiagnosticCode::Internal,
         DiagnosticCode::UnreachableAlternative,
         DiagnosticCode::ShadowedLiteral,
@@ -214,6 +217,7 @@ impl DiagnosticCode {
             DiagnosticCode::TooLarge => "E402",
             DiagnosticCode::NotYet => "E501",
             DiagnosticCode::UnknownModule => "E601",
+            DiagnosticCode::Inherited => "E605",
             DiagnosticCode::Internal => "E901",
             DiagnosticCode::UnreachableAlternative => "W101",
             DiagnosticCode::ShadowedLiteral => "W102",

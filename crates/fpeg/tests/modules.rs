@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Grammars that extend others: the rules they replace for every reference, the directives
-//! they add, and the problems of modules with their codes.
+//! Grammars that extend others: the rules they replace for every reference, where `...` puts the
+//! inherited alternatives, the directives they add, and the problems of modules with their codes.
 
 use fpeg::{Diagnostic, DiagnosticCode, Grammar, Parser};
 
@@ -25,11 +25,21 @@ fn found(text: &str) -> Vec<Diagnostic> {
 #[test]
 fn a_rule_defined_again_replaces_the_inherited_one_for_every_reference() {
     // The base's array and member refer to ?value, which the extension replaces.
-    let text = "%extends \"json\"\n?value: array | INT | NAME\nNAME: [a-z]+";
+    let text = "%extends \"json\"\n?value: ... | NAME\nNAME: [a-z]+";
     assert_eq!(
         tree(text, "[1, abc]"),
         "(array ~\"[\" INT\"1\" ~\",\" NAME\"abc\" ~\"]\")"
     );
+}
+
+#[test]
+fn the_inherited_alternatives_stand_where_the_extension_writes_them() {
+    // Ordered choice tells which alternative comes first: a name that is also a literal of the
+    // base's matches as whichever stands first.
+    let first = "%extends \"json\"\n?value: WORD | ...\nWORD: [a-z]+";
+    let last = "%extends \"json\"\n?value: ... | WORD\nWORD: [a-z]+";
+    assert_eq!(tree(first, "true"), "WORD\"true\"");
+    assert_eq!(tree(last, "true"), "(value ~\"true\")");
 }
 
 #[test]
@@ -39,6 +49,56 @@ fn the_ignored_text_of_an_extension_comes_after_the_base_s() {
         tree(text, "[1, // one\n 2]"),
         "(array ~\"[\" INT\"1\" ~\",\" INT\"2\" ~\"]\")"
     );
+}
+
+#[test]
+fn a_misplaced_inherited_body_is_an_error() {
+    use DiagnosticCode::{Inherited, NotYet};
+    for (text, code, message) in [
+        (
+            "%extends \"json\"\n?value: \"nan\" ...",
+            Inherited,
+            "whole alternative",
+        ),
+        (
+            "%extends \"json\"\n?value: ... | ...",
+            Inherited,
+            "at most once",
+        ),
+        (
+            "%extends \"json\"\n?value: ... -> other",
+            Inherited,
+            "takes none",
+        ),
+        (
+            "%extends \"json\"\n?value<x>: ... | x",
+            Inherited,
+            "other parameters",
+        ),
+        (
+            "%extends \"json\"\nother: ...\nstart: other",
+            Inherited,
+            "this rule replaces",
+        ),
+        // Python's expression is a precedence block.
+        (
+            "%extends \"python\"\nexpression: ... | \"x\"",
+            NotYet,
+            "for a precedence block",
+        ),
+        (
+            "%extends \"json\"\nvalue: %precedence {\n    sum: ...\n}",
+            NotYet,
+            "in a precedence",
+        ),
+    ] {
+        let found = found(text);
+        let error = found.iter().find(|d| d.code == code);
+        assert!(
+            error.is_some_and(|d| d.message.contains(message)),
+            "{text}: {found:?}"
+        );
+    }
 }
 
 #[test]
