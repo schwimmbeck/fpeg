@@ -90,7 +90,8 @@ pub struct ProfileRow {
     pub backtracked_bytes: u64,
     /// Calls at a position where the rule had been called before, with the same flags, the
     /// same context of columns and captures and the same recording of failures: what
-    /// remembering the rule would answer.
+    /// remembering the rule would answer. The passes that grow a left recursion call the rules
+    /// of its cycle again, which count here though each pass runs them anew by design.
     pub repeats: u64,
     /// Steps from the calls counted in `repeats` that ran the rule to their ends, the rules
     /// they called included, outside another such call of the rules of the name: what
