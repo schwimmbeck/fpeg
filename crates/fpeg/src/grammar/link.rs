@@ -151,10 +151,7 @@ impl Grammar {
     /// The diagnostics of a joined grammar, each whose span lies in a module moved to the
     /// directive that took the module in, with its message saying where in the module.
     pub fn locate(&self, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
-        diagnostics
-            .into_iter()
-            .map(|d| locate(&self.sources, d))
-            .collect()
+        locate(&self.sources, diagnostics)
     }
 
     /// Whether a span of the joined grammar lies in a grammar it extends or imports.
@@ -163,27 +160,35 @@ impl Grammar {
     }
 }
 
-/// The grammar that a span of a joined grammar lies in, where it is a module.
-fn source_of(sources: &[Source], span: Span) -> Option<&Source> {
+/// The index of the module that a span of a joined grammar lies in, where it is a module.
+fn source_of(sources: &[Source], span: Span) -> Option<usize> {
     let at = span.start;
-    (sources.iter()).find(|s| s.base <= at && (at - s.base) as usize <= s.text.len())
+    (sources.iter()).position(|s| s.base <= at && (at - s.base) as usize <= s.text.len())
 }
 
-fn locate(sources: &[Source], diagnostic: Diagnostic) -> Diagnostic {
-    let at = diagnostic.span.start;
-    let Some(source) = source_of(sources, diagnostic.span) else {
-        return diagnostic;
-    };
-    let lines = LineIndex::new(&source.text);
-    let (line, column) = lines.line_column(&source.text, (at - source.base) as usize);
-    Diagnostic {
-        message: format!(
-            "in the grammar {}, line {line}, column {column}: {}",
-            source.name, diagnostic.message
-        ),
-        span: source.directive,
-        ..diagnostic
-    }
+/// Each diagnostic that lies in a module, moved to the directive that took the module in. The
+/// lines of a module are indexed once, however many diagnostics it holds.
+fn locate(sources: &[Source], diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut lines: Vec<Option<LineIndex>> = sources.iter().map(|_| None).collect();
+    (diagnostics.into_iter())
+        .map(|diagnostic| {
+            let Some(index) = source_of(sources, diagnostic.span) else {
+                return diagnostic;
+            };
+            let source = &sources[index];
+            let lines = lines[index].get_or_insert_with(|| LineIndex::new(&source.text));
+            let at = (diagnostic.span.start - source.base) as usize;
+            let (line, column) = lines.line_column(&source.text, at);
+            Diagnostic {
+                message: format!(
+                    "in the grammar {}, line {line}, column {column}: {}",
+                    source.name, diagnostic.message
+                ),
+                span: source.directive,
+                ..diagnostic
+            }
+        })
+        .collect()
 }
 
 /// Join a grammar with the grammars it extends and imports, from the library alone.
@@ -210,10 +215,7 @@ fn link<'g>(
             joined.sources = linker.sources;
             Ok(Cow::Owned(joined))
         }
-        Err(errors) => Err(errors
-            .into_iter()
-            .map(|d| locate(&linker.sources, d))
-            .collect()),
+        Err(errors) => Err(locate(&linker.sources, errors)),
     }
 }
 

@@ -282,6 +282,9 @@ fn a_grammar_reports_at_most_a_hundred_errors() {
     let names: Vec<String> = (0..1_000).map(|i| format!("missing{i}")).collect();
     let errors = grammar_errors(&format!("start: {}\n", names.join(" ")));
     assert_eq!(errors.len(), 100);
+    // Reading stops at as many, though it recovers at every broken line.
+    let broken = grammar_errors(&"start: )\n".repeat(1_000));
+    assert_eq!(broken.len(), 100);
 }
 
 #[test]

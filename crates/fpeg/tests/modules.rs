@@ -329,6 +329,42 @@ fn the_problems_of_modules_stand_in_the_order_of_the_text() {
     assert!(lines[0] < lines[1], "{lines:?}");
 }
 
+/// Templates of a module that never use their parameter, each a warning to place in the module.
+const MANY_PLACED: usize = 16_000;
+/// How many times fewer the first measurement places.
+const FEWER_PLACED: usize = 8;
+/// The most that placing all the warnings may take against placing the fewer: about the ratio of
+/// the counts where each module is indexed once, its square where once for each warning.
+const MAX_PLACING_TIME_FACTOR: f64 = 20.0;
+/// Runs of each measurement, the best of which counts.
+const PLACING_RUNS: usize = 3;
+
+/// The best time to check an extension of a module with `templates` warnings.
+fn placing_seconds(templates: usize) -> f64 {
+    let base: String = (0..templates)
+        .map(|i| format!("t{i}<x>: \"a\"\n"))
+        .collect();
+    let joined = linked("%extends \"base\"\nstart: \"s\"", &[("base", &base)]).expect("it joins");
+    let mut best = f64::INFINITY;
+    for _ in 0..PLACING_RUNS {
+        let started = std::time::Instant::now();
+        assert_eq!(fpeg::check(&joined).len(), templates);
+        best = best.min(started.elapsed().as_secs_f64());
+    }
+    best
+}
+
+#[test]
+fn placing_the_problems_of_a_module_takes_time_in_proportion_to_their_number() {
+    let fewer = placing_seconds(MANY_PLACED / FEWER_PLACED);
+    let all = placing_seconds(MANY_PLACED);
+    let factor = all / fewer;
+    assert!(
+        factor < MAX_PLACING_TIME_FACTOR,
+        "{fewer:.3} s, then {all:.3} s"
+    );
+}
+
 #[test]
 fn common_s_escaped_string_stands_on_one_line() {
     let grammar = Grammar::from_text("%import common (ESCAPED_STRING)\nstart: ESCAPED_STRING")

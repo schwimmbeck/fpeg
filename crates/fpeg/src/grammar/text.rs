@@ -13,6 +13,7 @@ use super::{
 };
 use crate::diag::{Diagnostic, DiagnosticCode};
 use crate::parse::{Limit, ParseErrorKind, Recovery};
+use crate::resolve::MAX_ERRORS;
 use crate::tree::NodeRef;
 use crate::vm::Parser;
 
@@ -45,10 +46,11 @@ fn syntax_error(position: usize, expected: &[String], base: u32) -> Diagnostic {
 
 /// Read a grammar from its text with `meta`, a parser of the grammar of grammars, its spans
 /// counted from `base`, where a module's text lies among the spans of a grammar that uses it.
-/// The parse recovers at the next rule or directive, so that each mistake is reported.
+/// The parse recovers at the next rule or directive, so that each mistake is reported, up to the
+/// number of errors that resolving reports too.
 pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<Diagnostic>> {
     let recovered = |recoveries: &[Recovery]| -> Vec<Diagnostic> {
-        (recoveries.iter())
+        (recoveries.iter().take(MAX_ERRORS))
             .map(|recovery| syntax_error(recovery.position, &recovery.expected, base))
             .collect()
     };
