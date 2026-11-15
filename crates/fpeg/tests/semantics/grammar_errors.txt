@@ -23,6 +23,12 @@ t<x>: x
 --- grammar
 the rule start is defined twice
 
+=== a parameter declared twice is an error
+start: t<"x", "y">
+t<a, a>: a
+--- grammar
+the parameter a of the rule t is declared twice
+
 === a parameter given arguments inside an argument is an error, not a rule of that name
 start: t<"a">
 t<x>: u<x<"b">>

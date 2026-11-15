@@ -211,6 +211,16 @@ pub(crate) fn resolve_counted(
                 rule.name.span,
             );
         }
+        let mut params = HashSet::new();
+        for param in &rule.params {
+            if !params.insert(param.text.as_str()) {
+                let message = format!(
+                    "the parameter {} of the rule {} is declared twice",
+                    param.text, rule.name.text
+                );
+                r.error(DiagnosticCode::Duplicate, message, param.span);
+            }
+        }
         // Every rule, also a template that nothing uses and nothing lowers, which `check`
         // walks all the same.
         let what = format!("the rule {}", rule.name.text);
