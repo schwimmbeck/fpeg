@@ -1,0 +1,11 @@
+// Editor settings, as an editor writes them.
+{
+    /* The font, in points. */
+    "editor.fontSize": 14,
+    "editor.rulers": [80, 100,],  // two rulers
+    "files.exclude": {
+        "**/.git": true,
+        "**/node_modules": true,
+    },
+    "window.title": "${activeEditorShort}",
+}

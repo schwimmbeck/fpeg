@@ -1,0 +1,12 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// JSON with comments and trailing commas, as an extension of the JSON grammar: the comments of
+// C and C++ are skipped, and an object or array may end with a comma.
+
+%extends "json"
+
+object: "{" ((member ++ ",") ","?)? "}" => dict
+array: "[" ((value ++ ",") ","?)? "]" => list
+
+%ignore "//" [^\n]* | "/*" (!"*/" .)* "*/"
