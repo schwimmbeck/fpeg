@@ -196,11 +196,19 @@ impl<'t> Converter<'t> {
                 let expr = self.field_choice(node, "expr");
                 grammar.ignore.push(expr);
             }
+            "word" if grammar.word.is_some() => {
+                let message = "a grammar says its word characters once".to_owned();
+                self.error(DiagnosticCode::Duplicate, message, self.span(node));
+            }
             "word" => grammar.word = Some(self.field_choice(node, "expr")),
             "flags" => {
                 for name in fields(node, "names") {
                     grammar.flags.push(self.name(&name));
                 }
+            }
+            "tabs" if grammar.tabs.is_some() => {
+                let message = "a grammar says its tab width once".to_owned();
+                self.error(DiagnosticCode::Duplicate, message, self.span(node));
             }
             "tabs" => grammar.tabs = field(node, "width").map(|w| self.count(&w)),
             "keywords" => {

@@ -64,6 +64,16 @@ start: "a"
 --- grammar
 %tabs needs a width from 1 to 1000
 
+=== a grammar gives its tab width and its word characters once
+%tabs 4
+%tabs 8
+%word [a-z]
+%word [a-z_]
+start: "a"
+--- grammar
+a grammar says its tab width once
+a grammar says its word characters once
+
 === a hex escape in a class needs two hex digits
 start: [\xaé]
 --- grammar
