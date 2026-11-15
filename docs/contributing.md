@@ -140,11 +140,14 @@ A full run takes several minutes. Close other programs while it runs, and record
 
 ## Releases
 
-A release starts from a tag that the maintainer pushes, and `.github/workflows/release.yml` builds and tests every package of it. Nothing is released from a push to `main`.
+A release starts from a tag that the maintainer pushes, and `.github/workflows/release.yml` does the rest. Nothing is released from a push to `main`.
 
 1. A release commit sets the version in `Cargo.toml`, in `[workspace.package]` and in the entry of `fpeg` under `[workspace.dependencies]`. Every crate and the Python package take it from there. For a release, the section `Unreleased` of `CHANGELOG.md` becomes `## X.Y.Z (YYYY-MM-DD)`.
 2. The tag is the version with a `v` before it, as `v0.1.0`. A pre-release, as `v0.2.0-rc.1` with the version `0.2.0-rc.1`, rehearses a release.
 3. The workflow checks the tag against the version and the changelog, builds the wheels for every platform and interpreter and tests each one installed, builds and tests the source distribution, packages and builds the crates, builds the command line for every platform and checks the metadata of the packages.
+4. A rehearsal then publishes to TestPyPI and stops. A release waits for the maintainer's approval in the environment `release`, publishes the crates to crates.io, the core first, and the wheels and the source distribution to PyPI, both by trusted publishing, so that no token lives in CI. Then it makes the GitHub release with the section of the changelog, the packages and the binaries, and deploys this documentation to GitHub Pages.
+
+A version is never replaced. A publishing job that failed, as on a network error, runs again and skips what is out already, and a fault in a release is fixed by the next patch version.
 
 The wheels are built with profile-guided optimization, as this builds one:
 
@@ -153,6 +156,13 @@ uv run maturin build --release --pgo
 ```
 
 maturin builds the module with counters, installs it in a fresh environment, runs `scripts/pgo_training.py` there, which parses the samples of every grammar and turns larger texts into Python values, and builds the module again with the counts. It needs rustup's component `llvm-tools`, and builds and trains once for each interpreter. `scripts/test_wheels.py` then installs each wheel with its interpreter and runs the Python tests against it.
+
+The maintainer sets up once what the workflow publishes with:
+
+- On PyPI, in the project `fpeg` under Publishing, a trusted publisher for GitHub: the owner `schwimmbeck`, the repository `fpeg`, the workflow `release.yml` and the environment `release`.
+- On TestPyPI, the same with the environment `testpypi`, as a pending publisher while the project does not exist there.
+- On crates.io, for each of the crates `fpeg` and `fpeg-cli` under Settings, Trusted Publishing: the repository `schwimmbeck/fpeg`, the workflow `release.yml` and the environment `release`.
+- In the settings of the repository on GitHub: the environment `release`, with the maintainer as required reviewer and deployments from tags `v*` alone, and the environment `testpypi`, from tags `v*` too. Under Pages, GitHub Actions as the source, and in the environment `github-pages` that this makes, tags `v*` among the allowed deployments. A required reviewer needs the repository to be public on GitHub's free plan.
 
 ## Layout
 

@@ -3,8 +3,10 @@
 
 name: Release
 
-# A tag that the maintainer pushes starts a release: vX.Y.Z, or vX.Y.Z-rc.N for a pre-release.
-# It builds and tests every package of the release.
+# A tag that the maintainer pushes starts a release. vX.Y.Z publishes to crates.io and PyPI after
+# an approval in the environment release, makes the GitHub release and deploys the docs.
+# vX.Y.Z-rc.N rehearses everything before that and publishes to TestPyPI alone. A job that fails
+# runs again on its own, and the publishing jobs skip what is out already.
 on:
   push:
     tags: ["v*"]
@@ -230,3 +232,132 @@ jobs:
           path: dist
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uvx twine check --strict dist/*
+
+  testpypi:
+    name: Rehearsal on TestPyPI
+    if: contains(github.ref_name, '-')
+    needs: [crates, binaries, distributions]
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/fpeg
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{wheels-*,sdist}"
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  crates-io:
+    name: Publish to crates.io
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [crates, binaries, distributions]
+    runs-on: ubuntu-24.04
+    environment:
+      name: release
+      url: https://crates.io/crates/fpeg
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
+      - name: Publish each crate that crates.io does not have yet, the core first
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          for crate in fpeg fpeg-cli; do
+            url="https://crates.io/api/v1/crates/$crate/$version"
+            if curl -sf -A "fpeg release (github.com/$GITHUB_REPOSITORY)" "$url" > /dev/null; then
+              echo "$crate $version is on crates.io already"
+            else
+              cargo publish -p "$crate"
+            fi
+          done
+
+  pypi:
+    name: Publish to PyPI
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [crates, binaries, distributions]
+    runs-on: ubuntu-24.04
+    environment:
+      name: release
+      url: https://pypi.org/p/fpeg
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{wheels-*,sdist}"
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          skip-existing: true
+
+  github-release:
+    name: GitHub release
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: [crates-io, pypi]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notes
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{wheels-*,sdist,binary-*}"
+          merge-multiple: true
+          path: assets
+      - name: Make the release, or add to it what it lacks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" assets/* --verify-tag \
+              --title "fpeg ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          fi
+
+  docs:
+    name: Documentation
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: pypi
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      UV_LOCKED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/_build/html
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
