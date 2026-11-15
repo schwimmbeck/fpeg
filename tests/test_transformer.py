@@ -507,6 +507,31 @@ def test_strict_transformers_name_only_rules_and_terminals() -> None:
     assert Helper().transform(parse("f()")).children == ["F"]
 
 
+def test_a_subclass_keeps_the_strictness_of_its_base() -> None:
+    class Calls(fpeg.Transformer, strict=True):
+        pass
+
+    class Typo(Calls):
+        def calls(self, children: list[Any]) -> None: ...
+
+    with pytest.raises(TypeError, match=r"Typo\.calls names no rule"):
+        Typo().transform(parse("f()"))
+
+    class Loose(Calls, strict=False):
+        def calls(self, children: list[Any]) -> None: ...
+
+    assert Loose().transform(parse("f()")) == parse("f()")
+
+    class Names(fpeg.Visitor, strict=True):
+        pass
+
+    class Typos(Names):
+        def calls(self, tree: fpeg.Tree) -> None: ...
+
+    with pytest.raises(TypeError, match=r"Typos\.calls names no rule"):
+        Typos().visit(parse("f()"))
+
+
 def test_a_rule_named_like_a_keyword_or_a_method_of_the_class_takes_an_underscore() -> None:
     grammar = fpeg.Grammar('start: if transform\nif: None\ntransform: "t"\nNone: "n"\n')
 

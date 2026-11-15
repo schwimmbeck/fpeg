@@ -182,14 +182,15 @@ def _call(walker: object, node: Tree) -> Any:
 
 
 class _Walker:
-    """What the Interpreter and the Visitor share: `strict=True` as a class keyword."""
+    """What the Interpreter and the Visitor share: `strict=True`, which subclasses keep."""
 
     __fpeg_strict__: ClassVar[bool] = False
     __fpeg_reserved__: ClassVar[frozenset[str]]
 
-    def __init_subclass__(cls, *, strict: bool = False, **kwargs: Any) -> None:
+    def __init_subclass__(cls, *, strict: bool | None = None, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        cls.__fpeg_strict__ = strict
+        if strict is not None:
+            cls.__fpeg_strict__ = strict
 
 
 class Interpreter(_Walker):

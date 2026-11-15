@@ -152,7 +152,8 @@ class Transformer:
     `class T(Transformer, strict=True)` makes every public method of `T` name a rule or terminal
     of the grammar it meets. `class T(Transformer, positions="ast")` gives each value made for
     a node or token of a parse its position, where the value is an `ast.AST` that has none yet,
-    and a `Positions` record names other attributes. Subclasses keep the positions of their base.
+    and a `Positions` record names other attributes. Subclasses keep the strictness and the
+    positions of their base.
     """
 
     __fpeg_strict__: ClassVar[bool] = False
@@ -162,12 +163,13 @@ class Transformer:
     def __init_subclass__(
         cls,
         *,
-        strict: bool = False,
+        strict: bool | None = None,
         positions: Positions | Literal["ast"] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init_subclass__(**kwargs)
-        cls.__fpeg_strict__ = strict
+        if strict is not None:
+            cls.__fpeg_strict__ = strict
         if positions == "ast":
             cls.__fpeg_positions__ = _ast_positions()
         elif isinstance(positions, Positions):

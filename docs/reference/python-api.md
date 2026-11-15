@@ -170,7 +170,7 @@ class Flatten(fpeg.Transformer):
 assert Flatten().transform(lists.parse("a, (b, (c, d)), e")) == ["a", "b", "c", "d", "e"]
 ```
 
-An exception in a method keeps its type and gets a note with the method and where its node stands, which the traceback shows. A wrong signature fails at the first transform with the fields of the node. The methods of a class and their signatures are read at its first transform of a tree from a grammar and then kept: a method added to the class later is not called on that grammar's trees, and a signature changed later is not read again. `class T(fpeg.Transformer, strict=True)` also makes every public method of `T` name a rule or terminal, so a misspelled method fails instead of never being called.
+An exception in a method keeps its type and gets a note with the method and where its node stands, which the traceback shows. A wrong signature fails at the first transform with the fields of the node. The methods of a class and their signatures are read at its first transform of a tree from a grammar and then kept: a method added to the class later is not called on that grammar's trees, and a signature changed later is not read again. `class T(fpeg.Transformer, strict=True)` also makes every public method of `T` name a rule or terminal, so a misspelled method fails instead of never being called. A subclass of `T` is strict too, unless it says `strict=False`.
 
 ```python
 class Strict(fpeg.Transformer, strict=True):
