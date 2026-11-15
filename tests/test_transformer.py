@@ -576,8 +576,23 @@ def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
     class FieldsOnBuilt(fpeg.Transformer):
         def pair(self, key: Any, value: Any) -> None: ...
 
-    with pytest.raises(TypeError, match="a tree built in Python has no fields"):
+    with pytest.raises(TypeError, match="has no fields"):
         FieldsOnBuilt().transform(built)
+
+    # A node whose child's value changed comes back rebuilt, with its text and without fields.
+    class Leaves(fpeg.Transformer):
+        def NAME(self, token: fpeg.Token) -> str:
+            return token.upper()
+
+    rebuilt = Leaves().transform(parse("f(a)"))
+    call = rebuilt.children[0]
+    assert (call.data, call.children, call.text) == ("call", ["F", "A"], "f(a)")
+
+    class FieldsOnRebuilt(fpeg.Transformer):
+        def call(self, name: Any, args: Any, kw: Any) -> None: ...
+
+    with pytest.raises(TypeError, match="built in Python or rebuilt by a transform"):
+        FieldsOnRebuilt().transform(rebuilt)
 
     loop = fpeg.Tree("start", [])
     loop.children.append(loop)

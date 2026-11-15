@@ -141,7 +141,7 @@ class Pairs(fpeg.Transformer):
 assert Pairs().transform(grammar.parse("x = 1, y = 22")) == {"x": 1, "y": 22}
 ```
 
-A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles. `return fpeg.Discard` removes a node from its parent, and a method that yields puts each value into the parent in the node's place, so the parent's list stays flat:
+A node without a method stays a tree, and a tree no method changes comes back as it is, so a transformer pays only for the nodes it handles. Where the value of one of its children changed, the node comes back as a tree built anew, which keeps its `meta` and its `text` but not the fields, so a second transform that takes them by name needs a method for that node in the first. `return fpeg.Discard` removes a node from its parent, and a method that yields puts each value into the parent in the node's place, so the parent's list stays flat:
 
 ```python
 lists = fpeg.Grammar(r"""

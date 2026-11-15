@@ -418,7 +418,8 @@ impl Tree {
             .map_or_else(|| py.None(), |m| m.clone_ref(py)))
     }
 
-    /// The text of the node in its input, or `None` for a tree built in Python.
+    /// The text of the node in its input, or `None` for a tree built in Python. A tree that a
+    /// transform rebuilt keeps the text of its node.
     #[getter]
     fn text<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyString>>> {
         let Some((parsed, index)) = self.origin() else {
@@ -436,7 +437,8 @@ impl Tree {
     fn field(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
         let Inner::View { parsed, index } = &self.inner else {
             return Err(PyTypeError::new_err(
-                "fields belong to trees of a parse, and this tree was built in Python",
+                "fields belong to trees of a parse, and this tree was built in Python, or rebuilt \
+                 by a transform since the value of one of its children changed",
             ));
         };
         let node = (parsed.tree.node(*index as usize))

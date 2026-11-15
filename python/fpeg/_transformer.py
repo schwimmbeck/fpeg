@@ -511,7 +511,7 @@ def node_convention(
     if len(names) == 1:
         return LIST, (), extras
     if fields is None:
-        known = "a tree built in Python has no fields"
+        known = "a tree built in Python or rebuilt by a transform has no fields"
     elif fields:
         known = f"the fields of {name} are {', '.join(fields)}"
     else:

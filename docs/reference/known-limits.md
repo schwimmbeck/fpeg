@@ -30,6 +30,7 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 - A function given in `functions` that refers back to its grammar, as a closure over the grammar does, keeps both alive until the process ends, since the grammar holds its functions where the garbage collector cannot reach them. A function at module level makes no such cycle.
 - A token on its own finds the builder of its terminal through its grammar and does not keep the grammar alive, so keep the grammar while such a token is transformed.
 - A `Transformer` reads the methods and signatures of its class at its first transform of a tree from a grammar and keeps them, so a method added later is not called on that grammar's trees.
+- A node that a transform rebuilt, since the value of one of its children changed, has no fields, as a tree built in Python has none: its children may change, and the fields would no longer match them.
 - A token transformed on its own, as `parse` returns one where the start rule leaves a single token, gets no position from `positions`, since it holds no text of its line to count its columns in.
 - Views of a text beyond ASCII take longer to make than views of an ASCII text, since their positions count code points.
 - `scan_values` collects its results before it yields them, so on a tree built in Python that shares subtrees many times over it can outgrow memory.
