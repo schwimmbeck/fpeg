@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use fpeg::{
     Diagnostic, Grammar, LineIndex, ModuleFiles, NodeRef, ParseError, ParseErrorKind, Parser,
-    Severity, Tree,
+    Severity, Source, Tree,
 };
 
 mod profile;
@@ -33,6 +33,7 @@ Options of parse and profile:
 
 Options of parse:
   --spans                      show the byte span of every node and token
+  --recover                    go on past errors where the grammar has recoveries
 
   -h, --help                   print this help
   -V, --version                print the version";
@@ -203,6 +204,7 @@ struct ParseOptions {
     start: Option<String>,
     spans: bool,
     json: bool,
+    recover: bool,
     paths: Vec<OsString>,
 }
 
@@ -217,6 +219,7 @@ fn parse_options(args: &[OsString]) -> Result<ParseOptions, Failure> {
             },
             Some("--spans") => options.spans = true,
             Some("--json") => options.json = true,
+            Some("--recover") => options.recover = true,
             Some(option) if option.starts_with('-') && option != "-" => {
                 return Err(Failure::Usage(format!("unexpected argument '{option}'")));
             }
@@ -257,7 +260,11 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
         }
     };
     let start = options.start.as_deref().unwrap_or("start");
-    match parser.parse(&input, start) {
+    let parsed = match options.recover {
+        true => parser.parse_recovering(&input, start),
+        false => parser.parse(&input, start),
+    };
+    match parsed {
         Ok(tree) => {
             let text = match options.json {
                 true => json(&tree, &input),
@@ -265,7 +272,14 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
             };
             // A closed pipe is no failure of the parse.
             let _ = std::io::stdout().write_all(text.as_bytes());
-            Ok(())
+            if tree.recoveries().is_empty() {
+                return Ok(());
+            }
+            let source = Source::new(&input, Some(&name));
+            for recovery in tree.recoveries() {
+                say(true, format_args!("{}\n", recovery.render(&source)));
+            }
+            Err(Failure::Problem)
         }
         Err(error) => {
             report_failure(&grammar, &name, &input, &error);
@@ -274,22 +288,19 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
     }
 }
 
-/// Report an input that did not parse, with the place of the failure. A start rule the grammar
-/// lacks is a problem of the grammar, not of the input.
+/// Report an input that did not parse: each error with the line it stands in, and a blank line
+/// after it. A start rule the grammar lacks is a problem of the grammar, not of the input.
 fn report_failure(grammar: &Path, name: &str, input: &str, error: &ParseError) {
-    let message = error.message();
     if matches!(error.kind, ParseErrorKind::UnknownStart(_)) {
+        let message = error.message();
         say(
             true,
             format_args!("{}: error: {message}", grammar.display()),
         );
         return;
     }
-    let (line, column) = LineIndex::new(input).line_column(input, error.position);
-    say(
-        true,
-        format_args!("{name}:{line}:{column}: error: {message}"),
-    );
+    let source = Source::new(input, Some(name));
+    say(true, format_args!("{}\n", error.render(&source)));
 }
 
 /// The tree as JSON: an array of the top items, a node as an object with its kind, field,

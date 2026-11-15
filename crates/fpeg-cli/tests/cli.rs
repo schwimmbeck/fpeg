@@ -141,7 +141,40 @@ fn a_failed_parse_reports_where_and_what_was_expected() {
     assert_eq!(out.status.code(), Some(1));
     assert!(out.stdout.is_empty());
     // Only spaces are ignored, so the line break is where an N was expected.
-    assert_eq!(text(&out.stderr), "<stdin>:1:4: error: expected N\n");
+    assert_eq!(
+        text(&out.stderr),
+        "error: expected N\n --> <stdin>:1:4\n  |\n1 | 1 +\n  |    ^\n\n"
+    );
+}
+
+#[test]
+fn parse_with_recover_prints_the_recovered_tree_and_fails_with_each_error() {
+    let list = "start: \"[\" (N (\",\" (N ^ item))*)? \"]\" ^ close\nN: [0-9]+\n\
+                %ignore \" \"+\n%recover item: (!(\",\" | \"]\") .)*\n%recover close: ()\n";
+    let paths = files("recover", &[("list.fpeg", list)]);
+    let args = ["parse".as_ref(), "--recover".as_ref(), paths[0].as_os_str()];
+    let out = run_with_input(args, "[1, x]");
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stdout),
+        "start\n  ~\"[\"\n  N\"1\"\n  ~\",\"\n  <error>\n    ~\"x\"\n  ~\"]\"\n"
+    );
+    assert_eq!(
+        text(&out.stderr),
+        "error[item]: expected N\n --> <stdin>:1:5\n  |\n1 | [1, x]\n  |     ^\n\n"
+    );
+    // A parse that fails even so shows the errors it recovered from first.
+    let list = list.replace("%recover close: ()\n", "");
+    let paths = files("recover_fails", &[("list.fpeg", &list)]);
+    let args = ["parse".as_ref(), "--recover".as_ref(), paths[0].as_os_str()];
+    let out = run_with_input(args, "[1, x");
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+    assert_eq!(
+        text(&out.stderr),
+        "error[item]: expected N\n --> <stdin>:1:5\n  |\n1 | [1, x\n  |     ^\n\n\
+         error[close]: expected \",\", \"]\"\n --> <stdin>:1:6\n  |\n1 | [1, x\n  |      ^\n\n"
+    );
 }
 
 #[test]
@@ -460,7 +493,10 @@ fn profile_prints_json_and_reports_an_input_that_does_not_parse() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        format!("{}:1:4: error: expected N\n", paths[1].display())
+        format!(
+            "error: expected N\n --> {}:1:4\n  |\n1 | 1 +\n  |    ^\n\n",
+            paths[1].display()
+        )
     );
     let json = text(&out.stdout);
     assert!(json.starts_with("{\"steps\":"), "{json}");

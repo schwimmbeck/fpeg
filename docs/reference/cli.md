@@ -22,7 +22,7 @@ The exit status is 0 when no grammar has an error, 1 otherwise, and 2 for a comm
 ## fpeg parse
 
 ```text
-fpeg parse [--start RULE] [--spans] [--json] GRAMMAR [INPUT]
+fpeg parse [--start RULE] [--spans] [--json] [--recover] GRAMMAR [INPUT]
 ```
 
 Parses the file INPUT, or standard input when INPUT is missing or `-`, from the rule `start` or the rule `--start` names, and prints its [tree](tree.md). With this grammar in `sums.fpeg`
@@ -50,13 +50,21 @@ A token shows its kind and its text, and a field its name before the item. `~` m
 [{"kind":"start","start":0,"end":6,"children":[{"kind":"N","field":"first","start":0,"end":1,"text":"1"},{"kind":"\"+\"","start":2,"end":3,"text":"+","hidden":true},{"kind":"N","start":4,"end":6,"text":"23"}]}]
 ```
 
-An input that does not parse prints where the parse failed and what the grammar expected there, on standard error:
+An input that does not parse prints its error on standard error: what the grammar expected, the file, line and column where the parse failed, both counted from 1 and the column in code points, and the line with a caret under the place, followed by a blank line.
 
 ```text
-input.txt:1:4: error: expected N
+error: expected N
+ --> input.txt:1:4
+  |
+1 | 1 +
+  |    ^
 ```
 
-The exit status is 0 when the input parses, 1 when the grammar has problems, which `parse` prints as `check` does, or the input does not parse, and 2 for a command line `fpeg` cannot understand.
+A [named error](grammar.md#errors) shows its name in brackets, as `error[close]: expected "]"`. Tabs show as spaces, control characters as visible marks, so that no input can rewrite the terminal, and a line too long to show is cut around the error.
+
+With `--recover` the parse goes on past an error whose label the grammar gives a recovery. The tree printed holds an `<error>` node for what each recovery took and a `<missing>` token where it took nothing, and each error follows on standard error, with carets under what its recovery took. An input with errors fails the command all the same. A parse that fails even so prints the errors it recovered from before the one that ended it.
+
+The exit status is 0 when the input parses, 1 when the grammar has problems, which `parse` prints as `check` does, or the input has errors, and 2 for a command line `fpeg` cannot understand.
 
 ## fpeg profile
 
