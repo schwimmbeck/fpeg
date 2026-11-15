@@ -11,7 +11,7 @@ The benchmark harness, the baseline suites and the recorded results. How to run 
 | `bench_binding.py` | fpeg's Python binding apart from parsing: transforms with and without methods, tokens from views, the walks of an Interpreter and a Visitor, many small parses against `csv` |
 | `bench_calculator.py` | a calculator: fpeg, `eval`, Lark and pe on generated lines of arithmetic, each computing the numbers |
 | `bench_python.py` | Python source: fpeg's Python grammar beside CPython, tree-sitter, LibCST and Lark on one real source file, fpeg also to `ast` with positions stamped natively or set in Python |
-| `bench_ord.py` | the first real application: its Lark pipeline from source text to a Python `ast` |
+| `bench_ord.py` | the first real application: its Lark pipeline from source text to a Python `ast` and fpeg's ORD grammar with its transformer, on a file of plain Python and over the application's 76 ORD files |
 | `rust/` | Rust with criterion. JSON: fpeg's parsing machine, pest generated, pest_vm and serde_json. Expressions: the machine on a generated expression of a C-like language, by what it remembers. Passes: the machine on ten workloads, Python, Lua and the outline language among them, with every pass of the optimizer and with each left out, and a parse that starts again with every rule remembered |
 | `results/<date>-<platform>/` | recorded runs, committed as data, a letter after the date for each later run of a day |
 

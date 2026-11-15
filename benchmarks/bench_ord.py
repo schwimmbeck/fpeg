@@ -17,7 +17,7 @@ from pathlib import Path
 
 import fpeg
 import harness
-from corpus import CORPORA, ORD_PACKAGE, PYTHON_FILE
+from corpus import CORPORA, ORD_FILES, ORD_PACKAGE, PYTHON_FILE
 from lark import Lark, Transformer, Tree
 
 CACHE = Path(__file__).resolve().parent / ".cache"
@@ -51,7 +51,7 @@ def dumped(module: ast.AST) -> str:
     for node in ast.walk(module):
         if isinstance(node, (ast.Import, ast.ImportFrom)) and getattr(node, "is_lazy", 0) is None:
             node.is_lazy = 0
-    return ast.dump(module)
+    return ast.dump(module, show_empty=True)
 
 
 def trivial_transformer(tree: Tree) -> type[Transformer]:
@@ -124,6 +124,25 @@ def main() -> None:
         lambda: checked(fix=True),
         PYTHON_FILE,
     )
+
+    # The file above is plain Python, so the language's own statements are timed here.
+    sources = [path.read_text(encoding="utf-8") for path in sorted(ORD_FILES.rglob("*.ord"))]
+
+    def fpeg_over_files() -> Callable[[], list[ast.AST]]:
+        def to_ast() -> list[ast.AST]:
+            return [ast.fix_missing_locations(ord_ast.parse(s)) for s in sources]
+
+        theirs = [dumped(ord_parser.ord_to_py(s)) for s in sources]
+        if [dumped(module) for module in to_ast()] != theirs:
+            raise RuntimeError("fpeg's ORD pipeline does not give the application's trees")
+        return to_ast
+
+    harness.add(
+        runner,
+        "end to end over the 76 ORD files",
+        lambda: lambda: [ord_parser.ord_to_py(s) for s in sources],
+    )
+    harness.add(runner, "fpeg end to end over the 76 ORD files", fpeg_over_files)
 
 
 if __name__ == "__main__":
