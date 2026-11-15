@@ -55,7 +55,7 @@ words = fpeg.Grammar('%extends "base"\nitem: ... | N\nN: [0-9]+', modules={"base
 assert words.parse("ab 12").children[1] == fpeg.Tree("item", [fpeg.Token("N", "12")])
 ```
 
-`parse` returns the one visible item at the top of the tree: a `Tree` for a node, or a `Token` for a token, which a transparent start rule gives when its one child is a token. A start rule that may leave no visible item or several, such as a rule `_name`, is refused before parsing, as an unknown one is.
+`parse` returns the one visible item at the top of the tree: a `Tree` for a node, or a `Token` for a token, which a transparent start rule gives when its one child is a token. A start rule that may leave no visible item or several, such as a rule `_name`, also where a recovery may leave an error item beside its item, is refused before parsing, as an unknown one is.
 
 ```python
 numbers = fpeg.Grammar('?start: NUMBER | list\nlist: "[" (start ** ",") "]"\nNUMBER: [0-9]+')
@@ -213,7 +213,7 @@ assert (total.col_offset, total.end_col_offset) == (0, 6)
 assert (total.left.col_offset, total.left.end_col_offset) == (0, 2)
 ```
 
-`grammar.transformer_template(name)` writes a starting transformer for a grammar: a method for every rule that makes nodes and every terminal, the parameters of a node's method named after its fields with type hints from how many items each holds, the builders a method replaces, and `strict=True`. A transparent rule `?name` whose every match leaves one visible item never makes a node, so it gets no method.
+`grammar.transformer_template(name)` writes a starting transformer for a grammar: a method for every rule that makes nodes and every terminal, the parameters of a node's method named after its fields with type hints from how many items each holds, the builders a method replaces, and `strict=True`. A transparent rule `?name` whose every match leaves one visible item, also where a recovery may add an error item, never makes a node, so it gets no method.
 
 ```python
 template = grammar.transformer_template("Pairs")

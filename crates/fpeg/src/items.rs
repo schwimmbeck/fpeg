@@ -196,14 +196,17 @@ struct Counter<'r> {
     shared: HashMap<*const ir::Expr, Items>,
     /// The steps taken, which count against [`MAX_COUNT_STEPS`].
     steps: usize,
+    /// For a parse in recovering mode, by label id, whether the label has a recovery.
+    recovers: &'r [bool],
 }
 
-impl Counter<'_> {
-    fn new(rules: &[Items]) -> Counter<'_> {
+impl<'r> Counter<'r> {
+    fn new(rules: &'r [Items], recovers: &'r [bool]) -> Counter<'r> {
         Counter {
             rules,
             shared: HashMap::new(),
             steps: 0,
+            recovers,
         }
     }
 
@@ -245,6 +248,15 @@ impl Counter<'_> {
             E::Field { field, expr } => self.of(expr).labelled(*field),
             // What a lookahead makes is dropped.
             E::And(_) | E::Not(_) => Items::nothing(),
+            // Where the label recovers, an error item may stand in place of what failed, with
+            // the field of a failed field.
+            E::Label { label, expr, .. } if self.recovers.get(label.0 as usize) == Some(&true) => {
+                let error = match &**expr {
+                    E::Field { field, .. } => Items::one().labelled(*field),
+                    _ => Items::one(),
+                };
+                self.of(expr).or(&error)
+            }
             E::Unreserved(expr)
             | E::FlagOn { expr, .. }
             | E::FlagOff { expr, .. }
@@ -303,19 +315,28 @@ pub(crate) struct Shape {
 /// matches.
 pub(crate) struct Counts {
     summaries: Vec<Items>,
+    /// For a grammar with recoveries, what each rule adds in recovering mode, and by label id
+    /// whether the label has a recovery.
+    recovering: Option<(Vec<Items>, Vec<bool>)>,
 }
 
 impl Counts {
-    /// Count the rules, callees first, or tell the limit that the grammar exceeds.
-    pub fn new(rules: &[Option<ir::Rule>]) -> Result<Counts, TooLarge> {
+    /// Count the rules, callees first, in normal mode and, where a label has a recovery, in
+    /// recovering mode, or tell the limit that the grammar exceeds.
+    pub fn new(rules: &[Option<ir::Rule>], recovers: Vec<bool>) -> Result<Counts, TooLarge> {
+        let recovering = match recovers.contains(&true) {
+            true => Some((summarize(rules, &recovers)?, recovers)),
+            false => None,
+        };
         Ok(Counts {
-            summaries: summarize(rules)?,
+            summaries: summarize(rules, &[])?,
+            recovering,
         })
     }
 
     /// The fields that one match of `expr` can give items to, in the node around it.
     pub fn fields(&self, expr: &ir::Expr) -> Vec<FieldId> {
-        let items = Counter::new(&self.summaries).of(expr);
+        let items = Counter::new(&self.summaries, &[]).of(expr);
         (items.fields.into_iter())
             .filter(|&(_, count)| count > 0)
             .map(|(field, _)| field)
@@ -324,7 +345,7 @@ impl Counts {
 
     /// What becomes of a transparent node around `expr`.
     pub fn shape(&self, expr: &ir::Expr) -> Shape {
-        let items = Counter::new(&self.summaries).of(expr);
+        let items = Counter::new(&self.summaries, &[]).of(expr);
         Shape {
             stays: items.stays(),
             gives_way: items.single,
@@ -336,19 +357,40 @@ impl Counts {
         &self,
         rules: &[Option<ir::Rule>],
         entry: &HashMap<String, ir::Expr>,
+        recoveries: &[Option<ir::Expr>],
         kinds: usize,
     ) -> ItemFacts {
-        let mut counter = Counter::new(&self.summaries);
         let mut kind_items = KindItems {
             fields: vec![BTreeMap::new(); kinds],
             present: vec![None; kinds],
             made: vec![false; kinds],
         };
-        let mut walked = HashSet::new();
         // The entries add the tokens of terminals that only other terminals use.
         let bodies = rules.iter().flatten().map(|rule| &rule.body);
-        for expr in bodies.chain(entry.values()) {
-            kind_items.add(&mut counter, expr, &mut walked);
+        let mut counter = Counter::new(&self.summaries, &[]);
+        for expr in bodies.clone().chain(entry.values()) {
+            kind_items.add(&mut counter, expr, &mut HashSet::new());
+        }
+        let single = |counter: &mut Counter<'_>, expr: &ir::Expr| {
+            let items = counter.of(expr);
+            items.visible <= 1 && !items.empty
+        };
+        let mut single_item: HashMap<String, bool> = (entry.iter())
+            .map(|(name, expr)| (name.clone(), single(&mut counter, expr)))
+            .collect();
+        // The facts hold in both modes: what recovering mode makes, with the recoveries, joins
+        // what normal mode makes.
+        if let Some((summaries, recovers)) = &self.recovering {
+            let mut counter = Counter::new(summaries, recovers);
+            let recoveries = recoveries.iter().flatten();
+            for expr in bodies.chain(entry.values()).chain(recoveries) {
+                kind_items.add(&mut counter, expr, &mut HashSet::new());
+            }
+            for (name, expr) in entry {
+                if let Some(held) = single_item.get_mut(name) {
+                    *held &= single(&mut counter, expr);
+                }
+            }
         }
         let KindItems {
             fields,
@@ -369,12 +411,6 @@ impl Counts {
                         (field, count)
                     })
                     .collect()
-            })
-            .collect();
-        let single_item = (entry.iter())
-            .map(|(name, expr)| {
-                let items = counter.of(expr);
-                (name.clone(), items.visible <= 1 && !items.empty)
             })
             .collect();
         ItemFacts {
@@ -453,7 +489,7 @@ impl KindItems {
 
 /// What each rule adds where it is called, rules that call each other counted together until
 /// their counts stop growing. Counts only grow from `never`, so this ends.
-fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, TooLarge> {
+fn summarize(rules: &[Option<ir::Rule>], recovers: &[bool]) -> Result<Vec<Items>, TooLarge> {
     let calls: Vec<Vec<usize>> = rules
         .iter()
         .map(|rule| {
@@ -471,6 +507,7 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, TooLarge> {
         count_until_stable(
             &component,
             rules,
+            recovers,
             &mut summaries,
             &mut steps,
             recursive,
@@ -488,6 +525,7 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, TooLarge> {
             count_until_stable(
                 &component,
                 rules,
+                recovers,
                 &mut summaries,
                 &mut steps,
                 true,
@@ -504,6 +542,7 @@ fn summarize(rules: &[Option<ir::Rule>]) -> Result<Vec<Items>, TooLarge> {
 fn count_until_stable(
     component: &[usize],
     rules: &[Option<ir::Rule>],
+    recovers: &[bool],
     summaries: &mut [Items],
     steps: &mut usize,
     repeat: bool,
@@ -515,7 +554,7 @@ fn count_until_stable(
             let Some(body) = rules[rule].as_ref().map(|rule| &rule.body) else {
                 continue;
             };
-            let mut counter = Counter::new(summaries);
+            let mut counter = Counter::new(summaries, recovers);
             let items = counter.of(body);
             *steps += counter.steps;
             if items.fields.len() > MAX_NODE_FIELDS {
@@ -725,5 +764,20 @@ mod tests {
         assert_eq!(single("_maybe"), Some(false));
         assert_eq!(single("_B"), Some(false));
         assert_eq!(single("missing"), None);
+    }
+
+    #[test]
+    fn the_facts_hold_for_what_a_parse_in_recovering_mode_makes() {
+        // A recovery makes tokens of its own, a transparent rule keeps its node beside an error
+        // item, and a start rule may leave an error item beside its item at the top.
+        let grammar = Grammar::from_text(
+            "?start: A (!. ^ rest)\n_pair: A (\"=\" ^ eq)\nA: \"a\"\n%recover rest: \"?\"*\n%recover eq: ()",
+        )
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        let parser = Parser::new(&grammar).unwrap_or_else(|e| panic!("{e:?}"));
+        let made = |name: &str| parser.kinds().iter().any(|k| k.name == name && k.made);
+        assert!(made("\"?\"") && made("start"));
+        assert_eq!(parser.single_item("start"), Some(true));
+        assert_eq!(parser.single_item("_pair"), Some(false));
     }
 }

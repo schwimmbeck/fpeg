@@ -66,9 +66,10 @@ pub struct Kind {
     /// Whether its items are tokens. A kind is of tokens or of nodes, never both: the
     /// tokens of a terminal and the nodes of an alias of the same name have kinds apart.
     pub token: bool,
-    /// Whether a parse can make items of it. Not so for a transparent rule whose every match
-    /// leaves exactly one visible item, which takes the node's place, nor for `<error>` and
-    /// `<missing>` in a grammar without `%recover`, nor ever for `<skipped>`.
+    /// Whether a parse can make items of it, in normal or in recovering mode. Not so for a
+    /// transparent rule whose every match leaves exactly one visible item, which takes the
+    /// node's place, nor for `<error>` and `<missing>` in a grammar without `%recover`, nor ever
+    /// for `<skipped>`.
     pub made: bool,
 }
 
