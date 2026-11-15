@@ -9,13 +9,16 @@
 //! parse from the rule `start`, and where a file `<sample>.tree` sits beside it, the tree must
 //! equal its content. The files in `grammars/samples/<name>/invalid/` must fail to parse.
 //! `FPEG_BLESS=1` writes the `.tree` files of samples that have one.
+//!
+//! The errors of these grammars name their terminals by display names, not by rule names.
 
 mod common;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use common::check_printing;
-use fpeg::{Grammar, Reference};
+use fpeg::{Expr, ExprKind, Grammar, Reference, RuleBody, RuleKind};
 
 fn files_in(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -109,4 +112,65 @@ fn acceptance_grammars_parse_their_samples() {
     }
     assert!(parsed > 0, "no samples parsed");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The names that `expr` refers to outside a lookahead, where a failure is quiet.
+fn referenced<'g>(expr: &'g Expr, names: &mut HashSet<&'g str>) {
+    match &expr.kind {
+        ExprKind::And(_) | ExprKind::Not(_) => return,
+        ExprKind::Reference { name, .. } => {
+            names.insert(name.text.as_str());
+        }
+        _ => {}
+    }
+    for child in expr.children() {
+        referenced(child, names);
+    }
+}
+
+#[test]
+fn errors_name_terminals_by_their_display_names() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
+    let mut missing = Vec::new();
+    for path in files_in(&root) {
+        if path.extension().is_none_or(|e| e != "fpeg") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("the grammar is readable");
+        let grammar = Grammar::from_text(&text).expect("the grammar reads");
+        // Any grammar may import any terminal of a module.
+        let module =
+            grammar.extends.is_none() && !grammar.rules.iter().any(|r| r.name.text == "start");
+        let mut names = HashSet::new();
+        for rule in grammar
+            .rules
+            .iter()
+            .filter(|r| r.kind() != RuleKind::Terminal)
+        {
+            let alternatives: Vec<_> = match &rule.body {
+                RuleBody::Alternatives(alternatives) => alternatives.iter().collect(),
+                RuleBody::Precedence(levels) => {
+                    levels.iter().flat_map(|l| &l.alternatives).collect()
+                }
+            };
+            for alternative in alternatives {
+                referenced(&alternative.expr, &mut names);
+            }
+        }
+        // A recovery runs as a syntactic rule, and its errors explain what failed in it.
+        for recover in &grammar.recovers {
+            referenced(&recover.expr, &mut names);
+        }
+        for rule in &grammar.rules {
+            let listed = module || names.contains(rule.name.text.as_str());
+            if rule.kind() == RuleKind::Terminal && rule.display.is_none() && listed {
+                missing.push(format!("{}: {}", path.display(), rule.name.text));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "no display name:\n{}",
+        missing.join("\n")
+    );
 }

@@ -27,8 +27,8 @@ expr: %precedence {
     primary: NUMBER | NAME | STRING | "(" expr ")"
 }
 
-NUMBER: [0-9]+ ("." [0-9]+)?
-NAME: [A-Za-z_] [A-Za-z0-9_]*
-STRING: "\"" ([^"\\\n] | "\\" .)* "\""
+NUMBER "number": [0-9]+ ("." [0-9]+)?
+NAME "name": [A-Za-z_] [A-Za-z0-9_]*
+STRING "string": "\"" ([^"\\\n] | "\\" .)* "\""
 
 %ignore [ \t\r\n]+ | "//" [^\n]*

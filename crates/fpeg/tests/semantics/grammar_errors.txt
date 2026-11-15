@@ -171,10 +171,10 @@ other: "b" )
 %flag
 last: "c"
 --- grammar
-error[E101]: expected "!", "%def", "%error", "%if", "%indent", "%off", "%on", "%ref", "%same", "&", "(", ".", "...", "~", CLASS, LITERAL, NAME, PROPERTY
+error[E101]: expected "!", "%def", "%error", "%if", "%indent", "%off", "%on", "%ref", "%same", "&", "(", ".", "...", "~", character class, literal, name, property class
 at 12..12
 at 24..24
-error[E101]: expected NAME
+error[E101]: expected name
 at 31..31
 
 === a separator must follow ** and ++, and two stars apart repeat twice

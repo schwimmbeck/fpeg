@@ -309,20 +309,20 @@ format_spec: ":" %off(bracket, %if(nested_spec) parts=F_SPEC_TEXT*
                              | %if(spec) %on(nested_spec, parts=(F_SPEC_TEXT | replacement_field)*)
                              | %on(spec, parts=(F_SPEC_TEXT | replacement_field)*))
 
-F_TEXT<quote, line_break, escape>: (!quote ([^{}\\\r\n] | line_break | "{{" | "}}" | escape))+
-F_SPEC_TEXT: ([^{}\\\r\n] | %if(long_string) _LINE_BREAK | "\\" (&[{}] | ![{}] .))+
+F_TEXT<quote, line_break, escape> "text": (!quote ([^{}\\\r\n] | line_break | "{{" | "}}" | escape))+
+F_SPEC_TEXT "format specification": ([^{}\\\r\n] | %if(long_string) _LINE_BREAK | "\\" (&[{}] | ![{}] .))+
 // A backslash before a brace stays text, and the brace opens or closes a replacement field.
-F_ESCAPE: "\\" (&[{}] | ![{}] ESCAPED)
-F_RAW_ESCAPE: "\\" (&[{}] | ![{}] (_LINE_BREAK | .))
-NEVER: !()
-F_PREFIX: [fF]
-F_RAW_PREFIX: [fF] [rR] | [rR] [fF]
-T_PREFIX: [tT]
-T_RAW_PREFIX: [tT] [rR] | [rR] [tT]
-CONVERSION: [sra] !\p{XID_Continue}
+F_ESCAPE "escape": "\\" (&[{}] | ![{}] ESCAPED)
+F_RAW_ESCAPE "escape": "\\" (&[{}] | ![{}] (_LINE_BREAK | .))
+NEVER "nothing": !()
+F_PREFIX "f-string": [fF]
+F_RAW_PREFIX "f-string": [fF] [rR] | [rR] [fF]
+T_PREFIX "t-string": [tT]
+T_RAW_PREFIX "t-string": [tT] [rR] | [rR] [tT]
+CONVERSION "conversion character": [sra] !\p{XID_Continue}
 
-STRING: [rR] STRING_BODY<RAW_ESCAPE, .> | [uU]? STRING_BODY<ESCAPE, .>
-BYTES: ([rR] [bB] | [bB] [rR]) STRING_BODY<RAW_BYTES_ESCAPE, ASCII> | [bB] STRING_BODY<BYTES_ESCAPE, ASCII>
+STRING "string": [rR] STRING_BODY<RAW_ESCAPE, .> | [uU]? STRING_BODY<ESCAPE, .>
+BYTES "bytes": ([rR] [bB] | [bB] [rR]) STRING_BODY<RAW_BYTES_ESCAPE, ASCII> | [bB] STRING_BODY<BYTES_ESCAPE, ASCII>
 ASCII: [\x00-\x7F]
 STRING_BODY<escape, char>: LONG_STRING<"\"\"\"", escape, char> | LONG_STRING<"'''", escape, char>
                          | SHORT_STRING<"\"", escape, char> | SHORT_STRING<"'", escape, char>
@@ -340,9 +340,9 @@ HEX: [0-9a-fA-F]
 // Tokens
 
 @reserved
-NAME: [\p{XID_Start}_] \p{XID_Continue}*
+NAME "name": [\p{XID_Start}_] \p{XID_Continue}*
 // Only decimal numbers can be imaginary, and then leading zeros are fine.
-NUMBER: HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | IMAGINARY_NUMBER | FLOAT_NUMBER | INT_NUMBER
+NUMBER "number": HEX_NUMBER | OCT_NUMBER | BIN_NUMBER | IMAGINARY_NUMBER | FLOAT_NUMBER | INT_NUMBER
 IMAGINARY_NUMBER: (FLOAT_NUMBER | DIGITS) [jJ]
 HEX_NUMBER: "0" [xX] ("_"? [0-9a-fA-F])+
 OCT_NUMBER: "0" [oO] ("_"? [0-7])+
@@ -353,10 +353,10 @@ DIGITS: [0-9] ("_"? [0-9])*
 EXPONENT: [eE] [+\-]? DIGITS
 AUGMENTED "augmented assignment": "**=" | "//=" | ">>=" | "<<=" | "+=" | "-=" | "*=" | "/=" | "%=" | "@=" | "&=" | "|=" | "^="
 COMMENT: "#" [^\r\n]*
-_LINE_BREAK: "\r\n" | "\n" | "\r"
+_LINE_BREAK "line break": "\r\n" | "\n" | "\r"
 _NEWLINE "newline": _LINE_BREAK _BLANK_LINES?
-_BLANK_LINES: (([ \t\x0C] | "\\" _LINE_BREAK)* COMMENT? _LINE_BREAK)+
-_LINE_REST: (!_LINE_BREAK .)* (_NEWLINE | !.)
+_BLANK_LINES "blank line": (([ \t\x0C] | "\\" _LINE_BREAK)* COMMENT? _LINE_BREAK)+
+_LINE_REST "rest of the line": (!_LINE_BREAK .)* (_NEWLINE | !.)
 
 // Recovery. A label stands where a failure can only be a mistake of the text, so that the
 // labels change nothing the grammar accepts: the colon of a compound statement, the end of a

@@ -274,8 +274,8 @@ pub(crate) fn grammar() -> Grammar {
             class([range('A', 'Z'), range('a', 'z'), ch('_')]),
             many(class([range('A', 'Z'), range('a', 'z'), range('0', '9'), ch('_')])),
         ]),
-    );
-    g.rule("INTEGER", some(class([range('0', '9')])));
+    ).display("name");
+    g.rule("INTEGER", some(class([range('0', '9')]))).display("integer");
     g.rule(
         "NUMBER",
         seq([
@@ -283,8 +283,8 @@ pub(crate) fn grammar() -> Grammar {
             some(class([range('0', '9')])),
             opt(seq([lit("."), some(class([range('0', '9')]))])),
         ]),
-    );
-    g.rule("STAR", lit("*"));
+    ).display("number");
+    g.rule("STAR", lit("*")).display("\"*\"");
     g.rule(
         "STRING",
         choice([
@@ -305,7 +305,7 @@ pub(crate) fn grammar() -> Grammar {
                 lit("'"),
             ]),
         ]),
-    );
+    ).display("string");
     g.rule(
         "LITERAL",
         seq([
@@ -315,7 +315,7 @@ pub(crate) fn grammar() -> Grammar {
                 not(class([range('A', 'Z'), range('a', 'z'), range('0', '9'), ch('_')])),
             ])),
         ]),
-    );
+    ).display("literal");
     g.rule(
         "CLASS",
         seq([
@@ -326,7 +326,7 @@ pub(crate) fn grammar() -> Grammar {
             ])),
             lit("]"),
         ]),
-    );
+    ).display("character class");
     g.rule(
         "PROPERTY",
         seq([
@@ -336,7 +336,7 @@ pub(crate) fn grammar() -> Grammar {
             some(class([range('A', 'Z'), range('a', 'z'), ch('_')])),
             lit("}"),
         ]),
-    );
+    ).display("property class");
     g.rule("COMMENT", seq([lit("//"), many(not_class([ch('\r'), ch('\n')]))]));
     g.rule(
         "_NL",
@@ -345,7 +345,7 @@ pub(crate) fn grammar() -> Grammar {
             many(class([ch(' '), ch('\t')])),
             opt(r("COMMENT")),
         ])),
-    );
+    ).display("line break");
     g.rule(
         "_ITEM_START",
         seq([

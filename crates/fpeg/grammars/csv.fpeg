@@ -9,6 +9,6 @@ start: (line _EOL)* record?
 record: &[^\r\n] fields=(field ++ ",") => list
 field: value=(QUOTED | BARE)?
 
-QUOTED: "\"" ([^"] | "\"\"")* "\""
-BARE: [^,"\r\n]+
-_EOL: "\r\n" | "\n" | "\r"
+QUOTED "quoted field": "\"" ([^"] | "\"\"")* "\""
+BARE "field": [^,"\r\n]+
+_EOL "line break": "\r\n" | "\n" | "\r"

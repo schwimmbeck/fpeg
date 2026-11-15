@@ -34,21 +34,21 @@ array: "[" %on(inside, (items=(value ++ ",") ","?)? "]") => list
 inline_table: "{" %off(inside, _NL? (pairs=(pair ++ (_NL? "," _NL?)) (_NL? ",")?)? _NL? "}")
 
 // Strings hold no control characters but the tab, and multi-line strings line breaks too.
-BARE_KEY: [A-Za-z0-9_\-]+
-BASIC_STRING: "\"" ([^"\\\u{0}-\u{8}\u{a}-\u{1f}\u{7f}] | "\\" ESCAPE)* "\""
-LITERAL_STRING: "'" [^'\u{0}-\u{8}\u{a}-\u{1f}\u{7f}]* "'"
+BARE_KEY "key": [A-Za-z0-9_\-]+
+BASIC_STRING "string": "\"" ([^"\\\u{0}-\u{8}\u{a}-\u{1f}\u{7f}] | "\\" ESCAPE)* "\""
+LITERAL_STRING "literal string": "'" [^'\u{0}-\u{8}\u{a}-\u{1f}\u{7f}]* "'"
 // One or two quotes may end the content, right before the closing delimiter.
-ML_BASIC_STRING: "\"\"\"" (!"\"\"\"" ML_BASIC_PART)* "\"\"\"" "\""{0,2}
+ML_BASIC_STRING "multi-line string": "\"\"\"" (!"\"\"\"" ML_BASIC_PART)* "\"\"\"" "\""{0,2}
 ML_BASIC_PART: "\\" ESCAPE | "\\" [ \t]* NEWLINE ([ \t] | NEWLINE)* | [^\\\u{0}-\u{8}\u{b}-\u{1f}\u{7f}] | "\r\n"
-ML_LITERAL_STRING: "'''" (!"'''" ([^\u{0}-\u{8}\u{b}-\u{1f}\u{7f}] | "\r\n"))* "'''" "'"{0,2}
+ML_LITERAL_STRING "multi-line literal string": "'''" (!"'''" ([^\u{0}-\u{8}\u{b}-\u{1f}\u{7f}] | "\r\n"))* "'''" "'"{0,2}
 NEWLINE: "\n" | "\r\n"
 // An escape names a Unicode scalar value: no surrogate and nothing above U+10FFFF.
 ESCAPE: ["\\bfnrte] | "x" HEX{2} | "u" !([dD] [89a-fA-F]) HEX{4} | "U" ("0000" !([dD] [89a-fA-F]) HEX{4} | "000" [1-9a-fA-F] HEX{4} | "0010" HEX{4})
 HEX: [0-9A-Fa-f]
-INTEGER: "0x" HEX ("_"? HEX)* | "0o" [0-7] ("_"? [0-7])* | "0b" [01] ("_"? [01])* | [+\-]? DECIMAL
-FLOAT: [+\-]? (DECIMAL ("." DIGITS EXPONENT? | EXPONENT) | "inf" | "nan") => float
+INTEGER "integer": "0x" HEX ("_"? HEX)* | "0o" [0-7] ("_"? [0-7])* | "0b" [01] ("_"? [01])* | [+\-]? DECIMAL
+FLOAT "float": [+\-]? (DECIMAL ("." DIGITS EXPONENT? | EXPONENT) | "inf" | "nan") => float
 DECIMAL: "0" | [1-9] ("_"? [0-9])*
 DIGITS: [0-9] ("_"? [0-9])*
 EXPONENT: [eE] [+\-]? DIGITS
 COMMENT: "#" [^\u{0}-\u{8}\u{a}-\u{1f}\u{7f}]*
-_NL: (("\r\n" | "\n") [ \t]* COMMENT?)+
+_NL "newline": (("\r\n" | "\n") [ \t]* COMMENT?)+

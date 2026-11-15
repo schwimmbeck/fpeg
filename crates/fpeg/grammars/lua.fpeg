@@ -93,17 +93,17 @@ field: "[" key=exp "]" "=" value=exp -> keyed
      | value=exp -> positional
 
 @reserved
-NAME: [A-Za-z_] [A-Za-z0-9_]*
+NAME "name": [A-Za-z_] [A-Za-z0-9_]*
 // Lua reads "..." and ">=" as one token each, so ".." is the operator only where no dot follows
 // at once, and an attribute ends with a ">" that no "=" follows at once.
-CONCAT: ".." !"."
-_ATTRIBUTE_END: ">" !"="
+CONCAT "\"..\"": ".." !"."
+_ATTRIBUTE_END "\">\"": ">" !"="
 // Lua reads a numeral on through letters, digits and dots, so one that touches them is malformed.
-NUMBER: ("0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
+NUMBER "number": ("0" [xX] (HEX+ ("." HEX*)? | "." HEX+) ([pP] [+\-]? DIGIT+)?
         | (DIGIT+ ("." !"." DIGIT*)? | "." DIGIT+) ([eE] [+\-]? DIGIT+)?) ![0-9A-Za-z_.]
 DIGIT: [0-9]
 HEX: [0-9a-fA-F]
-STRING: "\"" ("\\" ESCAPE | [^"\\\r\n])* "\""
+STRING "string": "\"" ("\\" ESCAPE | [^"\\\r\n])* "\""
       | "'" ("\\" ESCAPE | [^'\\\r\n])* "'"
       | LONG_BRACKET
 // The escapes of Lua 5.4, of which only these exist: a decimal one up to 255, which takes up

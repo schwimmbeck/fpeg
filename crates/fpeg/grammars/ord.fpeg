@@ -61,4 +61,4 @@ _STATEMENT_END: ";" | _NEWLINE | !.
      | ".$" name=NAME -> root_getparam
      | "." name=NAME? -> root
 
-SI_NUMBER: (FLOAT_NUMBER | INT_NUMBER) [afpnumkMGT] !\p{XID_Continue}
+SI_NUMBER "number with an SI prefix": (FLOAT_NUMBER | INT_NUMBER) [afpnumkMGT] !\p{XID_Continue}

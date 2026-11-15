@@ -12,7 +12,7 @@ start: _NL? entries=(%same entry)*
 entry: key=KEY ":" value=VALUE? (_NL | !.) children=children?
 children: %indent(entries=(%same entry)+)
 
-KEY: [A-Za-z_] [A-Za-z0-9_\-]*
-VALUE: [^ \r\n#] [^\r\n#]*
+KEY "key": [A-Za-z_] [A-Za-z0-9_\-]*
+VALUE "value": [^ \r\n#] [^\r\n#]*
 COMMENT: "#" [^\r\n]*
-_NL: (("\r\n" | "\n") " "* COMMENT?)+
+_NL "line break": (("\r\n" | "\n") " "* COMMENT?)+

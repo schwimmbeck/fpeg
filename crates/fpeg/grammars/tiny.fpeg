@@ -43,8 +43,8 @@ expr: %precedence {
 }
 
 @reserved
-NAME: [A-Za-z_] [A-Za-z0-9_]*
-NUMBER: [0-9]+
-STRING: "\"" ([^"\\\n] | "\\" .)* "\""
+NAME "name": [A-Za-z_] [A-Za-z0-9_]*
+NUMBER "number": [0-9]+
+STRING "string": "\"" ([^"\\\n] | "\\" .)* "\""
 
 %ignore [ \t\r\n]+ | "//" [^\n]*

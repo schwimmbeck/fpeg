@@ -74,16 +74,16 @@ call: name=NAME "(" %on(nested, args=(builder_arg ** ",") ")")
 builder_arg: (key=NAME "=")? value=(STAR | constant | NAME)
 constant: value=(STRING | NUMBER)
 
-NAME: [A-Za-z_] [A-Za-z0-9_]*
-INTEGER: [0-9]+
-NUMBER: "-"? [0-9]+ ("." [0-9]+)?
-STAR: "*"
-STRING: "\"" ("\\" . | [^"\\\r\n])* "\"" | "'" ("\\" . | [^'\\\r\n])* "'"
-LITERAL: STRING ("i" ![A-Za-z0-9_])?
-CLASS: "[" ("\\" . | [^\]\\\r\n])+ "]"
-PROPERTY: "\\" [pP] "{" [A-Za-z_]+ "}"
+NAME "name": [A-Za-z_] [A-Za-z0-9_]*
+INTEGER "integer": [0-9]+
+NUMBER "number": "-"? [0-9]+ ("." [0-9]+)?
+STAR "\"*\"": "*"
+STRING "string": "\"" ("\\" . | [^"\\\r\n])* "\"" | "'" ("\\" . | [^'\\\r\n])* "'"
+LITERAL "literal": STRING ("i" ![A-Za-z0-9_])?
+CLASS "character class": "[" ("\\" . | [^\]\\\r\n])+ "]"
+PROPERTY "property class": "\\" [pP] "{" [A-Za-z_]+ "}"
 COMMENT: "//" [^\r\n]*
-_NL: (("\r\n" | "\n" | "\r") [ \t]* COMMENT?)+
+_NL "line break": (("\r\n" | "\n" | "\r") [ \t]* COMMENT?)+
 _ITEM_START: ("\r\n" | "\n" | "\r") [A-Za-z_?@%]
 
 // A grammar with a mistake goes on at the next line that starts a rule or a directive, so that

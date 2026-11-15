@@ -4,29 +4,29 @@
 // Terminals that many grammars need, to be taken with %import common (NAME, ...). It is no
 // grammar of its own and has no start rule.
 
-DIGIT: [0-9]
-HEXDIGIT: [0-9a-fA-F]
-INT: DIGIT+
-SIGNED_INT: [+\-]? INT
-DECIMAL: INT "." INT? | "." INT
-_EXPONENT: [eE] SIGNED_INT
-FLOAT: INT _EXPONENT | DECIMAL _EXPONENT?
-SIGNED_FLOAT: [+\-]? FLOAT
-NUMBER: FLOAT | INT
-SIGNED_NUMBER: [+\-]? NUMBER
+DIGIT "digit": [0-9]
+HEXDIGIT "hexadecimal digit": [0-9a-fA-F]
+INT "integer": DIGIT+
+SIGNED_INT "signed integer": [+\-]? INT
+DECIMAL "decimal number": INT "." INT? | "." INT
+_EXPONENT "exponent": [eE] SIGNED_INT
+FLOAT "float": INT _EXPONENT | DECIMAL _EXPONENT?
+SIGNED_FLOAT "signed float": [+\-]? FLOAT
+NUMBER "number": FLOAT | INT
+SIGNED_NUMBER "signed number": [+\-]? NUMBER
 // A string on one line, with a backslash escaping the character after it.
-ESCAPED_STRING: "\"" ("\\" [^\n\r] | [^"\\\n\r])* "\""
-LCASE_LETTER: [a-z]
-UCASE_LETTER: [A-Z]
-LETTER: UCASE_LETTER | LCASE_LETTER
-WORD: LETTER+
-CNAME: ("_" | LETTER) ("_" | LETTER | DIGIT)*
-WS_INLINE: [ \t]+
-WS: [ \t\x0C\r\n]+
-CR: "\r"
-LF: "\n"
-NEWLINE: (CR? LF)+
-SH_COMMENT: "#" [^\n]*
-CPP_COMMENT: "//" [^\n]*
-C_COMMENT: "/*" (!"*/" .)* "*/"
-SQL_COMMENT: "--" [^\n]*
+ESCAPED_STRING "string": "\"" ("\\" [^\n\r] | [^"\\\n\r])* "\""
+LCASE_LETTER "lowercase letter": [a-z]
+UCASE_LETTER "uppercase letter": [A-Z]
+LETTER "letter": UCASE_LETTER | LCASE_LETTER
+WORD "word": LETTER+
+CNAME "name": ("_" | LETTER) ("_" | LETTER | DIGIT)*
+WS_INLINE "whitespace": [ \t]+
+WS "whitespace": [ \t\x0C\r\n]+
+CR "carriage return": "\r"
+LF "line feed": "\n"
+NEWLINE "newline": (CR? LF)+
+SH_COMMENT "comment": "#" [^\n]*
+CPP_COMMENT "comment": "//" [^\n]*
+C_COMMENT "comment": "/*" (!"*/" .)* "*/"
+SQL_COMMENT "comment": "--" [^\n]*
