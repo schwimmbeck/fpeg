@@ -436,6 +436,10 @@ fn splice(mut rule: Rule, old: &Rule) -> Result<Rule, Vec<Diagnostic>> {
         let message = "... keeps the aliases of the inherited alternatives and takes none";
         return Err(misplaced(alias.span, message.to_owned()));
     }
+    if alternatives[at].builder.is_some() {
+        let message = "... keeps the builders of the inherited alternatives and takes none";
+        return Err(misplaced(span, message.to_owned()));
+    }
     let RuleBody::Alternatives(inherited) = &old.body else {
         return Err(not_yet(span, "for a precedence block"));
     };

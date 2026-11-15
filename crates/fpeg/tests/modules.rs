@@ -71,7 +71,12 @@ fn a_misplaced_inherited_body_is_an_error() {
         (
             "%extends \"json\"\n?value: ... -> other",
             Inherited,
-            "takes none",
+            "aliases of the inherited alternatives and takes none",
+        ),
+        (
+            "%extends \"json\"\n?value: ... => list",
+            Inherited,
+            "builders of the inherited alternatives and takes none",
         ),
         (
             "%extends \"json\"\n?value<x>: ... | x",
