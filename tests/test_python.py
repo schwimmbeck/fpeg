@@ -265,13 +265,15 @@ def test_parse_takes_limits_and_refuses_a_literal_that_python_cannot_read() -> N
     assert isinstance(python.parse(deep, max_depth=100_000), ast.Module)
     backslash = chr(92)
     # The grammar takes the form of these, and Python cannot read them.
-    escapes = [f'f"{backslash}{escape}"' for escape in ("N{BOGUS}", "U00110000")]
-    for source in [*escapes, '"a' + chr(0) + 'b"', "1" * 5000]:
+    for source in [f'f"{backslash}N{{BOGUS}}"', '"a' + chr(0) + 'b"', "1" * 5000]:
         with pytest.raises(SyntaxError):
             python.parse(source + "\n")
-    # The grammar refuses an incomplete escape in a format spec, as in a string.
-    with pytest.raises(fpeg.ParseError):
-        python.parse(f'f"{{x:{backslash}x1}}"\n')
+    # The grammar refuses an incomplete escape in a format spec, as in a string, and a code
+    # point beyond Unicode.
+    for source in [f'f"{{x:{backslash}x1}}"', f'"{backslash}U00110000"']:
+        with pytest.raises(fpeg.ParseError):
+            python.parse(source + "\n")
+    assert python.parse(f'"{backslash}U0010FFFF"').body[0].value.value == chr(0x10FFFF)
 
 
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])

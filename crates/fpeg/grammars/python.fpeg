@@ -334,8 +334,9 @@ RAW_ESCAPE: "\\" (_LINE_BREAK | .)
 RAW_BYTES_ESCAPE: "\\" (_LINE_BREAK | ASCII)
 BYTES_ESCAPE: "\\" ("x" HEX{2} | ![x] (_LINE_BREAK | ASCII))
 ESCAPE: "\\" ESCAPED
-// Unknown escapes keep their backslash, but these four must be complete.
-ESCAPED: "x" HEX{2} | "u" HEX{4} | "U" HEX{8} | "N{" [^}\r\n]+ "}" | ![xuUN] (_LINE_BREAK | .)
+// Unknown escapes keep their backslash, but these four must be complete, and \U names a code
+// point up to U+10FFFF.
+ESCAPED: "x" HEX{2} | "u" HEX{4} | "U" ("000" HEX{5} | "0010" HEX{4}) | "N{" [^}\r\n]+ "}" | ![xuUN] (_LINE_BREAK | .)
 HEX: [0-9a-fA-F]
 
 // Tokens
