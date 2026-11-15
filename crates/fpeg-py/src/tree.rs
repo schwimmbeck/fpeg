@@ -181,8 +181,8 @@ impl Meta {
 enum Inner {
     /// A node of a parse, by its entry.
     View { parsed: Arc<Parsed>, index: u32 },
-    /// A tree built in Python, or by a transform for a node whose children changed, which keeps
-    /// the node it came from for its positions.
+    /// A tree built in Python, a copy, or a tree a transform built for a node whose children
+    /// changed. The last two keep the node they came from for their positions and text.
     Owned {
         data: Py<PyAny>,
         origin: Option<(Arc<Parsed>, u32)>,
@@ -212,7 +212,7 @@ impl Tree {
         }
     }
 
-    /// A tree with the data and children of a node of a parse, made when its children changed.
+    /// A tree with its own data and children, and the node of a parse it came from, if any.
     pub fn owned(
         data: Py<PyAny>,
         children: Py<PyList>,
@@ -418,8 +418,8 @@ impl Tree {
             .map_or_else(|| py.None(), |m| m.clone_ref(py)))
     }
 
-    /// The text of the node in its input, or `None` for a tree built in Python. A tree that a
-    /// transform rebuilt keeps the text of its node.
+    /// The text of the node in its input, or `None` for a tree built in Python. A copy and a
+    /// tree that a transform rebuilt keep the text of their node.
     #[getter]
     fn text<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyString>>> {
         let Some((parsed, index)) = self.origin() else {
@@ -666,14 +666,15 @@ impl Tree {
         PyList::new(py, out)?.try_iter()
     }
 
-    /// A tree with the same data and meta and a new list of the same children.
+    /// A tree with the same data, meta and text and a new list of the same children.
     fn copy(&self, py: Python<'_>) -> PyResult<Tree> {
         self.__copy__(py)
     }
 
     fn __copy__(&self, py: Python<'_>) -> PyResult<Tree> {
         let children = PyList::new(py, self.children_list(py)?.iter())?;
-        let tree = Tree::owned(self.data_object(py), children.unbind(), None);
+        let origin = (self.origin()).map(|(parsed, index)| (Arc::clone(parsed), index));
+        let tree = Tree::owned(self.data_object(py), children.unbind(), origin);
         let _ = tree.meta.set(self.meta(py)?);
         Ok(tree)
     }

@@ -96,7 +96,7 @@ start
   args=b
 ```
 
-`Tree(data, children, meta=None)` builds a tree in Python. The children of a tree from a parse are a list that refuses changes, since a transform reads the parse itself: to change a tree, build one, with `copy()` or `Tree`. Trees compare equal when their data and children are, hash and pickle. Every walk over a tree runs without recursion, so trees of any depth print, compare and pickle.
+`Tree(data, children, meta=None)` builds a tree in Python. The children of a tree from a parse are a list that refuses changes, since a transform reads the parse itself: to change a tree, build one, with `copy()`, which keeps the `meta` and the `text` of its node, or with `Tree`. Trees compare equal when their data and children are, hash and pickle. Every walk over a tree runs without recursion, so trees of any depth print, compare and pickle.
 
 ```{eval-rst}
 .. autoclass:: fpeg.Tree
