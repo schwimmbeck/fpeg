@@ -682,3 +682,23 @@ fn brackets_nested_beyond_the_depth_limit_are_an_error_in_a_precedence_block() {
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
 }
+
+#[test]
+fn a_reference_finds_its_text_without_passing_every_capture_kept_since() {
+    // A walk down the captures for the newest text of a name passed every capture kept since,
+    // and counted no steps for it, so in a loop that captures each reference cost more.
+    let grammar = Grammar::from_text("start: S\nS: %def(b, ()) (%def(a, \"x\") %ref(b))*")
+        .expect("the grammar reads");
+    let parser = Parser::new(&grammar).expect("the grammar compiles");
+    let input = "x".repeat(REFERENCE_INPUT_BYTES);
+    let started = std::time::Instant::now();
+    parser.parse(&input, "start").expect("the input parses");
+    let seconds = started.elapsed().as_secs_f64();
+    assert!(seconds < REFERENCE_SECONDS, "{seconds:.1} s");
+}
+
+/// The input of the test above, and the time its parse may take in a debug build: a tenth of a
+/// second where a reference finds its text at once, half a minute where it walks down the
+/// captures.
+const REFERENCE_INPUT_BYTES: usize = 100_000;
+const REFERENCE_SECONDS: f64 = 2.0;

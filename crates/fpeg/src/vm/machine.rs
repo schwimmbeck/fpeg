@@ -267,16 +267,6 @@ pub fn memo_hashes(keys: impl Iterator<Item = (u32, u32, u64)>) -> Vec<u64> {
     .collect()
 }
 
-/// A text remembered under a capture: the capture, the text's range of the input, and the id of
-/// the captures visible with it, the newest text of each capture.
-#[derive(Clone, Copy, Debug)]
-struct Capture {
-    name: u16,
-    start: u32,
-    end: u32,
-    map: u32,
-}
-
 /// A skip that ran the skip routine: where it started, with which flags and context, and where
 /// it ended. Skipping depends on nothing else, since the skip expression makes no items, records
 /// no failures and calls no rule that skips, so a skip from there with those flags and that
@@ -511,15 +501,17 @@ pub(crate) struct Machine<'p, 'i> {
     flags: u64,
     /// The reference column of `%indent` and `%same`.
     column: u32,
-    /// The texts remembered under captures, oldest first: those of the activation in progress
-    /// above those of its callers, so the newest of a capture is the visible one.
-    captures: Vec<Capture>,
+    /// For each text remembered under a capture, oldest first, the id of the captures visible
+    /// with it: those of the activation in progress above those of its callers, so that the
+    /// last holds the newest text of each capture.
+    captures: Vec<u32>,
     /// The id of the reference column and the visible captures, 0 for column 0 and none.
     context: u32,
     /// The ids of the contexts met, by column and the id of the visible captures.
     contexts: HashMap<(u32, u32), u32>,
-    /// The ids of the captured texts met, one for equal texts.
+    /// The ids of the captured texts met, one for equal texts, and the texts by id.
     texts: HashMap<&'i str, u32>,
+    text_list: Vec<&'i str>,
     /// The visible captures met, each the text id of each capture sorted by capture, and their
     /// ids, from 1, since 0 is none. `map_list` holds the one of id `n` at `n - 1`.
     maps: HashMap<Box<[(u16, u32)]>, u32>,
@@ -578,6 +570,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             context: 0,
             contexts: HashMap::new(),
             texts: HashMap::new(),
+            text_list: Vec::new(),
             maps: HashMap::new(),
             map_list: Vec::new(),
             quiet: 0,
@@ -1090,13 +1083,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                     self.pc += 1;
                 }
                 Inst::Ref(name) => {
-                    let input = self.input;
-                    let text = (self.captures.iter().rev())
-                        .find(|capture| capture.name == name)
-                        .and_then(|capture| {
-                            input.get(capture.start as usize..capture.end as usize)
-                        });
-                    let len = text.and_then(|text| {
+                    let len = self.visible(name).and_then(|text| {
                         // Comparing a text is work of its length, as for a literal.
                         self.steps += text.len() as u64 / LITERAL_BYTES_PER_STEP;
                         self.rest().starts_with(text).then_some(text.len())
@@ -1157,7 +1144,17 @@ impl<'p, 'i> Machine<'p, 'i> {
 
     /// The id of the visible captures.
     fn map(&self) -> u32 {
-        self.captures.last().map_or(0, |capture| capture.map)
+        self.captures.last().copied().unwrap_or(0)
+    }
+
+    /// The text visible under a capture, found in the map of the visible captures. A walk
+    /// down the stack would pass every capture kept since, also of other names.
+    fn visible(&self, name: u16) -> Option<&'i str> {
+        let map = self.map_list.get((self.map() as usize).checked_sub(1)?)?;
+        let at = map
+            .binary_search_by_key(&name, |&(capture, _)| capture)
+            .ok()?;
+        self.text_list.get(map[at].1 as usize).copied()
     }
 
     /// The id of the context of a column and visible captures, made when it is new.
@@ -1188,8 +1185,10 @@ impl<'p, 'i> Machine<'p, 'i> {
             Some(&id) => id,
             None => {
                 self.memory.room_in(&mut self.texts)?;
-                let id = self.texts.len() as u32;
+                self.memory.room(&mut self.text_list, 1)?;
+                let id = self.text_list.len() as u32;
                 self.texts.insert(text, id);
+                self.text_list.push(text);
                 id
             }
         };
@@ -1217,12 +1216,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             }
         };
         self.memory.room(&mut self.captures, 1)?;
-        self.captures.push(Capture {
-            name,
-            start,
-            end: self.pos,
-            map: map_id,
-        });
+        self.captures.push(map_id);
         self.context = self.context_of(self.column, map_id)?;
         Ok(())
     }
