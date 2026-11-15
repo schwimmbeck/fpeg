@@ -6,6 +6,7 @@ import gc
 import pickle
 import subprocess
 import sys
+import sysconfig
 import weakref
 from collections.abc import Callable
 from typing import Any
@@ -203,6 +204,11 @@ def test_pretty_and_repr_keep_a_lone_surrogate() -> None:
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux alone enforces a limit on address space")
+@pytest.mark.skipif(
+    bool(sysconfig.get_config_var("Py_GIL_DISABLED")),
+    reason="a free-threaded Python reserves about a GiB of address space at start, so the limit "
+    "does not stop a text of 400 MB",
+)
 def test_a_text_too_large_for_memory_raises_memory_error() -> None:
     result = subprocess.run(
         [sys.executable, "-I", "-c", TOO_LARGE], capture_output=True, text=True, timeout=60
