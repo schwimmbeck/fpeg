@@ -163,6 +163,11 @@ def dotted(parts: list[Any]) -> Any:
     return value
 
 
+def line_feeds(text: str) -> str:
+    """Source text with each line break as one line feed, as CPython reads it."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def decode(text: str, raw: bool, braces: bool) -> str:
     """The value of the text of a string part: escapes taken where it is not raw, and doubled
     braces made single in an f-string or t-string."""
@@ -212,7 +217,7 @@ def finished(pieces: list[Any], raw: bool, braces: bool) -> list[Any]:
     out: list[Any] = []
     for piece in pieces:
         if isinstance(piece, ast.Constant):
-            piece.value = decode(piece.value, raw, braces)
+            piece.value = decode(line_feeds(piece.value), raw, braces)
             out.append(piece)
             continue
         if piece.format_spec is not None:
@@ -262,7 +267,7 @@ def field_source(node: Any, ends: tuple[str, ...]) -> str:
         if item is not None:
             start = item.start_pos if isinstance(item, fpeg.Token) else item.meta.start_pos
             end = min(end, start - node.meta.start_pos - 1)
-    return text[:end]
+    return line_feeds(text[:end])
 
 
 def interpolation(value: Any) -> Any:

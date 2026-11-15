@@ -208,9 +208,11 @@ def test_statements_give_the_tree_of_cpython() -> None:
     compare(STATEMENTS)
 
 
+@pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
 @pytest.mark.parametrize("path", FILES)
-def test_a_file_gives_the_tree_of_cpython(path: Path) -> None:
-    compare(path.read_text(encoding="utf-8"))
+def test_a_file_gives_the_tree_of_cpython(path: Path, line_break: str) -> None:
+    # Reading a file as text turns its line breaks into line feeds.
+    compare(path.read_text(encoding="utf-8").replace("\n", line_break))
 
 
 @pytest.mark.corpus
