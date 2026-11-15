@@ -83,7 +83,7 @@ A grammar is a sequence of rules and directives, one per logical line. Their ord
 
 ```text
 @attribute
-name<params> "display name": alternative | alternative
+name<params>: alternative | alternative
 ```
 
 Only the name and the body are required.
@@ -96,7 +96,7 @@ Only the name and the body are required.
 | `_name: e` | an inlined rule: its children join the parent's children |
 | `_NAME: e` | a hidden terminal: it is matched and recorded, but views do not show it |
 | `?name: e` | a transparent rule: when it has exactly one visible child, it is inlined. Fields are allowed only in its aliased alternatives, which always make a node. An alternative that is inlined for some inputs only gets a warning ([W301](diagnostics/W301.md)) |
-| `name "number": e` | a display name, used in error messages in place of the name |
+| `NAME "number": e` | a display name of a terminal, used in error messages in place of its name |
 
 A terminal may use literals, classes, Unicode properties, `.` and other terminals, but no syntactic or lexical rules.
 

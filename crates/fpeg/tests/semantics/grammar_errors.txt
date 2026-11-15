@@ -261,6 +261,14 @@ only terminals can be @reserved, not start
 the terminal T cannot be transparent
 the terminal U cannot have an alias
 
+=== only terminals can have a display name, since an error names no node
+start "a start": item
+@lexical
+item "an item": "a"
+--- grammar
+only terminals can have a display name, not start
+only terminals can have a display name, not item
+
 === a terminal or the skip expression cannot use a level
 start: T
 T: sum

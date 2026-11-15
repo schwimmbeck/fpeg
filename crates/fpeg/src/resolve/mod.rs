@@ -956,6 +956,14 @@ impl<'g> Resolver<'g> {
             let message = format!("only terminals can be @reserved, not {}", rule.name.text);
             self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
+        // An error names a token by its terminal, and never a node by its rule.
+        if kind != RuleKind::Terminal && rule.display.is_some() {
+            let message = format!(
+                "only terminals can have a display name, not {}",
+                rule.name.text
+            );
+            self.error(DiagnosticCode::RuleForm, message, rule.name.span);
+        }
         if rule.transparent && kind == RuleKind::Terminal {
             let message = format!("the terminal {} cannot be transparent", rule.name.text);
             self.error(DiagnosticCode::RuleForm, message, rule.name.span);
