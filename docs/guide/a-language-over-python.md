@@ -30,11 +30,11 @@ cell Divider:
 :lines: 4-
 ```
 
-Every rule that ORD changes is an ordinary rule of the Python grammar: the compound and the simple statements, the primary expressions and the atoms. `...` keeps what Python has, and where it stands decides which reading wins. Python's compound statements come first, since each starts with a word of its own and a `match` with its case blocks would otherwise read as an instance placed under the kind `match`. The new simple statements come first, since `input vin` would otherwise start an expression statement with `input`, and the line would fail at its second name. Each of them ends where the statement ends, so that `type X = int` is left to Python. A statement of ORD tries a primary before Python's statements try the same primary again, which `@memo` turns into one try.
+Every rule that ORD changes is an ordinary rule of the Python grammar: the compound and the simple statements, the decorated definitions, the primary expressions and the atoms. `...` keeps what Python has, and where it stands decides which reading wins. Python's compound statements come first, since each starts with a word of its own and a `match` with its case blocks would otherwise read as an instance placed under the kind `match`. The new simple statements come first, since `input vin` would otherwise start an expression statement with `input`, and the line would fail at its second name. Each of them ends where the statement ends, so that `type X = int` is left to Python. A statement of ORD tries a primary before Python's statements try the same primary again, which `@memo` turns into one try.
 
 ## The transformer
 
-The transformer is a subclass of `fpeg.python.ToAst` with a method for each new rule. A cell gives a `ClassDef`, a view generator a decorated `FunctionDef`, and a statement that places something an assignment from the view's context with a `with` around its body. A method gives a list where one statement of ORD becomes two. `ast.fix_missing_locations` gives the nodes that a method builds the position of the statement around them.
+The transformer, [`tests/ord_ast.py`](https://github.com/schwimmbeck/fpeg/blob/main/tests/ord_ast.py) in the repository, is a subclass of `fpeg.python.ToAst` with a method for each new rule. A cell gives a `ClassDef`, a view generator a decorated `FunctionDef`, and a statement that places something an assignment from the view's context with a `with` around its body. A method gives a list where one statement of ORD becomes two. `ast.fix_missing_locations` gives the nodes that a method builds the position of the statement around them.
 
 ## Checked against the language's own parser
 

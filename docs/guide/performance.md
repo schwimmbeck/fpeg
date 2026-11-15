@@ -131,7 +131,7 @@ A remembered result holds for the position it was made at and for what the rule 
 
 ## Limits
 
-A grammar can make a parse take time that grows fast with the input, as the first grammar of this guide does, and input may come from anywhere. So every parse has a limit on its steps, one on how deep rule calls nest and one on the memory it holds, and stops with a `LimitError` at any of them. A rule that calls itself counts at every level of the nesting, while a small rule that does not may be compiled into the rules that call it and count not at all. The defaults are high enough for real input, and `parse` takes lower ones:
+A grammar can make a parse take time that grows fast with the input, as the first grammar of this guide does, and input may come from anywhere. So every parse has a limit on its steps, one on how deep rule calls nest and one on the memory it holds, and stops with a `LimitError` at any of them. A rule that calls itself counts at every level of the nesting, while a small rule that does not may be compiled into the rules that call it and count not at all. The defaults are high enough for real input, and `parse` takes others, lower or higher:
 
 ```python
 again = fpeg.Grammar(

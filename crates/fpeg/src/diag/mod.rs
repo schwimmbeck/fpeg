@@ -118,10 +118,10 @@ pub enum DiagnosticCode {
     BuilderPlace,
     /// E310: a value builder whose arguments do not fit.
     BuilderArguments,
-    /// E401: an expression or a grammar text that nests too deeply.
+    /// E401: an expression, a grammar text or a chain of modules that nests too deeply.
     TooDeep,
-    /// E402: a grammar too large: too many template instances, expressions, names, flags or
-    /// fields passed on to one node.
+    /// E402: a grammar too large: too many template instances, expressions, names, flags,
+    /// fields passed on to one node, modules or bytes of module text.
     TooLarge,
     /// E501: a form that a later release brings.
     NotYet,

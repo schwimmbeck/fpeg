@@ -374,7 +374,7 @@ assert result == [Assign("x", 1), Assign("y", 2)]
 
 ## Errors
 
-A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. `label` holds the name of a [named error](grammar.md#errors), and `None` for others. A parse that reaches a limit raises its subclass `LimitError`. `max_steps`, `max_depth` and `max_memory` lower the limits for a parse, whose defaults suit untrusted input. `max_memory` is in bytes, and its default grows with the text: 4 KiB for each byte, at least 64 MiB and at most 4 GiB.
+A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. `label` holds the name of a [named error](grammar.md#errors), and `None` for others. A parse that reaches a limit raises its subclass `LimitError`. `max_steps`, `max_depth` and `max_memory` set the limits of a parse, lower or higher, and their defaults suit untrusted input: 4,000,000,000 steps, rule calls nested 5,000 deep, and memory in bytes that grows with the text, 4 KiB for each byte, at least 64 MiB and at most 4 GiB.
 
 ```python
 try:
@@ -499,7 +499,7 @@ print(ast.dump(module.body[0].value))
 BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=Add(), right=Name(id='rate')))
 ```
 
-`parse` takes the limits of `Grammar.parse`. The default depth takes the deepest nesting that CPython takes, 200 brackets or 149 f-strings, and `max_depth` allows more. It reads what the Python grammar reads, which takes a few forms that CPython refuses only after parsing, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
+`parse` takes the limits of `Grammar.parse`. The default depth takes the deepest nesting that CPython takes, 200 brackets or 149 f-strings, and `max_depth` allows more. It reads what the Python grammar reads, which takes a few forms that CPython refuses with an error message of its own, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
 
 The grammar names its mistakes where a failure can only be one: `colon` for the colon of a compound statement, `newline` for the end of a simple statement, `indent` for a block that does not come, `statement` for a line that is no statement, and `indented` for a line indented further than its block. A parse with `recover=True` goes on past each, so that a file with mistakes gives a tree that keeps the statements around them:
 
