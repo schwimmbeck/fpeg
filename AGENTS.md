@@ -60,6 +60,7 @@ These checks are the bar, and CI treats warnings as errors. CI runs the Rust and
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo clippy --workspace --lib --bins -- -D warnings
+cargo rustdoc -p fpeg -- -D warnings
 cargo test
 uv run ruff format --check
 uv run ruff check
@@ -77,7 +78,7 @@ cargo clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnings
 
 - `uv run python scripts/check.py` runs all of them in this order, stops at the first failure and prints the time each took. Run it before every commit.
 - The docs build runs every Python code block in the docs.
-- The second clippy builds the crates as users and the Python package get them. The tests turn on the `reference` feature for the whole workspace, so only that build sees code the tests alone use.
+- The second clippy builds the crates as users and the Python package get them. The tests turn on the `reference` feature for the whole workspace, so only that build sees code the tests alone use. `cargo rustdoc` builds the core's documentation as docs.rs does, so it fails on a broken link, one to an item of the tests alone among them.
 - The licence check holds project files to the project's licence and holder. `reuse lint` checks that the repository follows the REUSE specification: `REUSE.toml` gives copyright and licence to the files that cannot carry a header, and `LICENSES/` holds the text of every licence used.
 - The dependency group `oracles` holds what a test compares fpeg with beyond the standard library, today `llvmlite`. A test skips without its oracle, so `uv run pytest` alone works too, and the test jobs of CI run it that way.
 - pyright checks `python/`, `tests/` and `scripts/`, and mypy's stubtest holds the stubs of the native module to the module as built. The benchmarks and the docs import their own dependency groups, and ruff lints them.
