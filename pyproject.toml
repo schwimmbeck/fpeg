@@ -47,7 +47,7 @@ bench = [
     "tree-sitter-python>=0.25",
 ]
 # What a test compares fpeg with beyond the standard library. A test skips without its oracle.
-oracles = ["llvmlite>=0.50"]
+oracles = ["lark>=1.3.1", "llvmlite>=0.50"]
 
 [tool.maturin]
 manifest-path = "crates/fpeg-py/Cargo.toml"
@@ -91,8 +91,8 @@ convention = "pep257"
 include = ["python", "tests", "scripts"]
 strict = ["python"]
 pythonVersion = "3.11"
-# The tests import the corpora that the benchmarks fetch.
-extraPaths = ["benchmarks"]
+# The tests import helper modules of their own folder, as pytest lets them, and the corpora.
+extraPaths = ["tests", "benchmarks"]
 venvPath = "."
 venv = ".venv"
 
