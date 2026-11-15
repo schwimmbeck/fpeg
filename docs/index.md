@@ -63,6 +63,7 @@ Lowercase names are rules and uppercase names terminals, `**` separates repetiti
 - [Interpolated strings](guide/interpolated-strings.md): expressions inside strings, quotes as parameters, and delimiters that the input chooses.
 - [Composing grammars](guide/composing-grammars.md): a grammar that extends another, rules taken from others, modules of your own, and Python extended with its transformer.
 - [A language over Python](guide/a-language-over-python.md): ORD, a grammar over Python with its transformer to `ast`, checked against the language's own parser.
+- [Errors and recovery](guide/errors.md): what an error says and where it points, labels, messages for common mistakes, and parses that go on past mistakes.
 - [Performance](guide/performance.md): seeing where a parse spends its work, and what to change in a grammar.
 
 ## Reference
@@ -87,6 +88,7 @@ guide/indentation
 guide/interpolated-strings
 guide/composing-grammars
 guide/a-language-over-python
+guide/errors
 guide/performance
 reference/grammar
 reference/semantics
