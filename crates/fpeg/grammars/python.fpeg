@@ -18,12 +18,12 @@
 %keywords soft "match" "case" "_" "type" "lazy"
 %ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK &. | %if(bracket) _LINE_BREAK
 
-start: _BLANK_LINES? statements=(%same statement)*
+start: _BLANK_LINES? statements=(%same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented)))* (!. ^ trailing)
 
 // Statements
 
 ?statement: compound | simple_statements
-simple_statements: items=(simple ++ ";") ";"? (_NEWLINE | !.)
+simple_statements: items=(simple ++ ";") ";"? ((_NEWLINE | !.) ^ newline)
 ?simple: assignment
        | type_alias
        | return
@@ -77,26 +77,26 @@ import_as_name: name=NAME ("as" alias=NAME)?
          | decorated
 
 ?block: indented_block | simple_statements
-indented_block: _NEWLINE %indent(statements=(%same statement)+)
+indented_block: _NEWLINE (%indent(statements=(%same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented)))+) ^ indent)
 
 decorated: decorators=(decorator %same)+ definition=(function_def | class_def)
 decorator: "@" value=named_expression _NEWLINE
-function_def: async="async"? "def" name=NAME params=type_params? "(" %on(bracket, parameters=parameters? ")") ("->" returns=expression)? ":" body=block
-class_def: "class" name=NAME params=type_params? ("(" %on(bracket, bases=arguments? ")"))? ":" body=block
-if: "if" test=named_expression ":" body=block branches=(%same elif)* (%same "else" ":" orelse=block)?
-elif: "elif" test=named_expression ":" body=block
-while: "while" test=named_expression ":" body=block (%same "else" ":" orelse=block)?
-for: async="async"? "for" targets=star_targets "in" iter=star_expressions ":" body=block (%same "else" ":" orelse=block)?
-with: async="async"? "with" items=with_items ":" body=block
+function_def: async="async"? "def" name=NAME params=type_params? "(" %on(bracket, parameters=parameters? ")") ("->" returns=expression)? (":" ^ colon) body=block
+class_def: "class" name=NAME params=type_params? ("(" %on(bracket, bases=arguments? ")"))? (":" ^ colon) body=block
+if: "if" test=named_expression (":" ^ colon) body=block branches=(%same elif)* (%same "else" (":" ^ colon) orelse=block)?
+elif: "elif" test=named_expression (":" ^ colon) body=block
+while: "while" test=named_expression (":" ^ colon) body=block (%same "else" (":" ^ colon) orelse=block)?
+for: async="async"? "for" targets=star_targets "in" iter=star_expressions (":" ^ colon) body=block (%same "else" (":" ^ colon) orelse=block)?
+with: async="async"? "with" items=with_items (":" ^ colon) body=block
 ?with_items: "(" %on(bracket, items=(with_item ++ ",") ","? ")") &":" -> with_list
            | items=(with_item ++ ",") -> with_list
 with_item: context=expression ("as" target=star_target)?
-try: "try" ":" body=block (
+try: "try" (":" ^ colon) body=block (
         (handlers=(%same except)+ | handlers=(%same except_star)+)
-            (%same "else" ":" orelse=block)? (%same "finally" ":" final=block)?
-        | %same "finally" ":" final=block)
-except: "except" !"*" (types=expression "as" name=NAME | types=expressions)? ":" body=block
-except_star: "except" "*" (types=expression "as" name=NAME | types=expressions) ":" body=block
+            (%same "else" (":" ^ colon) orelse=block)? (%same "finally" (":" ^ colon) final=block)?
+        | %same "finally" (":" ^ colon) final=block)
+except: "except" !"*" (types=expression "as" name=NAME | types=expressions)? (":" ^ colon) body=block
+except_star: "except" "*" (types=expression "as" name=NAME | types=expressions) (":" ^ colon) body=block
 
 match: "match" subject=subject ":" _NEWLINE %indent(cases=(%same case)+)
 ?subject: items=star_named_expression "," (items=(star_named_expression ++ ",") ","?)? -> tuple_expression
@@ -351,8 +351,23 @@ FLOAT_NUMBER: (DIGITS? "." DIGITS | DIGITS ".") EXPONENT? | DIGITS EXPONENT
 INT_NUMBER: [1-9] ("_"? [0-9])* | "0" ("_"? "0")*
 DIGITS: [0-9] ("_"? [0-9])*
 EXPONENT: [eE] [+\-]? DIGITS
-AUGMENTED: "**=" | "//=" | ">>=" | "<<=" | "+=" | "-=" | "*=" | "/=" | "%=" | "@=" | "&=" | "|=" | "^="
+AUGMENTED "augmented assignment": "**=" | "//=" | ">>=" | "<<=" | "+=" | "-=" | "*=" | "/=" | "%=" | "@=" | "&=" | "|=" | "^="
 COMMENT: "#" [^\r\n]*
 _LINE_BREAK: "\r\n" | "\n" | "\r"
-_NEWLINE: _LINE_BREAK _BLANK_LINES?
+_NEWLINE "newline": _LINE_BREAK _BLANK_LINES?
 _BLANK_LINES: (([ \t\x0C] | "\\" _LINE_BREAK)* COMMENT? _LINE_BREAK)+
+_LINE_REST: (!_LINE_BREAK .)* (_NEWLINE | !.)
+
+// Recovery. A label stands where a failure can only be a mistake of the text, so that the
+// labels change nothing the grammar accepts: the colon of a compound statement, the end of a
+// simple statement, the block after a colon, a line at the column of its block that is no
+// statement, a line indented further than its block, and text after the last statement. A
+// parse with recovery skips the rest of a header or a line, takes a missing block as missing,
+// and parses a run of lines indented too far as statements where it can, so that their trees
+// stay, skipping the lines it cannot.
+%recover colon: (!(_LINE_BREAK | ":" &_LINE_BREAK) .)* ":"?
+%recover newline: _LINE_REST
+%recover indent: ()
+%recover statement: _LINE_REST
+%recover indented: ((%same | %indent(())) &. (statement | _LINE_REST))+
+%recover trailing: .*

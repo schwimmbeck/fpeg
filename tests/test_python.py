@@ -8,9 +8,11 @@ with those of `ast.parse` by `ast.dump`, then node by node by their positions.
 """
 
 import ast
+import random
 import sys
 import sysconfig
 import warnings
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -266,6 +268,75 @@ def test_parse_takes_limits_and_refuses_a_literal_that_python_cannot_read() -> N
 def test_a_file_gives_the_tree_of_cpython(path: Path, line_break: str) -> None:
     # Reading a file as text turns its line breaks into line feeds.
     compare(path.read_text(encoding="utf-8").replace("\n", line_break))
+
+
+# Broken files: small files of the library, each with single edits that CPython rejects, and
+# what the trees recovered from them keep, set from the first measurement on 2026-11-15, which
+# gave all 160 a tree that kept 97.7 percent of the visible tokens.
+BROKEN_FILES = 40
+BROKEN_FILE_MAX_CHARS = 20_000
+EDITS_PER_FILE = 20
+INSERTED = "()[]{}:,.=+-*/\"' \n#abc019"
+MIN_TREES_PERCENT = 99.0
+MIN_KEPT_PERCENT = 97.0
+
+
+def test_a_broken_file_keeps_the_statements_around_its_mistakes() -> None:
+    source = "def f(x)\n    return x\n\ny = = 2\nz = 3\n"
+    with pytest.raises(fpeg.ParseError) as raised:
+        python.GRAMMAR.parse(source, recover=True)
+    error = raised.value
+    assert [(e.label, e.line, e.column) for e in error.errors] == [
+        ("colon", 1, 9),
+        ("newline", 4, 3),
+    ]
+    assert isinstance(error.tree, fpeg.Tree)
+    kinds = [child.data for child in error.tree.children if isinstance(child, fpeg.Tree)]
+    assert kinds == ["function_def", "simple_statements", "simple_statements"]
+
+
+def visible_tokens(tree: fpeg.Tree | fpeg.Token) -> Counter[tuple[str, str]]:
+    found = (
+        tree.scan_values(lambda v: isinstance(v, fpeg.Token))
+        if isinstance(tree, fpeg.Tree)
+        else [tree]
+    )
+    return Counter((t.type, str(t)) for t in found if not t.type.startswith("<"))
+
+
+@pytest.mark.corpus
+def test_broken_files_of_the_library_keep_most_of_their_tokens() -> None:
+    texts = [p.read_text(encoding="utf-8") for p in sorted(LIBRARY.glob("*.py"))[:BROKEN_FILES]]
+    rng = random.Random(8)
+    broken = trees = 0
+    kept = 0.0
+    for text in (t for t in texts if len(t) < BROKEN_FILE_MAX_CHARS):
+        want = visible_tokens(python.GRAMMAR.parse(text))
+        for _ in range(EDITS_PER_FILE):
+            at = rng.randrange(len(text))
+            kind, char = rng.choice(["delete", "insert", "replace"]), rng.choice(INSERTED)
+            after = text[at + 1 :] if kind != "insert" else text[at:]
+            edited = text[:at] + ("" if kind == "delete" else char) + after
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    ast.parse(edited)
+                continue
+            except SyntaxError:
+                pass
+            try:
+                python.GRAMMAR.parse(edited, recover=True)
+                continue  # the grammar takes a superset that a later check narrows
+            except fpeg.ParseError as error:
+                broken += 1
+                if error.tree is not None:
+                    trees += 1
+                    got = visible_tokens(error.tree)
+                    kept += sum(min(n, got[key]) for key, n in want.items()) / want.total()
+    trees_percent, kept_percent = 100 * trees / broken, 100 * kept / broken
+    assert broken > 100, broken
+    assert trees_percent >= MIN_TREES_PERCENT, f"{trees} of {broken} give a tree"
+    assert kept_percent >= MIN_KEPT_PERCENT, f"{kept_percent:.1f} % of the tokens kept"
 
 
 @pytest.mark.corpus

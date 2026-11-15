@@ -499,6 +499,22 @@ BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=A
 
 `parse` takes the limits of `Grammar.parse`, as `max_depth` for brackets nested deeper than the default allows. It reads what the Python grammar reads, which takes a few forms that CPython refuses only after parsing, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
 
+The grammar names its mistakes where a failure can only be one: `colon` for the colon of a compound statement, `newline` for the end of a simple statement, `indent` for a block that does not come, `statement` for a line that is no statement, `indented` for a line indented further than its block, and `trailing`. A parse with `recover=True` goes on past each, so that a file with mistakes gives a tree that keeps the statements around them:
+
+```python
+source = "def f(x)\n    return x\n\ny = = 2\nz = 3\n"
+try:
+    python.GRAMMAR.parse(source, recover=True)
+except fpeg.ParseError as error:
+    print([(problem.label, problem.line) for problem in error.errors])
+    print([child.data for child in error.tree.children])
+```
+
+```output
+[('colon', 1), ('newline', 4)]
+['function_def', 'simple_statements', 'simple_statements']
+```
+
 `python.GRAMMAR` is the grammar and `python.ToAst` the transformer behind `parse`, with a method for each kind of node and positions stamped as `ast` counts them. A language that adds to Python extends both, a grammar that starts with `%extends "python"` and a subclass of `ToAst` with methods for its new rules, as the [guide to composing grammars](../guide/composing-grammars.md#extending-python) shows. A method may give a list of statements where one statement stands. `python.ToAstBase` holds the same methods without stamping, for a subclass that sets positions its own way.
 
 ```{eval-rst}
