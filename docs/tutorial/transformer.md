@@ -1,6 +1,6 @@
 # From a tree to your own objects
 
-Builders turn a tree into plain Python data. For objects of your own, such as the syntax tree of a language or a running computation, write a `Transformer`: a class with one method for each rule whose nodes you want to turn into something. This tutorial builds a small language twice, first into a syntax tree of dataclasses, then into the values it computes, and shows how to change the shape of the result, what happens to errors, and how to catch a misspelled method.
+Builders turn a tree into plain Python data. For objects of your own, such as the syntax tree of a language or a running computation, write a `Transformer`: a class with one method for each rule whose nodes you want to turn into something, as [Getting started](../start.md#values) does in a few lines. This tutorial goes further and builds a small language twice, first into a syntax tree of dataclasses, then into the values it computes, and shows how to change the shape of the result, what happens to errors, and how to catch a misspelled method.
 
 ## The language
 
@@ -327,3 +327,9 @@ assert Splice().transform(values.parse("let x = 2, y = 3; show x * (y + 1)")) ==
 ```
 
 `Sum(*)` passes the list of the children's values. Without `Splice`, `let` has neither a method nor a builder and stays a tree that holds the two `Let` objects.
+
+## Where next
+
+- [A filter language](../examples/filter-language.md) builds a syntax tree of dataclasses and evaluates it with `match`.
+- [Building an AST](../guide/building-an-ast.md) builds the syntax tree of a language with `if` and runs its programs, and shows where each node stands in the input.
+- The [Python API](../reference/python-api.md#transformer) lists everything a method can ask for.

@@ -1,6 +1,6 @@
 # Your first grammar
 
-This tutorial writes a grammar for JSON, one step at a time: it parses documents with it, reads the tree, and at the end turns documents into Python objects. It needs the `fpeg` package, installed as [Getting started](../start.md#install) describes.
+This tutorial writes a grammar for JSON, one step at a time: it parses documents with it, reads the tree, and at the end turns documents into Python objects. It goes on from [Getting started](../start.md), which installs fpeg and parses with a first grammar.
 
 ## Terminals and rules
 
@@ -23,9 +23,9 @@ print(tree)
 Tree('start', [Token('STRING', '"hello"')])
 ```
 
-A name in lowercase is a rule, and a name in uppercase is a terminal. A terminal matches one token: here `"\""` is a literal, `[^"]` a class of every character but a quote, and `?`, `*` and `+` say how often the part before them occurs. `|` is an ordered choice: `STRING` is tried first, and `NUMBER` only when it fails.
+A terminal, a name in uppercase, matches one token, however many parts it has: here `"\""` is a literal, `[^"]` a class of every character but a quote, and `?`, `*` and `+` say how often the part before them occurs. `|` is an ordered choice: `STRING` is tried first, and `NUMBER` only when it fails.
 
-`parse` starts at the rule `start` and returns its node, a `Tree`. Its `children` hold what the rule matched, here one `Token`, which is a `str` that knows its kind and its place in the input:
+The rule `start` matched one token, so its node has one child, a `Token`:
 
 ```python
 token = tree.children[0]
@@ -33,7 +33,7 @@ assert token == '"hello"'
 assert (token.type, token.line, token.column) == ("STRING", 1, 1)
 ```
 
-Input the grammar does not match raises `ParseError`, which says where the parse failed and what the grammar expected there:
+Input the grammar does not match raises `ParseError`, which names every token the grammar would have taken there:
 
 ```python
 try:
@@ -185,4 +185,5 @@ assert value == json.loads(text)
 ## Where next
 
 - [From a tree to your own objects](transformer.md) writes a `Transformer` with a method per rule, to build objects that builders cannot.
+- [JSON to Python objects](../examples/json.md) has the whole grammar on one page, and the JSON grammar that comes with fpeg.
 - The [grammar language](../reference/grammar.md) describes every form a grammar can use, and the [Python API](../reference/python-api.md) everything the package offers.
