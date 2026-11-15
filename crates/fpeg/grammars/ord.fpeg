@@ -44,6 +44,9 @@ path_line: "path" targets=(context_target ++ ",")
                | target=context_target "[" %on(bracket, slices=slices "]") -> target_item
                | NAME
 
+// Remembered as Python's is, since a replacing rule says its own attributes, and every statement
+// of ORD that places an instance tries a primary before the statements of Python try it again.
+@memo
 ?primary: value=primary ".$" name=NAME -> getparam
         | ...
 

@@ -223,6 +223,9 @@ expression: %precedence {
 ?await_primary: "await" value=primary -> await
               | primary
 
+// An assignment tries a primary as its target, and an expression statement the same primary
+// again when the assignment fails, which the default memo does not see through the rules between.
+@memo
 ?primary: func=primary arguments=generator_expression -> call
         | func=primary "(" %on(bracket, %off(replacement, arguments=arguments? ")")) -> call
         | value=primary "[" %on(bracket, %off(replacement, slices=slices "]")) -> subscript
