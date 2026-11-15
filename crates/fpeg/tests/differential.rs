@@ -268,11 +268,42 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
             for verdict in compare(&reference, &parsers, &input, "start", limits, true, false) {
                 tally.count(verdict, &mut failures, &file.display().to_string());
             }
+            // Broken texts parse in recovering mode too: an invalid sample, or a valid one with
+            // a few edits.
+            let broken = match file.parent().is_some_and(|dir| dir.ends_with("invalid")) {
+                true => vec![input],
+                false => edited(&input),
+            };
+            let at = format!("{} in recovering mode", file.display());
+            for input in broken {
+                for verdict in compare(&reference, &parsers, &input, "start", limits, true, true) {
+                    tally.count(verdict, &mut failures, &at);
+                }
+            }
         }
     }
     tally.report(&format!("acceptance grammars ({} run)", run.join(", ")));
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
     assert!(run.len() >= 10, "only {} grammars run", run.len());
+}
+
+/// A text with one of a few edits each, as people make them: a character left out a quarter
+/// into it, a closing bracket put in halfway, and a character replaced three quarters in.
+fn edited(text: &str) -> Vec<String> {
+    let starts: Vec<usize> = text.char_indices().map(|(at, _)| at).collect();
+    let at = |quarter: usize| starts.get(starts.len() * quarter / 4).copied();
+    let next = |at: usize| text[at..].chars().next().map_or(at, |c| at + c.len_utf8());
+    let mut edits = Vec::new();
+    if let Some(at) = at(1) {
+        edits.push(format!("{}{}", &text[..at], &text[next(at)..]));
+    }
+    if let Some(at) = at(2) {
+        edits.push(format!("{}){}", &text[..at], &text[at..]));
+    }
+    if let Some(at) = at(3) {
+        edits.push(format!("{}x{}", &text[..at], &text[next(at)..]));
+    }
+    edits
 }
 
 /// The counts of the generated grammars, which every thread adds to.
