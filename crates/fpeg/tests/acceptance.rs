@@ -66,6 +66,10 @@ fn acceptance_grammars_parse_their_samples() {
         };
         let start = grammar.rules.iter().any(|rule| rule.name.text == "start");
         if !start && grammar.extends.is_none() {
+            // A grammar that lost its start by mistake would skip its samples.
+            if root.join("samples").join(name).exists() {
+                failures.push(format!("{name}: has samples but no rule start"));
+            }
             continue;
         }
         let samples = root.join("samples").join(name);
