@@ -771,6 +771,24 @@ def test_utf16_columns_take_no_longer_on_one_long_line() -> None:
     assert (spots[1].column, spots[-1].end_column) == (3, 2 + LONG_LINE_NAMES * width)
 
 
+def test_a_positions_record_refuses_what_it_cannot_stamp() -> None:
+    names = ("line", "column", "end_line", "end_column")
+    number: Any = 3
+    with pytest.raises(TypeError, match="are names"):
+        fpeg.Positions("line", "column", "end_line", number, Spot)
+    with pytest.raises(ValueError, match="four names"):
+        fpeg.Positions("line", "line", "end_line", "end_column", Spot)
+    listed: Any = [Spot]
+    with pytest.raises(TypeError, match="a class or a tuple"):
+        fpeg.Positions(*names, listed)
+    with pytest.raises(ValueError, match="at most"):
+        fpeg.Positions(*names, Spot, line_base=2**63 - 1)
+    unit: Any = "UTF-8"
+    with pytest.raises(ValueError, match="column_unit"):
+        fpeg.Positions(*names, Spot, column_unit=unit)
+    assert fpeg.Positions(*names, Spot).types == (Spot,)
+
+
 def test_positions_take_ast_or_a_record() -> None:
     with pytest.raises(TypeError, match="positions takes 'ast' or a Positions"):
 

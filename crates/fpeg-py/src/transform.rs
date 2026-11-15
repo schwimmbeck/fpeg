@@ -517,9 +517,9 @@ impl<'py, 'p> Scan<'py, 'p> {
                 code_points() + before(offset) - before(start)
             }
         };
-        // Lines and columns of a text that fits in memory fit 63 bits.
-        let line = lines.line(offset) as i64 + stamp.line_base;
-        (line, column as i64 + stamp.column_base)
+        // A record keeps its bases to 32 bits, so no position reaches the bound.
+        let line = (lines.line(offset) as i64).saturating_add(stamp.line_base);
+        (line, (column as i64).saturating_add(stamp.column_base))
     }
 
     fn token(&mut self, node: NodeRef<'_>) -> PyResult<()> {

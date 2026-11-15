@@ -38,6 +38,8 @@ EXTRAS = {"meta": 1, "node": 2, "children": 4}
 
 # How columns count, as the native scan reads it.
 COLUMN_UNITS = {"code points": 0, "utf-8": 1, "utf-16": 2}
+# The largest base of lines or columns either way, which keeps every position in 63 bits.
+MAX_POSITION_BASE = 2**31
 
 _Callable = TypeVar("_Callable")
 
@@ -47,7 +49,8 @@ class Positions:
     """Which attributes of a value receive the position of the node or token it was made for.
 
     `types` are the classes whose instances get them. Lines count from `line_base`, columns
-    from `column_base` in the `column_unit`: code points, UTF-8 bytes or UTF-16 units.
+    from `column_base` in the `column_unit`: code points, UTF-8 bytes or UTF-16 units. A
+    record checks its fields when it is made.
     """
 
     start_line: str
@@ -58,6 +61,32 @@ class Positions:
     line_base: int = 1
     column_base: int = 0
     column_unit: Literal["code points", "utf-8", "utf-16"] = "code points"
+
+    def __post_init__(self) -> None:
+        # The fields are checked as what a caller may pass, whatever their annotations say.
+        names = cast(
+            tuple[object, ...], (self.start_line, self.start_column, self.end_line, self.end_column)
+        )
+        if not all(isinstance(name, str) and name.isidentifier() for name in names):
+            raise TypeError(f"the attributes of Positions are names, not {names!r}")
+        if len(set(names)) < len(names):
+            raise ValueError(f"the attributes of Positions are four names, not {names!r}")
+        given: object = self.types
+        types = cast(tuple[object, ...], given) if isinstance(given, tuple) else (given,)
+        if not types or not all(isinstance(t, type) for t in types):
+            raise TypeError(
+                f"the types of Positions are a class or a tuple of them, not {self.types!r}"
+            )
+        object.__setattr__(self, "types", types)
+        for name in ("line_base", "column_base"):
+            base = getattr(self, name)
+            if isinstance(base, bool) or not isinstance(base, int):
+                raise TypeError(f"{name} of Positions is an int, not {base!r}")
+            if abs(base) > MAX_POSITION_BASE:
+                raise ValueError(f"{name} of Positions is at most 2**31 either way, not {base}")
+        if self.column_unit not in COLUMN_UNITS:
+            units = ", ".join(repr(unit) for unit in COLUMN_UNITS)
+            raise ValueError(f"column_unit of Positions is {units}, not {self.column_unit!r}")
 
 
 def _ast_positions() -> Positions:
