@@ -104,8 +104,17 @@ fn check_modes(seed: u64) -> Option<String> {
 /// items in a field than its kind allows, nor a field its kind lacks, nor lacks a field of
 /// exactly one item, no item is of a kind said never to be made, and a start rule said to leave
 /// one visible item leaves one.
-fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option<String> {
-    let Ok(tree) = reference.parse_with(input, start, limits()) else {
+fn item_count_problem(
+    reference: &Reference,
+    start: &str,
+    input: &str,
+    recovering: bool,
+) -> Option<String> {
+    let parsed = match recovering {
+        false => reference.parse_with(input, start, limits()),
+        true => reference.parse_recovering(input, start, limits()),
+    };
+    let Ok(tree) = parsed else {
         return None;
     };
     if reference.single_item(start) == Some(true) {
@@ -173,7 +182,7 @@ fn item_count_problem(reference: &Reference, start: &str, input: &str) -> Option
 }
 
 /// The item counts hold on every parse: from the start rule on every input, and from every other
-/// rule and level on the first input.
+/// rule and level on the first input, in recovering mode too where the grammar recovers.
 fn check_item_counts(seed: u64) -> Option<String> {
     let (grammar, inputs) = generate(seed);
     let reference = Reference::new(&grammar).ok()?;
@@ -184,13 +193,24 @@ fn check_item_counts(seed: u64) -> Option<String> {
             starts.extend(levels.iter().map(|level| level.name.text.clone()));
         }
     }
+    let modes: &[bool] = match grammar.recovers.is_empty() {
+        true => &[false],
+        false => &[false, true],
+    };
     for (k, input) in inputs.iter().enumerate() {
         for start in &starts {
             if start != "start" && k > 0 {
                 continue;
             }
-            if let Some(problem) = item_count_problem(&reference, start, input) {
-                return Some(format!("{problem}\n{grammar}"));
+            for &recovering in modes {
+                if let Some(problem) = item_count_problem(&reference, start, input, recovering) {
+                    let mode = if recovering {
+                        " in recovering mode"
+                    } else {
+                        ""
+                    };
+                    return Some(format!("{problem}{mode}\n{grammar}"));
+                }
             }
         }
     }
