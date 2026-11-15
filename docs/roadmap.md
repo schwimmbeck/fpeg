@@ -73,13 +73,16 @@ The Rust workspace with the core, the command line and the Python binding as emp
 - Fixed: a default depth that takes the deepest nesting CPython takes, `MemoryError` for a text too large for memory, a display name for every terminal that an error of a bundled or example grammar can name, messages a grammar wrote shown so that a terminal acts on none of their characters, a profile whose advice counts what repeated calls spend, and the text of a parse error listing at most ten errors.
 - A fuzz target that lets the fuzzer's bytes choose the grammars it tests.
 
-## M10 Tooling and the first release
+## M10 The first release
 
-- A language server for grammar files, a formatter and editor highlighting.
+- Wheels for all platforms, built with profile-guided optimization, and version 0.1.0 on PyPI and crates.io, released when it is ready rather than from every change.
+- Documentation organized for users, with simple examples and a short tutorial, and a benchmark chart in the README.
+- This roadmap gives way to a page of the features planned for later releases, editor support first, and no page refers to milestones any more.
+
+## M11 Editor support
+
+- A language server for grammar files, a formatter and editor highlighting, released as 0.2.0.
 - A converter for grammars written for other parsing tools.
-- Wheels for all platforms and version 0.1.0.
-- Documentation organized for users, with simple examples and a short tutorial.
-- This roadmap gives way to a list of the features planned for later releases, and no page refers to milestones any more.
 
 ## Later
 
