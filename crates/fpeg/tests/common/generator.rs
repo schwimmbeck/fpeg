@@ -130,6 +130,23 @@ impl Generator {
         if self.rng.chance(60) { "f" } else { "g" }
     }
 
+    /// One of the two names of labels, which `%recover` may give a recovery.
+    fn label_name(&mut self) -> &'static str {
+        if self.rng.chance(60) { "u" } else { "v" }
+    }
+
+    /// A recovery: one that matches nothing, one that skips up to a letter, one that matches a
+    /// rule of the grammar, so that recoveries nest, or any expression.
+    fn recovery(&mut self) -> Expr {
+        match self.rng.below(5) {
+            0 => empty(),
+            1 => many(seq([not(class([range('a', 'b')])), any()])),
+            2 => r(self.rng.pick(&self.rules)),
+            3 => seq([any(), r(self.rng.pick(&self.rules))]),
+            _ => self.expr(1, false),
+        }
+    }
+
     fn terminal_or_literal(&mut self) -> Expr {
         match self.terminals.is_empty() {
             true => lit("c"),
@@ -227,7 +244,13 @@ impl Generator {
                 let name = self.capture();
                 def(name, self.expr(depth + 1, terminal))
             }
-            8 => label_message(self.expr(depth + 1, terminal), "oops"),
+            8 => {
+                let inner = self.expr(depth + 1, terminal);
+                match self.rng.chance(50) {
+                    true => label(inner, self.label_name()),
+                    false => label_message(inner, "oops"),
+                }
+            }
             9 | 10 => {
                 let name = if self.rng.chance(50) { "x" } else { "y" };
                 field(name, self.expr(depth + 1, false))
@@ -419,6 +442,12 @@ impl Generator {
                 rule.attribute("reserved");
             }
             self.memo_mark(rule);
+        }
+        for name in ["u", "v"] {
+            if self.rng.chance(60) {
+                let recovery = self.recovery();
+                g.recover(name, recovery);
+            }
         }
         let mut grammar = g.build();
         if self.rng.chance(30) {

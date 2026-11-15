@@ -295,10 +295,20 @@ fn check_against_reference(seed: u64) -> Option<String> {
     let terminal = (grammar.rules.iter())
         .find(|r| r.kind() == RuleKind::Terminal && r.params.is_empty())
         .map(|r| r.name.text.as_str());
+    // Only a grammar with recoveries parses differently in recovering mode.
+    let modes: &[bool] = match grammar.recovers.is_empty() {
+        true => &[false],
+        false => &[false, true],
+    };
     for start in std::iter::once("start").chain(terminal) {
-        for input in &inputs {
+        for (input, &recovering) in inputs
+            .iter()
+            .flat_map(|i| modes.iter().map(move |m| (i, m)))
+        {
             let limits = [reference_limits(), machine];
-            for verdict in compare(&reference, &parsers, input, start, limits, false, false) {
+            for verdict in compare(
+                &reference, &parsers, input, start, limits, false, recovering,
+            ) {
                 match verdict {
                     Verdict::Same => COMPARED.fetch_add(1, Ordering::Relaxed),
                     // Inputs this short reach the depth limit only where left recursion is not

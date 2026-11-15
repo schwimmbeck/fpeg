@@ -16,7 +16,7 @@
 
 use super::{
     Alternative, Class, ClassItem, ErrorLabel, Expr, ExprKind, Grammar, Level, Name, Property,
-    Rule, RuleBody, Span, Text,
+    Recover, Rule, RuleBody, Span, Text,
 };
 
 /// Collects rules and directives into a [`Grammar`].
@@ -80,6 +80,15 @@ impl GrammarBuilder {
     /// Set the word characters.
     pub fn word(&mut self, expr: Expr) -> &mut GrammarBuilder {
         self.grammar.word = Some(expr);
+        self
+    }
+
+    /// Give the named label a recovery, as `%recover label: expr` does.
+    pub fn recover(&mut self, label: &str, expr: Expr) -> &mut GrammarBuilder {
+        self.grammar.recovers.push(Recover {
+            label: Name::new(label),
+            expr,
+        });
         self
     }
 
@@ -307,6 +316,14 @@ pub fn label_message(expr: Expr, message: &str) -> Expr {
     boxed(ExprKind::Label {
         expr: Box::new(expr),
         label: ErrorLabel::Message(text_value(message)),
+    })
+}
+
+/// `e ^ name`, which `%recover` can give a recovery.
+pub fn label(expr: Expr, name: &str) -> Expr {
+    boxed(ExprKind::Label {
+        expr: Box::new(expr),
+        label: ErrorLabel::Named(Name::new(name)),
     })
 }
 

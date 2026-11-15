@@ -308,6 +308,17 @@ impl Reference {
         self.run(input, start, limits, true, true)
     }
 
+    /// Parse in recovering mode without remembering rule results, which must give the same
+    /// result as [`Reference::parse_recovering`] whenever neither hits a limit.
+    pub fn parse_recovering_unmemoized(
+        &self,
+        input: &str,
+        start: &str,
+        limits: Limits,
+    ) -> Result<Tree, ParseError> {
+        self.run(input, start, limits, false, true)
+    }
+
     fn run(
         &self,
         input: &str,

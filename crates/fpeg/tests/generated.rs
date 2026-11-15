@@ -3,8 +3,8 @@
 
 //! Generated grammars and inputs on the reference interpreter. Resolving and parsing never panic
 //! and always end, every grammar prints to text that reads back to the same grammar,
-//! memoization never changes a result, and no parse breaks the item counts of its grammar.
-//! `common/generator.rs` makes the grammars.
+//! memoization never changes a result, a valid input parses the same in both modes, and no parse
+//! breaks the item counts of its grammar. `common/generator.rs` makes the grammars.
 
 mod common;
 
@@ -28,6 +28,7 @@ fn check_robust(seed: u64) -> Option<String> {
         if let Ok(reference) = Reference::new(&grammar) {
             for input in &inputs {
                 let _ = reference.parse_with(input, "start", limits());
+                let _ = reference.parse_recovering(input, "start", limits());
             }
         }
     }));
@@ -36,23 +37,62 @@ fn check_robust(seed: u64) -> Option<String> {
         .map(|_| format!("panicked on one of {inputs:?}:\n{grammar}"))
 }
 
-/// Parsing with and without the memo gives the same tree or the same error.
+/// A parse as text, with what it recovered from, or none where it hit a limit.
+fn shown(result: Result<Tree, ParseError>, input: &str) -> Option<String> {
+    match result {
+        Ok(tree) => Some(format!(
+            "{}\n{:?}",
+            tree.to_text(input, true),
+            tree.recoveries()
+        )),
+        Err(error) if matches!(error.kind, ParseErrorKind::Limit(_)) => None,
+        Err(error) => Some(format!("{error}\n{:?}", error.recoveries)),
+    }
+}
+
+/// Parsing with and without the memo gives the same tree or the same error, in either mode.
 fn check_memo(seed: u64) -> Option<String> {
     let (grammar, inputs) = generate(seed);
     let reference = Reference::new(&grammar).ok()?;
     for input in &inputs {
-        let shown = |result: Result<Tree, ParseError>| match result {
-            Ok(tree) => Some(tree.to_text(input, true)),
-            Err(error) if matches!(error.kind, ParseErrorKind::Limit(_)) => None,
-            Err(error) => Some(error.to_string()),
+        let pairs = [
+            (
+                reference.parse_with(input, "start", limits()),
+                reference.parse_unmemoized(input, "start", limits()),
+            ),
+            (
+                reference.parse_recovering(input, "start", limits()),
+                reference.parse_recovering_unmemoized(input, "start", limits()),
+            ),
+        ];
+        for (memoized, plain) in pairs {
+            if let (Some(memoized), Some(plain)) = (shown(memoized, input), shown(plain, input))
+                && memoized != plain
+            {
+                return Some(format!(
+                    "on {input:?} the memo gives\n{memoized}\nand no memo gives\n{plain}\n{grammar}"
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// An input that a parse in normal mode accepts gives the same tree in recovering mode, which
+/// recovers from nothing.
+fn check_modes(seed: u64) -> Option<String> {
+    let (grammar, inputs) = generate(seed);
+    let reference = Reference::new(&grammar).ok()?;
+    for input in &inputs {
+        let Ok(normal) = reference.parse_with(input, "start", limits()) else {
+            continue;
         };
-        let memoized = shown(reference.parse_with(input, "start", limits()));
-        let plain = shown(reference.parse_unmemoized(input, "start", limits()));
-        if let (Some(memoized), Some(plain)) = (memoized, plain)
-            && memoized != plain
-        {
+        let normal = shown(Ok(normal), input);
+        let recovering = shown(reference.parse_recovering(input, "start", limits()), input);
+        if recovering.is_some() && recovering != normal {
             return Some(format!(
-                "on {input:?} the memo gives\n{memoized}\nand no memo gives\n{plain}\n{grammar}"
+                "on {input:?} normal mode gives\n{normal:?}\nand recovering mode\n{recovering:?}\n\
+                 {grammar}"
             ));
         }
     }
@@ -169,4 +209,9 @@ fn parses_hold_the_item_counts_of_their_grammar() {
 #[test]
 fn memoization_never_changes_a_result() {
     check_seeds(check_memo);
+}
+
+#[test]
+fn a_valid_input_gives_the_same_tree_in_both_modes() {
+    check_seeds(check_modes);
 }
