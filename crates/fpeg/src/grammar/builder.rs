@@ -311,6 +311,13 @@ pub fn cut() -> Expr {
     boxed(ExprKind::Cut)
 }
 
+/// `%error("message")`, which makes the sequence it ends an error alternative.
+pub fn error_alternative(message: &str) -> Expr {
+    boxed(ExprKind::Error {
+        message: text_value(message),
+    })
+}
+
 /// `e ^ "message"`.
 pub fn label_message(expr: Expr, message: &str) -> Expr {
     boxed(ExprKind::Label {

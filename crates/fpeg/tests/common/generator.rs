@@ -130,6 +130,16 @@ impl Generator {
         if self.rng.chance(60) { "f" } else { "g" }
     }
 
+    /// An error alternative: what it tests, and one of two messages, so that which one
+    /// explains an error tells them apart.
+    fn error_alternative(&mut self, terminal: bool) -> Expr {
+        let message = if self.rng.chance(50) { "e1" } else { "e2" };
+        flat(
+            vec![self.expr(2, terminal), error_alternative(message)],
+            false,
+        )
+    }
+
     /// One of the two names of labels, which `%recover` may give a recovery.
     fn label_name(&mut self) -> &'static str {
         if self.rng.chance(60) { "u" } else { "v" }
@@ -215,7 +225,13 @@ impl Generator {
         let kinds = if terminal { 9 } else { 14 };
         match self.rng.below(kinds) {
             0 | 1 => flat(self.parts(depth, terminal), false),
-            2 | 3 => flat(self.parts(depth, terminal), true),
+            2 | 3 => {
+                let mut alternatives = self.parts(depth, terminal);
+                if self.rng.chance(30) {
+                    alternatives.push(self.error_alternative(terminal));
+                }
+                flat(alternatives, true)
+            }
             4 => {
                 let inner = self.expr(depth + 1, terminal);
                 match self.rng.below(4) {
@@ -299,6 +315,9 @@ impl Generator {
                 true => alt(expr).alias("node"),
                 false => alt(expr),
             });
+        }
+        if self.rng.chance(15) {
+            alternatives.push(alt(self.error_alternative(false)));
         }
         alternatives
     }
