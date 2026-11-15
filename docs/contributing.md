@@ -138,6 +138,16 @@ The chart, `docs/_static/benchmarks.svg`, shows three of the suites, and `uv run
 
 A full run takes several minutes. Close other programs while it runs, and record only on a quiet machine. `benchmarks/README.md` describes the files a run writes.
 
+## Releases
+
+The wheels of a release are built with profile-guided optimization:
+
+```sh
+uv run maturin build --release --pgo
+```
+
+maturin builds the module with counters, installs it in a fresh environment, runs `scripts/pgo_training.py` there, which parses the samples of every grammar and turns larger texts into Python values, and builds the module again with the counts. It needs rustup's component `llvm-tools`, and builds and trains once for each interpreter.
+
 ## Layout
 
 ```text

@@ -54,6 +54,8 @@ oracles = ["lark>=1.3.1", "llvmlite>=0.50"]
 manifest-path = "crates/fpeg-py/Cargo.toml"
 python-source = "python"
 module-name = "fpeg._fpeg"
+# What a build with --pgo runs on the instrumented module, from the root of the repository.
+pgo-command = "python scripts/pgo_training.py"
 
 [tool.uv]
 # One uv range for development and CI, where setup-uv installs the highest version in it, so

@@ -6,7 +6,7 @@ The chart of the README sums up three of the suites, drawn from the newest recor
 
 ![fpeg and other parsers, time per input](../_static/benchmarks.svg)
 
-The suite `rust-pgo` is the suite `rust` built with a profile that a short run of fpeg's own workloads trained, as the wheels will be. The other rows are built without one.
+The suite `rust-pgo` is the suite `rust` built with a profile that a short run of fpeg's own workloads trained. The other rows are built without one, while the wheels on PyPI are built with a profile of their own, which `scripts/pgo_training.py` trains.
 
 ```{benchmark-results}
 ```
