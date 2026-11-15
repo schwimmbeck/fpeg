@@ -69,7 +69,7 @@ impl<'t> Source<'t> {
         let column = self.lines.position(self.text, start).column;
         let number = (line + 1).to_string();
         let pad = " ".repeat(number.len());
-        let mut out = title(name, message);
+        let mut out = error_title(name, message);
         let _ = write!(out, "\n{pad}--> ");
         if let Some(path) = self.path {
             push_shown(&mut out, path);
@@ -96,7 +96,7 @@ impl ParseError {
             .collect();
         let name = match &self.kind {
             ParseErrorKind::UnknownStart(_) => {
-                shown.push(title(None, &self.message()));
+                shown.push(error_title(None, &self.message()));
                 return shown.join("\n\n");
             }
             ParseErrorKind::Label {
@@ -117,8 +117,9 @@ impl Recovery {
     }
 }
 
-/// The first line of a shown error.
-fn title(name: Option<&str>, message: &str) -> String {
+/// The first line of an error as [`Source::render`] shows it, all that an error without a
+/// place in a text shows.
+pub fn error_title(name: Option<&str>, message: &str) -> String {
     let mut out = String::from("error");
     let rest = match name {
         Some(name) => {

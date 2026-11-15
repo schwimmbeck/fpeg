@@ -374,7 +374,7 @@ assert result == [Assign("x", 1), Assign("y", 2)]
 
 ## Errors
 
-A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. A parse that reaches a limit raises its subclass `LimitError`. `max_steps`, `max_depth` and `max_memory` lower the limits for a parse, whose defaults suit untrusted input. `max_memory` is in bytes, and its default grows with the text: 4 KiB for each byte, at least 64 MiB and at most 4 GiB.
+A parse that does not match raises `ParseError`, a `ValueError`, with the place of the failure and what the grammar expected there. `label` holds the name of a [named error](grammar.md#errors), and `None` for others. A parse that reaches a limit raises its subclass `LimitError`. `max_steps`, `max_depth` and `max_memory` lower the limits for a parse, whose defaults suit untrusted input. `max_memory` is in bytes, and its default grows with the text: 4 KiB for each byte, at least 64 MiB and at most 4 GiB.
 
 ```python
 try:
@@ -420,6 +420,29 @@ start
   item	3
   <missing>
 
+```
+
+`render` shows the errors as the command line does, each with the line of the text it stands in and carets under its span, and names the text by the path given:
+
+```python
+try:
+    numbers.parse("[1, x, 3", recover=True)
+except fpeg.ParseError as error:
+    print(error.render("numbers.txt"))
+```
+
+```output
+error[item]: expected NUMBER
+ --> numbers.txt:1:5
+  |
+1 | [1, x, 3
+  |     ^
+
+error[close]: expected ",", "]"
+ --> numbers.txt:1:9
+  |
+1 | [1, x, 3
+  |         ^
 ```
 
 In the recovered tree an `<error>` node holds what the recovery took, which its `text` gives, and a `<missing>` token stands where the recovery took nothing. A `Transformer` gives them to its methods `__error__` and `__missing__`, which take what the methods of nodes and tokens take, and keeps them as they are where a class defines neither. A field that only the failed expression held is `None`.

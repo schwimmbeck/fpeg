@@ -337,7 +337,7 @@ impl Grammar {
             }
             Some(true) => {}
         }
-        let source = PyBackedStr::try_from(text)?;
+        let source = PyBackedStr::try_from(text.clone())?;
         let limits = Limits {
             max_steps: max_steps.unwrap_or(DEFAULT_MAX_STEPS),
             max_depth: max_depth.unwrap_or(DEFAULT_MAX_DEPTH),
@@ -352,7 +352,7 @@ impl Grammar {
         } else {
             run(&source)
         };
-        let tree = result.map_err(|error| parse_error(py, &source, &error))?;
+        let tree = result.map_err(|error| parse_error(py, &text, &source, &error))?;
         let parsed = Arc::new(Parsed::new(tree, source, Arc::clone(core)));
         let root = (parsed.tree.roots().into_iter())
             .find(|root| !root.is_hidden())
@@ -365,7 +365,7 @@ impl Grammar {
         let root = item(py, &parsed, root)?;
         match parsed.tree.recoveries() {
             [] => Ok(root),
-            recoveries => Err(recovered_error(py, &parsed.source, recoveries, root)),
+            recoveries => Err(recovered_error(py, &text, &parsed.source, recoveries, root)),
         }
     }
 

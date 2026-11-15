@@ -4,24 +4,78 @@
 //! The exceptions of the package, and the diagnostics that a grammar error carries and a
 //! check returns.
 
-use fpeg::{Limit, LineIndex, ParseErrorKind, Severity};
+use fpeg::{Limit, LineIndex, ParseErrorKind, Severity, Source};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyTuple;
+use pyo3::pybacked::PyBackedStr;
+use pyo3::types::{PyDict, PyString, PyTuple};
 use pyo3::{create_exception, intern};
 
-create_exception!(
-    fpeg,
-    ParseError,
-    PyValueError,
-    "The input does not match the grammar."
-);
-create_exception!(
-    fpeg,
-    LimitError,
-    ParseError,
-    "A parse stopped at a limit on its depth, its steps, its memory or the size of its input."
-);
+/// The input does not match the grammar.
+///
+/// `message` says what is wrong, `pos`, `line` and `column` where it starts and `end_pos`,
+/// `end_line` and `end_column` where it ends, `pos` counting code points from 0 and lines and
+/// columns from 1. `expected` lists what the grammar expected there, and `label` is the name of
+/// a named error. A parse with `recover` gives the recovered tree as `tree` and every error as
+/// `errors`.
+#[pyclass(extends = PyValueError, subclass, frozen, module = "fpeg")]
+pub struct ParseError;
+
+#[pymethods]
+impl ParseError {
+    #[new]
+    #[pyo3(signature = (*_args, **_kwds))]
+    fn new(_args: &Bound<'_, PyTuple>, _kwds: Option<&Bound<'_, PyDict>>) -> ParseError {
+        ParseError
+    }
+
+    /// The errors as the command line shows them, each with the line of the text it stands in
+    /// and carets under its span, and a blank line between them: those of `errors`, or this one
+    /// where it lists none. `path` names the text. An error that no parse raised shows its first
+    /// line alone.
+    #[pyo3(signature = (path = None))]
+    fn render(slf: &Bound<'_, Self>, path: Option<&str>) -> PyResult<String> {
+        let py = slf.py();
+        let Some(text) = slf.getattr_opt(intern!(py, "_text"))? else {
+            return Ok(fpeg::error_title(None, &slf.str()?.to_string_lossy()));
+        };
+        let text: PyBackedStr = text.extract()?;
+        let source = Source::new(&text, path);
+        let errors = slf.getattr(intern!(py, "errors"))?;
+        let mut shown: Vec<Bound<'_, PyAny>> = errors.try_iter()?.collect::<PyResult<_>>()?;
+        if shown.is_empty() {
+            shown.push(slf.clone().into_any());
+        }
+        let blocks = (shown.iter())
+            .map(|error| {
+                let label: Option<String> = error.getattr(intern!(py, "label"))?.extract()?;
+                let message: String = error.getattr(intern!(py, "message"))?.extract()?;
+                let start = source.byte_offset(error.getattr(intern!(py, "pos"))?.extract()?);
+                let end = source.byte_offset(error.getattr(intern!(py, "end_pos"))?.extract()?);
+                Ok(source.render(label.as_deref(), &message, start, end))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(blocks.join("\n\n"))
+    }
+}
+
+/// A parse stopped at a limit on its depth, its steps, its memory or the size of its input,
+/// which `limit` names: `"depth"`, `"steps"`, `"memory"` or `"input size"`.
+#[pyclass(extends = ParseError, subclass, frozen, module = "fpeg")]
+pub struct LimitError;
+
+#[pymethods]
+impl LimitError {
+    #[new]
+    #[pyo3(signature = (*_args, **_kwds))]
+    fn new(
+        _args: &Bound<'_, PyTuple>,
+        _kwds: Option<&Bound<'_, PyDict>>,
+    ) -> PyClassInitializer<LimitError> {
+        PyClassInitializer::from(ParseError).add_subclass(LimitError)
+    }
+}
+
 create_exception!(
     fpeg,
     GrammarError,
@@ -191,8 +245,10 @@ impl Found {
         let (expected, label) = match &error.kind {
             ParseErrorKind::NoMatch { expected } => (expected.clone(), None),
             ParseErrorKind::Label {
-                label, expected, ..
-            } => (expected.clone(), Some(label.clone())),
+                label,
+                named,
+                expected,
+            } => (expected.clone(), named.then(|| label.clone())),
             _ => (Vec::new(), None),
         };
         let limit = match &error.kind {
@@ -227,12 +283,14 @@ impl Found {
 }
 
 /// The errors of a parse, each placed in the source, and the exceptions that report them.
-struct Report<'s> {
+struct Report<'s, 'py> {
     source: &'s str,
+    /// The source as the caller gave it, which each exception keeps to show its error in.
+    text: &'s Bound<'py, PyString>,
     lines: LineIndex,
 }
 
-impl Report<'_> {
+impl<'py> Report<'_, 'py> {
     /// Where an error starts, and its message, as one line of text.
     fn line(&self, found: &Found) -> String {
         let start = self.lines.position(self.source, found.start);
@@ -244,12 +302,16 @@ impl Report<'_> {
 
     /// The exception for one error, with `text` as what it says, and no tree and no errors of
     /// its own.
-    fn exception(&self, py: Python<'_>, found: &Found, text: String) -> PyResult<PyErr> {
-        let exception = match found.limit {
-            Some(_) => LimitError::new_err(text),
-            None => ParseError::new_err(text),
+    fn exception(
+        &self,
+        py: Python<'py>,
+        found: &Found,
+        text: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let value = match found.limit {
+            Some(_) => py.get_type::<LimitError>().call1((text,))?,
+            None => py.get_type::<ParseError>().call1((text,))?,
         };
-        let value = exception.value(py);
         let start = self.lines.position(self.source, found.start);
         let end = self.lines.position(self.source, found.end);
         value.setattr(intern!(py, "message"), &found.message)?;
@@ -266,7 +328,8 @@ impl Report<'_> {
         }
         value.setattr(intern!(py, "tree"), py.None())?;
         value.setattr(intern!(py, "errors"), PyTuple::empty(py))?;
-        Ok(exception)
+        value.setattr(intern!(py, "_text"), self.text)?;
+        Ok(value)
     }
 
     /// The exception raised for the errors found: the one at `main` describes it, it says every
@@ -274,28 +337,33 @@ impl Report<'_> {
     /// holds the tree the parse recovered.
     fn raised(
         &self,
-        py: Python<'_>,
+        py: Python<'py>,
         found: &[Found],
         main: usize,
         tree: Option<Py<PyAny>>,
     ) -> PyResult<PyErr> {
         let lines: Vec<String> = found.iter().map(|f| self.line(f)).collect();
         let errors = (found.iter().zip(&lines))
-            .map(|(f, line)| Ok(self.exception(py, f, line.clone())?.into_value(py)))
+            .map(|(f, line)| self.exception(py, f, line.clone()))
             .collect::<PyResult<Vec<_>>>()?;
         let raised = self.exception(py, &found[main], lines.join("\n"))?;
-        let value = raised.value(py);
-        value.setattr(intern!(py, "errors"), PyTuple::new(py, errors)?)?;
-        value.setattr(intern!(py, "tree"), tree)?;
-        Ok(raised)
+        raised.setattr(intern!(py, "errors"), PyTuple::new(py, errors)?)?;
+        raised.setattr(intern!(py, "tree"), tree)?;
+        Ok(PyErr::from_value(raised))
     }
 }
 
-/// The exception for a parse that produced no tree, placed in `source`: its error, after the
-/// errors a recovering parse recovered from on its way.
-pub fn parse_error(py: Python<'_>, source: &str, error: &fpeg::ParseError) -> PyErr {
+/// The exception for a parse of `text`, also given as `source`, that produced no tree: its
+/// error, after the errors a recovering parse recovered from on its way.
+pub fn parse_error(
+    py: Python<'_>,
+    text: &Bound<'_, PyString>,
+    source: &str,
+    error: &fpeg::ParseError,
+) -> PyErr {
     let report = Report {
         source,
+        text,
         lines: LineIndex::new(source),
     };
     let mut found: Vec<Found> = error.recoveries.iter().map(Found::of_recovery).collect();
@@ -305,16 +373,18 @@ pub fn parse_error(py: Python<'_>, source: &str, error: &fpeg::ParseError) -> Py
         .unwrap_or_else(|failure| failure)
 }
 
-/// The exception for a parse that recovered from errors, placed in `source`: the first error
-/// describes it, and `tree` holds the tree with the error items.
+/// The exception for a parse of `text`, also given as `source`, that recovered from errors:
+/// the first error describes it, and `tree` holds the tree with the error items.
 pub fn recovered_error(
     py: Python<'_>,
+    text: &Bound<'_, PyString>,
     source: &str,
     recoveries: &[fpeg::Recovery],
     tree: Py<PyAny>,
 ) -> PyErr {
     let report = Report {
         source,
+        text,
         lines: LineIndex::new(source),
     };
     let found: Vec<Found> = recoveries.iter().map(Found::of_recovery).collect();

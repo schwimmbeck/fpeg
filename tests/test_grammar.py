@@ -155,11 +155,11 @@ def test_parse_errors_place_the_failure_in_code_points_and_name_what_was_expecte
     assert not isinstance(error, fpeg.LimitError)
 
 
-def test_a_labelled_error_carries_its_label_and_a_named_one_what_was_expected() -> None:
+def test_a_named_error_carries_its_name_and_what_was_expected() -> None:
     grammar = fpeg.Grammar('start: "a" ("b" ^ "a b must follow")')
     with pytest.raises(fpeg.ParseError) as raised:
         grammar.parse("ac")
-    assert raised.value.label == "a b must follow"
+    assert raised.value.label is None
     assert raised.value.message == "a b must follow"
     assert raised.value.expected == ('"b"',)
     assert (raised.value.line, raised.value.column) == (1, 2)
@@ -209,6 +209,23 @@ def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:
         grammar.parse("[1, x, 3")
     assert raised.value.tree is None
     assert [str(e) for e in raised.value.errors] == ["line 1, column 5: item: expected NUMBER"]
+
+
+def test_render_shows_each_error_with_its_line_and_a_caret() -> None:
+    grammar = fpeg.Grammar(RECOVERING)
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("[1, x\u00e4, 3", recover=True)
+    error = raised.value
+    line = "  |\n1 | [1, x\u00e4, 3\n  |"
+    item = f"error[item]: expected NUMBER\n --> data.txt:1:5\n{line}     ^^"
+    close = f'error[close]: expected ",", "]"\n --> data.txt:1:10\n{line}          ^'
+    assert error.render("data.txt") == f"{item}\n\n{close}"
+    # An error of `errors` shows itself, and without a path its place alone.
+    assert error.errors[1].render() == close.replace("data.txt:", "")
+    # The text travels with the error, so a pickled one shows the same.
+    assert pickle.loads(pickle.dumps(error)).render("data.txt") == error.render("data.txt")
+    # An error that no parse raised has no text to show, only its message.
+    assert fpeg.ParseError("bad \x1b[2J value").render() == "error: bad \u241b[2J value"
 
 
 def test_limits_end_a_parse_with_a_limit_error() -> None:

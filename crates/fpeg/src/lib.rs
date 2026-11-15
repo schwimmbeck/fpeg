@@ -46,7 +46,7 @@ pub use parse::{
 };
 #[cfg(feature = "reference")]
 pub use reference::Reference;
-pub use render::Source;
+pub use render::{Source, error_title};
 pub use tree::{FieldCount, FieldId, Kind, KindId, Names, NodeRef, Tree};
 pub use vm::{Memo, Options, Parser, Passes, Profile, ProfileRow};
 

@@ -89,6 +89,7 @@ class ParseError(ValueError):
     label: str | None
     tree: Tree | Token | None
     errors: tuple[ParseError, ...]
+    def render(self, path: str | None = None) -> str: ...
 
 class LimitError(ParseError):
     """A parse stopped at a limit on its depth, its steps, its memory or the size of its input."""
