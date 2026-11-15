@@ -176,4 +176,4 @@ The profile counts what the grammar asks for, with none of this but the loop, so
 - **Ignored text is skipped before every token.** Wherever the next byte can start one of its alternatives, a long `%ignore` choice is tried, so its commonest alternative goes first.
 - **Failing late costs more than failing early.** The column `given back` of the profile counts the bytes that failed calls had got through before they failed. A rule that gives much back is tried where it does not belong, or shares its start with the alternative that then matches.
 
-Measured times for whole grammars are on the page of [benchmarks](../explanation/benchmarks.md), and the scripts that take them in the `benchmarks` folder of the repository.
+[How fpeg works](../explanation/how-fpeg-works.md) says where a parse and a transform spend their time. Measured times for whole grammars are on the page of [benchmarks](../explanation/benchmarks.md), and the scripts that take them in the `benchmarks` folder of the repository.
