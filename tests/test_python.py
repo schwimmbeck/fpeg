@@ -216,7 +216,12 @@ def test_a_method_of_a_subclass_may_give_several_statements_for_one() -> None:
 
     module = Twice().transform(python.GRAMMAR.parse("if x: pass; y\nwhile z:\n    pass\n"))
     assert [type(s).__name__ for s in module.body[0].body] == ["Pass", "Pass", "Expr"]
-    assert [type(s).__name__ for s in module.body[1].body] == ["Pass", "Pass"]
+    loop = module.body[1]
+    assert [type(s).__name__ for s in loop.body] == ["Pass", "Pass"]
+    # Both take the place of the statement they stand for, and the loop keeps its end.
+    assert [(s.lineno, s.col_offset) for s in loop.body] == [(3, 4), (3, 4)]
+    assert (loop.end_lineno, loop.end_col_offset) == (3, 8)
+    compile(module, "<twice>", "exec")
 
 
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])

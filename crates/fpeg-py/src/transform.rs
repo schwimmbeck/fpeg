@@ -432,7 +432,8 @@ impl<'py, 'p> Scan<'py, 'p> {
     }
 
     /// Push what a method returned: nothing for `Discard`, each value of a generator, or the
-    /// value, each with the position of the entry where the class asks for it.
+    /// value, each with the position of the entry where the class asks for it, which the items
+    /// of a returned list get too.
     fn push(&mut self, entry: usize, field: FieldId, result: Bound<'py, PyAny>) -> PyResult<()> {
         if result.is(&self.discard) {
             self.spliced = Some(entry as u32);
@@ -455,6 +456,12 @@ impl<'py, 'p> Scan<'py, 'p> {
                 }
             }
         } else {
+            // A list stands for several values, as statements that one statement turns into.
+            if let Ok(list) = result.cast::<PyList>() {
+                for item in list.iter() {
+                    self.stamp(entry, &item)?;
+                }
+            }
             self.stamp(entry, &result)?;
             self.stack.push(Value {
                 entry: entry as u32,

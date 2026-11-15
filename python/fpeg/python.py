@@ -117,7 +117,7 @@ def _block(statements: list[Any]) -> list[Any]:
     return out
 
 
-def _statement_end(statement: Any) -> tuple[int, int]:
+def _statement_end(statement: Any) -> tuple[int | None, int | None]:
     """Return where a statement ends, a compound one where its last statement ends.
 
     The end of a compound statement is set here. The node of a block also holds the line
@@ -127,9 +127,12 @@ def _statement_end(statement: Any) -> tuple[int, int]:
         items = getattr(statement, name, None)
         if items:
             end = _statement_end(items[-1])
-            if "end_lineno" in statement._attributes:
+            if "end_lineno" not in statement._attributes:
+                return end
+            # A statement that a method built inside has no end, and leaves the stamped one.
+            if end[0] is not None:
                 statement.end_lineno, statement.end_col_offset = end
-            return end
+            break
     return statement.end_lineno, statement.end_col_offset
 
 
