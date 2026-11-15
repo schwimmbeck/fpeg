@@ -339,3 +339,21 @@ fn common_s_escaped_string_stands_on_one_line() {
     // A backslash escapes no line break either.
     assert!(parser.parse("\"a\\\nb\"", "start").is_err());
 }
+
+#[test]
+fn an_extension_joins_and_replaces_the_directives_of_its_base() {
+    let base = "%flag a\n%keywords soft \"if\"\n%word [a-z]\n%tabs 4\nstart: \"x\"";
+    let text = "%extends \"base\"\n%flag a b\n%keywords soft \"if\" \"do\"\n%word [a-z0-9]";
+    let joined = linked(text, &[("base", base)]).expect("it joins");
+    let flags: Vec<&str> = joined.flags.iter().map(|f| f.text.as_str()).collect();
+    assert_eq!(flags, ["a", "b"]);
+    let words: Vec<&str> = (joined.soft_keywords.iter())
+        .map(|w| w.value.as_str())
+        .collect();
+    assert_eq!(words, ["if", "do"]);
+    // The extension's word set takes the place of the base's, whose text lies past the grammar's.
+    let word = joined.word.as_ref().expect("a word set");
+    assert!((word.span.end as usize) <= text.len(), "{word:?}");
+    // The extension gives no tab width, so the base's stays.
+    assert_eq!(joined.tabs.map(|tabs| tabs.value), Some(4));
+}
