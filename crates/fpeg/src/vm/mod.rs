@@ -341,7 +341,7 @@ impl Parser {
         &self.program.names
     }
 
-    /// The kind table, indexed by [`KindId`].
+    /// The kind table, indexed by [`KindId`](crate::KindId).
     pub fn kinds(&self) -> &[Kind] {
         &self.program.kinds
     }
