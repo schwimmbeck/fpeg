@@ -1,0 +1,3 @@
+cell Pair:
+    viewgen schematic(self) -> Schematic:
+        net a b

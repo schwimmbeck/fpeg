@@ -1,0 +1,20 @@
+from ordec.core import *
+from ordec.lib import Inv
+
+
+cell Ring:
+    stages = 3
+
+    @staticmethod
+    def label(i):
+        return f"inv{i}"
+
+    viewgen schematic(self, stages=3) -> Schematic:
+        net a, b, c
+        path wires:
+            .length = 2.5u
+        for i in range(stages):
+            anonymous Inv stage: .pos=(4 * i, 0)
+        Inv first: .a -- c; .y -- a
+        Inv second: .a -- a; .y -- b
+        .done = True

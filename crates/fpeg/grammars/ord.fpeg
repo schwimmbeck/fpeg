@@ -1,0 +1,55 @@
+// SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+// ORD, a language for designing integrated circuits, as an extension of the Python grammar: cells
+// and their view generators, statements that place instances and declare ports, nets and paths,
+// `.name` for an attribute of the view's root, `.$name` for a parameter, `!` for a constraint,
+// and numbers with an SI prefix.
+
+%extends "python"
+%keywords soft "cell" "viewgen" "net" "path" "anonymous"
+
+?compound: celldef
+         | viewgen
+         | net_block
+         | path_block
+         | anonymous_block
+         | node_block
+         | ...
+
+?simple: constrain
+       | net_line
+       | path_line
+       | anonymous_line
+       | node_line
+       | ...
+
+decorated: decorators=(decorator %same)+ definition=(function_def | class_def | celldef | viewgen)
+
+celldef: "cell" name=NAME ":" body=block
+viewgen: "viewgen" name=NAME "(" %on(bracket, parameters=parameters? ")") ("->" returns=expression)? ":" body=block
+constrain: "!" test=expression
+
+// A statement that places an instance or declares a port names its kind, then what it places.
+node_block: kind=primary target=context_target ":" body=block
+node_line: kind=primary targets=(context_target ++ ",")
+anonymous_block: "anonymous" kind=primary target=context_target ":" body=block
+anonymous_line: "anonymous" kind=primary targets=(context_target ++ ",")
+net_block: "net" target=context_target ":" body=block
+net_line: "net" targets=(context_target ++ ",")
+path_block: "path" target=context_target ":" body=block
+path_line: "path" targets=(context_target ++ ",")
+
+?context_target: target=context_target "." name=NAME -> target_attribute
+               | target=context_target "[" %on(bracket, slices=slices "]") -> target_item
+               | NAME
+
+?primary: value=primary ".$" name=NAME -> getparam
+        | ...
+
+?atom: SI_NUMBER
+     | ...
+     | ".$" name=NAME -> root_getparam
+     | "." name=NAME? -> root
+
+SI_NUMBER: (FLOAT_NUMBER | INT_NUMBER) [afpnumkMGT] !\p{XID_Continue}
