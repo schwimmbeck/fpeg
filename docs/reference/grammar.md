@@ -167,7 +167,7 @@ From loosest to tightest:
 | `e1 \| e2` | ordered choice: try `e1`, and `e2` only if `e1` fails |
 | `e1 e2` | sequence |
 | `e ^ "message"`, `e ^ label` | error label: if `e` fails, report this error (see [Errors](#errors)) |
-| `&e`, `!e` | positive and negative lookahead: test `e` without consuming input |
+| `&e`, `!e` | positive and negative lookahead: test `e` without consuming input. `!.` is the end of the input, and where text is left, an error says that the end was expected |
 | `label=e` | field: `e` becomes a named part of the node (see [Fields](#fields)) |
 | `e?` `e*` `e+` | optional, zero or more, one or more |
 | `e{n}` `e{n,}` `e{n,m}` | exactly `n`, at least `n`, between `n` and `m` repetitions |

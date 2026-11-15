@@ -1299,6 +1299,10 @@ impl<'g> Resolver<'g> {
                     max: Some(1),
                 };
             }
+            // The end of the input says what it expects where it fails, as the end of a parse does.
+            ExprKind::Not(inner) if matches!(inner.kind, ExprKind::Any) => E::End {
+                skip: scope.mode == Mode::Syntactic,
+            },
             ExprKind::And(inner) | ExprKind::Not(inner) => {
                 let unfielded = Scope {
                     in_field: false,

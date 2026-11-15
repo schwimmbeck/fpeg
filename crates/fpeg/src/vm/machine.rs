@@ -1303,6 +1303,15 @@ impl<'p, 'i> Machine<'p, 'i> {
                         self.fail()?;
                     }
                 }
+                Inst::AtEnd { skip } => {
+                    if self.pos as usize == self.input.len() {
+                        self.take_back(skip);
+                        self.pc += 1;
+                    } else {
+                        self.record(self.pos, Expected::EndOfInput);
+                        self.fail()?;
+                    }
+                }
                 Inst::DefOpen { skip } => {
                     let start = self.pos;
                     self.take_back(skip);

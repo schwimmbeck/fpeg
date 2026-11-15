@@ -90,6 +90,22 @@ STRING: "'" [a-z]* "'" | "'" [a-z]* %error("the string does not end")
 --- "'ab"
 error at 0..3: the string does not end
 
+=== the end of the input says it was expected where text is left
+start: "a" !. | "a" "b" "c"
+%ignore " "+
+--- "a b x"
+error at 4: expected "c"
+--- "a x"
+error at 2: expected "b", end of input
+--- "a "
+(start ~"a")
+
+=== the end of the input records what it expected also where the next byte rules out what follows
+start: T
+T: !. "x" | "y"
+--- "z"
+error at 0: expected T, end of input
+
 === the expected set lists everything that failed at the farthest position
 start: "a" ("b" | "c" | D)
 D "digit": [0-9]

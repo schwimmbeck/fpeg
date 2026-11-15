@@ -34,6 +34,7 @@ The definition has two steps. First, every grammar is translated into a small co
 | `unreserved(e)` | match `e`, fail when its text is a reserved word |
 | `on(a, e)`, `off(a, e)`, `if(a)`, `if_not(a)` | flags |
 | `indent(e, s)`, `same(s)` | columns, `s` says whether to skip before the check |
+| `end(s)` | the end of the input, after the skip if `s` |
 | `def(x, e, s)`, `ref(x)` | captures |
 | `label(e, l, s)` | match `e`. If it fails, stop the parse with the labeled error `l`, or recover from it in recovering mode |
 | `error_alternative(e, m)` | fail, and where a failed parse is explained, give the error `m` over what `e` matches where the parse tried it |
@@ -68,7 +69,8 @@ The translation runs in this order.
    - In plain mode atoms stay atoms and a reference to a terminal is `call(T)`. References to syntactic or lexical rules are errors.
    - The kind `k` of an anonymous token is the atom as written, normalized: `"+"`, `[0-9]`, `.`. A token is hidden (`h`) if it comes from an atom or a hidden terminal and is not captured by a field. A field captures the atoms and terminal references that are its whole match: reached from the field through choices, repetitions, the items of separated repetitions, labels, flags, `%indent` and `%def`, not through a sequence of several parts, a separator or a lookahead.
    - In a grammar with `%word`, a literal token whose last character is a word character becomes `token(k, h, seq(a, word_end))`.
-   - `%indent`, `%same`, `%def` and `e ^ l` carry `s = true` in syntactic mode and `s = false` otherwise.
+   - `!.` becomes `end(s)`, the end of the input.
+   - `%indent`, `%same`, `%def`, `e ^ l` and `!.` carry `s = true` in syntactic mode and `s = false` otherwise.
 5. **Rules.** The body of a terminal marked `@reserved` becomes `unreserved(body)`. In a syntactic or lexical rule `r`, each top-level alternative `A` becomes `node(alias, A)` when it has an alias, and otherwise `node(r, A)`, `transparent(r, A)` for a transparent rule, or `A` alone for an inlined rule or a precedence level.
 6. **Fields.** `label=e` becomes `field(f, e)`.
 7. **Recoveries.** `%recover l: r` gives the named label `l` the *recovery* `r`, translated in syntactic mode. A label has at most one.
@@ -134,10 +136,11 @@ Where what an expression produces is dropped, in a token, the skip expression an
 | `if(a)`, `if_not(a)` | success `(i, [], Γ, false)` if flag `a` is on, or off, otherwise failure `(false)` |
 | `indent(e, s)` | let `p` be where `skip` ends at `i` if `s`, otherwise `i`. If the column of `p` is greater than the reference column, the result of `e` at `i` with the column of `p` as the reference column, otherwise failure `(false)` |
 | `same(s)` | with `p` as above: success `(i, [], Γ, false)` if the column of `p` equals the reference column, otherwise failure `(false)` |
+| `end(s)` | with `p` as above: success `(i, [], Γ, false)` if `p` is the end of the input, otherwise failure `(false)` |
 | `def(x, e, s)` | with `p` as above: the result of `e`. On success, the captures it leaves map `x` to the text from `p` to the end of the match, in place of any text before, and at most the end of the match |
 | `ref(x)` | success after the text `x` maps to if the input continues with it at `i`. Failure if it does not, or if `x` maps to nothing |
 
-Where `indent`, `same` and `def` take `p` from where `skip` ends, before anything else, an error that `skip` ends in is their result.
+Where `indent`, `same`, `end` and `def` take `p` from where `skip` ends, before anything else, an error that `skip` ends in is their result.
 
 Flags and the reference column hold for the extent of their expression, including the rules it calls. Captures hold until the rule activation that made them ends.
 
@@ -158,7 +161,7 @@ A parse runs in *normal mode* or in *recovering mode*. To parse an input with a 
 A parse that does not succeed fails at the *farthest failure position*, with an *expected set*:
 
 - A `token` expression that fails at position `p` records `p` with the floor of its context, outside of `not`, `and` and the skip expression. Of the positions recorded with no floor, outside every recovery, the largest is the farthest failure position. The expected set holds the kinds of the tokens that failed there, by display name where the grammar gives one.
-- An `indent` or `same` whose column check fails records the position it checked in the same way, expecting indentation.
+- An `indent` or `same` whose column check fails records the position it checked in the same way, expecting indentation, and an `end` that fails records it expecting the end of the input.
 - A labeled error and an error item at position `p` have the expected set of `p` under the floor their label failed with: what failed there in the whole parse with that floor. So what a recovery tries, with a floor of its own, explains no error outside it. A named label shows the set after its name.
 - If the input does not end where the parse ended, that position counts as a failure that expects the end of the input. The recoveries of the failed parse are the error items of the success.
 - A parse that ends in an error `(l, p, D)` fails with that error instead, and its recoveries are the error items in `D`.

@@ -319,7 +319,7 @@ impl Tables<'_> {
                 top(&shape, &[Entry::Column])?;
                 vec![(next, popped(&shape))]
             }
-            Inst::Same { skip } => vec![(next, taken_back(shape, skip)?)],
+            Inst::Same { skip } | Inst::AtEnd { skip } => vec![(next, taken_back(shape, skip)?)],
             Inst::DefOpen { skip } => vec![(next, taken_back(shape, skip)?.with(Entry::Def))],
             Inst::DefClose(_) => {
                 top(&shape, &[Entry::Def])?;

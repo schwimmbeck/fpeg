@@ -226,6 +226,7 @@ impl Program {
             Inst::Indent { skip } => format!("Indent{}", if skip { " skip" } else { "" }),
             Inst::IndentEnd => "IndentEnd".to_owned(),
             Inst::Same { skip } => format!("Same{}", if skip { " skip" } else { "" }),
+            Inst::AtEnd { skip } => format!("AtEnd{}", if skip { " skip" } else { "" }),
             Inst::DefOpen { skip } => format!("DefOpen{}", if skip { " skip" } else { "" }),
             Inst::DefClose(capture) => format!("DefClose {capture}"),
             Inst::Ref(capture) => format!("Ref {capture}"),

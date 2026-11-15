@@ -1169,6 +1169,15 @@ impl<'a> Interp<'a> {
                     Interp::fail()
                 }
             }
+            E::End { skip } => {
+                let at = if *skip { self.skip_end(pos, ctx)? } else { pos };
+                if at == self.input.len() {
+                    Interp::ok(pos, ctx)
+                } else {
+                    self.record_expected(at, Failed::EndOfInput, ctx.floor);
+                    Interp::fail()
+                }
+            }
             E::Def {
                 capture,
                 expr,

@@ -838,6 +838,10 @@ impl<'f> Compiler<'f> {
                 let skip = self.skip_before(*skip);
                 self.emit(Inst::Same { skip });
             }
+            E::End { skip } => {
+                let skip = self.skip_before(*skip);
+                self.emit(Inst::AtEnd { skip });
+            }
             E::Def {
                 capture,
                 expr,
@@ -968,6 +972,7 @@ impl<'f> Compiler<'f> {
             | E::WordEnd
             | E::FlagTest { .. }
             | E::Same { .. }
+            | E::End { .. }
             | E::Ref { .. }
             | E::ErrorAlternative { .. } => false,
         }

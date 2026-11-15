@@ -206,6 +206,10 @@ pub(crate) enum Expr {
     Same {
         skip: bool,
     },
+    /// `!.`: the end of the input, after the skip where `skip` holds.
+    End {
+        skip: bool,
+    },
     Def {
         capture: CaptureId,
         expr: Box<Expr>,
@@ -263,6 +267,7 @@ impl Expr {
             | Expr::WordEnd
             | Expr::FlagTest { .. }
             | Expr::Same { .. }
+            | Expr::End { .. }
             | Expr::Ref { .. } => &[],
         }
     }

@@ -704,6 +704,7 @@ impl Twice<'_> {
             | E::WordEnd
             | E::FlagTest { .. }
             | E::Same { .. }
+            | E::End { .. }
             | E::Ref { .. } => Vec::new(),
         }
     }
@@ -774,7 +775,11 @@ impl Graph {
             E::Skip => self.push(Form::Skip, Order::Start, 0, &[]),
             E::Cut => self.push(Form::Cut, Order::Start, 0, &[]),
             E::WordEnd | E::FlagTest { .. } => self.push(Form::Test, Order::Start, 0, &[]),
-            E::Same { .. } | E::Ref { .. } => self.push(Form::Unknown, Order::Start, 0, &[]),
+            // The end of the input records what it expected where it fails, as a column check
+            // does, so no test of the next byte may pass over it.
+            E::Same { .. } | E::Ref { .. } | E::End { .. } => {
+                self.push(Form::Unknown, Order::Start, 0, &[])
+            }
             E::Literal { text, .. } if text.is_empty() => {
                 self.push(Form::Empty, Order::Start, 0, &[])
             }

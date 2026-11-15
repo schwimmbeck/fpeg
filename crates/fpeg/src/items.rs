@@ -271,6 +271,7 @@ impl Counter<'_> {
             | E::WordEnd
             | E::FlagTest { .. }
             | E::Same { .. }
+            | E::End { .. }
             | E::Ref { .. } => Items::nothing(),
         }
     }

@@ -186,6 +186,12 @@ pub(crate) enum Inst {
         /// Whether a `Mark` and a skip come before.
         skip: bool,
     },
+    /// Fail unless the position is the end of the input, recording that it was expected.
+    /// `skip` as for `Indent`.
+    AtEnd {
+        /// Whether a `Mark` and a skip come before.
+        skip: bool,
+    },
     /// Note where the text of a capture starts. `skip` as for `Indent`.
     DefOpen {
         /// Whether a `Mark` and a skip come before.
