@@ -416,6 +416,26 @@ fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
         "{}",
         text(&out.stdout)
     );
+    // Nor is a rule of the ignored text, which the profile skips again where a parse outside
+    // it ends the skip from where the last one started.
+    let comments = format!("{grammar}COMMENT: \"#\" [^\\n]* \"\\n\"\n%ignore \" \" | COMMENT\n");
+    let lines = "( # a comment long enough to cost steps when it is skipped again\n".repeat(4);
+    let input = format!("{lines}x))))");
+    let paths = files(
+        "comments",
+        &[("again.fpeg", &comments), ("input.txt", &input)],
+    );
+    let out = run([
+        "profile".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    assert!(
+        stdout.contains("\n@memo on item: ") && !stdout.contains("@memo on COMMENT:"),
+        "{stdout}"
+    );
     // Nor is a rule marked @nomemo, nor a precedence block or its levels, which @memo cannot
     // stand on. The start rule, called inside them, may be.
     let unmarked = grammar.replace("item:", "@nomemo\nitem:");

@@ -94,7 +94,9 @@ pub struct ProfileRow {
     pub repeats: u64,
     /// Steps from the calls counted in `repeats` that ran the rule to their ends, the rules
     /// they called included, outside another such call of the rules of the name: what
-    /// remembering the rule would save at most.
+    /// remembering the rule would save at most. Calls made while skipping ignored text count
+    /// none, since a parse outside a profile ends a skip from where the last one started
+    /// without running it again.
     pub repeated_steps: u64,
     /// Calls that a remembered result answered, a remembered failure included.
     pub memo_hits: u64,
@@ -144,6 +146,8 @@ pub(super) struct Profiler {
     mark: u64,
     /// The row to go back to when the skip routine returns.
     skipping_for: u32,
+    /// Whether the skip routine runs.
+    skipping: bool,
     /// Where the skip routine returns.
     skip_ret: u32,
     /// The calls made so far, which grow within the memory of the parse.
@@ -179,6 +183,7 @@ impl Profiler {
             current: parse,
             mark: 0,
             skipping_for: parse,
+            skipping: false,
             skip_ret,
             seen: HashMap::new(),
             peak_stack: 0,
@@ -237,7 +242,7 @@ impl Profiler {
     pub fn entered(&mut self, rule: u32, pos: u32, steps: u64, stack: usize, nodes: usize) {
         let caller = self.current;
         self.switch(steps, rule);
-        let repeated = std::mem::take(&mut self.repeating);
+        let repeated = std::mem::take(&mut self.repeating) && !self.skipping;
         self.active.push(Active {
             rule,
             start: pos,
@@ -307,6 +312,7 @@ impl Profiler {
     /// The skip routine starts.
     pub fn skip(&mut self, steps: u64) {
         self.skipping_for = self.current;
+        self.skipping = true;
         let ignore = (self.rows.len() - 2) as u32;
         self.switch(steps, ignore);
     }
@@ -320,6 +326,7 @@ impl Profiler {
 
     /// The skip routine is over, by its return or by an error that a lookahead caught.
     pub fn skip_ended(&mut self, steps: u64) {
+        self.skipping = false;
         self.switch(steps, self.skipping_for);
     }
 
