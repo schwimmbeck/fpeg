@@ -27,6 +27,16 @@ const MODULE_FAN: usize = 10;
 /// Levels of that fan: 10, 100 and 1,000 reads, beyond the modules that joining allows.
 const MODULE_FAN_LEVELS: usize = 3;
 
+/// A module name and the references to its rule, whose private names together pass 64 MiB.
+const MODULE_NAME_BYTES: usize = 3_000;
+const RENAMED_REFERENCES: usize = 25_000;
+
+/// Imports and flags that a quadratic join would take seconds over, and the time a linear one
+/// stays well within, also in a build without optimizations.
+const MANY_IMPORTS: usize = 40_000;
+const MANY_FLAGS: usize = 20_000;
+const JOIN_SECONDS: f64 = 2.0;
+
 fn nesting() -> Reference {
     let grammar = Grammar::from_text("start: nest\nnest: \"(\" nest \")\" | \"x\"\n")
         .expect("the grammar reads");
@@ -347,6 +357,44 @@ fn modules_that_chain_too_deep_or_multiply_are_errors_not_stack_overflows() {
         }
     }
     assert_eq!(codes(&imports(0), fan), [DiagnosticCode::TooLarge]);
+    // A long module name, written into every reference of the rules it brings in.
+    let long = "m".repeat(MODULE_NAME_BYTES);
+    let references = format!("x: {}\ny: \"q\"", "y ".repeat(RENAMED_REFERENCES));
+    let text = format!("%import {long} (x)\nstart: x");
+    let modules = HashMap::from([(long, references)]);
+    assert_eq!(codes(&text, modules), [DiagnosticCode::TooLarge]);
+}
+
+#[test]
+fn joining_takes_linear_time_in_imports_and_flags() {
+    let started = std::time::Instant::now();
+    // Each import names another module, all of which are missing.
+    let imports: String = (0..MANY_IMPORTS)
+        .map(|i| format!("%import m{i} (x)\n"))
+        .collect();
+    let grammar = Grammar::from_text(&imports).expect("the grammar reads");
+    assert!(grammar.link(&HashMap::new()).is_err());
+    // A base and an extension with as many flags each, which joining merges.
+    let flags = |prefix: &str| -> String {
+        let names: Vec<String> = (0..MANY_FLAGS).map(|i| format!("{prefix}{i}")).collect();
+        format!("%flag {}\n", names.join(" "))
+    };
+    let base = format!("{}start: \"a\"", flags("b"));
+    let grammar = Grammar::from_text(&format!("%extends \"base\"\n{}", flags("e")))
+        .expect("the grammar reads");
+    let joined = grammar.link(&HashMap::from([("base".to_owned(), base)]));
+    assert!(joined.is_ok_and(|joined| joined.flags.len() == 2 * MANY_FLAGS));
+    let seconds = started.elapsed().as_secs_f64();
+    assert!(seconds < JOIN_SECONDS, "{seconds:.2} s");
+}
+
+#[test]
+fn a_grammar_built_with_a_span_at_the_end_of_the_range_joins_without_a_panic() {
+    let mut grammar = Grammar::from_text("%extends \"json\"\nstart: value").expect("it reads");
+    grammar.rules[0].span.end = u32::MAX;
+    let errors = grammar.link(&HashMap::new()).expect_err("no room for json");
+    assert_eq!(errors[0].code, DiagnosticCode::TooLarge);
+    assert!(!fpeg::check(&grammar).is_empty());
 }
 
 #[test]

@@ -172,7 +172,7 @@ fn link<'g>(
     let mut linker = Linker {
         modules,
         sources: Vec::new(),
-        next_base: extent(grammar) + 1,
+        next_base: extent(grammar).saturating_add(1),
         reading: Vec::new(),
     };
     match linker.linked(grammar.clone(), None) {
@@ -225,6 +225,15 @@ struct Linker<'m> {
     reading: Vec<String>,
 }
 
+/// The error of grammars whose texts, with the names their imports write, pass the budget.
+fn too_much_text(directive: Span) -> Vec<Diagnostic> {
+    let message = format!(
+        "the grammars extended and imported take more than {} MiB of text",
+        MAX_MODULE_TEXT_BYTES >> 20
+    );
+    problem(DiagnosticCode::TooLarge, message, directive)
+}
+
 fn problem(code: DiagnosticCode, message: String, span: Span) -> Vec<Diagnostic> {
     vec![Diagnostic {
         code,
@@ -254,7 +263,13 @@ impl Linker<'_> {
         for taken in imports {
             let through = directive.unwrap_or(taken.module.span);
             let module = self.joined(&taken.module, through)?;
-            import(&mut grammar, &mut names, module, &taken.module, taken.names)?;
+            let budget = MAX_MODULE_TEXT_BYTES.saturating_sub(self.next_base) as usize;
+            let taken_in = (module, &taken.module, taken.names);
+            let written = import(&mut grammar, &mut names, taken_in, budget)?;
+            self.next_base = (u32::try_from(written).ok())
+                .and_then(|written| self.next_base.checked_add(written))
+                .filter(|&end| end <= MAX_MODULE_TEXT_BYTES)
+                .ok_or_else(|| too_much_text(through))?;
         }
         Ok(grammar)
     }
@@ -303,13 +318,7 @@ impl Linker<'_> {
             return Err(problem(DiagnosticCode::UnknownModule, message, name.span));
         };
         let base = self.next_base;
-        let too_large = || {
-            let message = format!(
-                "the grammars extended and imported take more than {} MiB of text",
-                MAX_MODULE_TEXT_BYTES >> 20
-            );
-            problem(DiagnosticCode::TooLarge, message, directive)
-        };
+        let too_large = || too_much_text(directive);
         let length = u32::try_from(text.len()).map_err(|_| too_large())?;
         self.next_base = (base.checked_add(length))
             .and_then(|end| end.checked_add(1))
@@ -354,8 +363,11 @@ fn extend(mut base: Grammar, extension: Grammar) -> Result<Grammar, Vec<Diagnost
     if extension.tabs.is_some() {
         base.tabs = extension.tabs;
     }
+    let mut words: HashSet<String> = (base.soft_keywords.iter())
+        .map(|w| w.value.clone())
+        .collect();
     for word in extension.soft_keywords {
-        if !base.soft_keywords.iter().any(|w| w.value == word.value) {
+        if words.insert(word.value.clone()) {
             base.soft_keywords.push(word);
         }
     }
@@ -366,8 +378,9 @@ fn extend(mut base: Grammar, extension: Grammar) -> Result<Grammar, Vec<Diagnost
 
 /// The flags of a grammar with those of another added, each name once.
 fn join_flags(flags: &mut Vec<Name>, more: Vec<Name>) {
+    let mut names: HashSet<String> = flags.iter().map(|f| f.text.clone()).collect();
     for flag in more {
-        if !flags.iter().any(|f| f.text == flag.text) {
+        if names.insert(flag.text.clone()) {
             flags.push(flag);
         }
     }
@@ -468,24 +481,25 @@ struct Taken {
 /// The imports of a grammar by module, in the order they first name it.
 fn by_module(imports: Vec<Import>) -> Result<Vec<Taken>, Vec<Diagnostic>> {
     let mut modules: Vec<Taken> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
     for import in imports {
         if let Some(prefix) = &import.prefix {
             let message = "an import under a prefix is not supported yet, see the roadmap (M9)";
             return Err(problem(DiagnosticCode::NotYet, message.into(), prefix.span));
         }
         let names = (!import.names.is_empty()).then_some(import.names);
-        match modules
-            .iter_mut()
-            .find(|t| t.module.value == import.module.value)
-        {
-            Some(taken) => match (taken.names.as_mut(), names) {
+        match index.get(&import.module.value) {
+            Some(&i) => match (modules[i].names.as_mut(), names) {
                 (Some(taken), Some(more)) => taken.extend(more),
-                _ => taken.names = None,
+                _ => modules[i].names = None,
             },
-            None => modules.push(Taken {
-                module: import.module,
-                names,
-            }),
+            None => {
+                index.insert(import.module.value.clone(), modules.len());
+                modules.push(Taken {
+                    module: import.module,
+                    names,
+                });
+            }
         }
     }
     Ok(modules)
@@ -540,14 +554,15 @@ fn uses(rule: &Rule) -> Uses<'_> {
 /// a precedence block always take such a name, since an import takes rules, not levels. Such
 /// a name can only come from that rule of that module, so a copy that the grammar has already,
 /// through what it extends or another import, is shared. `names` holds the names of the
-/// grammar's rules and levels.
+/// grammar's rules and levels. The bytes of the private names it writes come back, since a
+/// long module name times many references can take far more than the module's text, and it
+/// writes no more names once they pass `budget`.
 fn import(
     grammar: &mut Grammar,
     names: &mut HashSet<String>,
-    module: Grammar,
-    name: &Text,
-    wanted: Option<Vec<Name>>,
-) -> Result<(), Vec<Diagnostic>> {
+    (module, name, wanted): (Grammar, &Text, Option<Vec<Name>>),
+    budget: usize,
+) -> Result<usize, Vec<Diagnostic>> {
     let rules: HashMap<&str, &Rule> = (module.rules.iter())
         .map(|rule| (rule.name.text.as_str(), rule))
         .collect();
@@ -610,13 +625,26 @@ fn import(
         errors.sort_by_key(|error| error.span.start);
         return Err(errors);
     }
-    let renamed = |rule: &str| match public.contains(rule) {
-        true => rule.to_owned(),
-        false => format!("{}.{rule}", name.value),
+    let written = std::cell::Cell::new(0usize);
+    let renamed = |rule: &str| {
+        if public.contains(rule) {
+            return rule.to_owned();
+        }
+        let total = written
+            .get()
+            .saturating_add(name.value.len() + 1 + rule.len());
+        written.set(total);
+        match total <= budget {
+            true => format!("{}.{rule}", name.value),
+            false => String::new(),
+        }
     };
     for rule in &module.rules {
+        if !needed.contains(rule.name.text.as_str()) {
+            continue;
+        }
         let new_name = renamed(&rule.name.text);
-        if !needed.contains(rule.name.text.as_str()) || !names.insert(new_name.clone()) {
+        if !names.insert(new_name.clone()) {
             continue;
         }
         let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
@@ -662,7 +690,7 @@ fn import(
         .filter(|flag| flags.contains(flag.text.as_str()))
         .collect();
     join_flags(&mut grammar.flags, used);
-    Ok(())
+    Ok(written.get())
 }
 
 /// An expression with each reference to a name of the module renamed, parameters left alone.
