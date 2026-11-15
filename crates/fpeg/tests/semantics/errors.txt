@@ -69,6 +69,15 @@ NUMBER: [0-9]+
 --- "a = 1; x == 2;"
 error at 7..11: = assigns, == compares
 
+=== what follows an error alternative is dropped, so a literal there reserves no word
+start: assignment | NAME "==" %error("= assigns, == compares") "foo"
+assignment: NAME "=" NAME
+@reserved
+NAME: [a-z]+
+%ignore " "+
+--- "foo = a"
+(start (assignment NAME"foo" ~"=" NAME"a"))
+
 === an error alternative tried in several contexts starts after the farthest ignored text of them
 %ignore "\n" [ \t]* %indent(())
 start: %indent(start) | () %error("e2")

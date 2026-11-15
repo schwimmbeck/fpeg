@@ -1246,16 +1246,19 @@ impl<'g> Resolver<'g> {
                     in_field: scope.in_field && items.len() == 1,
                     ..scope
                 };
-                let mut parts: Vec<ir::Expr> = items.iter().map(|e| self.lower(e, scope)).collect();
                 // An error alternative tests the parts before it, and what follows it never
-                // matches, since it fails.
+                // matches, since it fails. Those parts are dropped unlowered, so that they
+                // reserve no word and make no kind, instance or error alternative.
                 let error = (items.iter().enumerate()).find_map(|(at, item)| match &item.kind {
                     ExprKind::Error { message } => Some((at, message, item.span)),
                     _ => None,
                 });
+                let kept = error.map_or(items.len(), |(at, ..)| at);
+                let parts: Vec<ir::Expr> = (items[..kept].iter())
+                    .map(|e| self.lower(e, scope))
+                    .collect();
                 match error {
-                    Some((at, message, span)) => {
-                        parts.truncate(at);
+                    Some((_, message, span)) => {
                         let index = self.error_alternative(span);
                         E::ErrorAlternative {
                             expr: Box::new(E::Seq(parts)),
