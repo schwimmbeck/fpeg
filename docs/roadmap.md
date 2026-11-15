@@ -81,7 +81,7 @@ The Rust workspace with the core, the command line and the Python binding as emp
 
 ## Later
 
-A compiled backend, incremental parsing, a WebAssembly binding and regular expression terminals. Imports under a prefix, `%import m as p`, which need a syntax for prefixed names, and `...` in a precedence block, which needs a rule for where inherited alternatives go among levels.
+A compiled backend, incremental parsing, a WebAssembly binding and regular expression terminals. Imports under a prefix, `%import m as p`, which need a syntax for prefixed names, and `...` in a precedence block, which needs a rule for where inherited alternatives go among levels. Recovery for grammars that declare none, from labels found where a failure can only be a mistake, with `@sync` marking where it may resume. A way to build Python objects natively, without a Python call for each node.
 
 ## Not planned
 

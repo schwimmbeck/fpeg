@@ -108,7 +108,7 @@ Attributes stand on their own lines directly above a rule.
 |---|---|---|
 | `@lexical` | the rule is a lexical rule | now |
 | `@reserved` | the terminal never matches a reserved word (see [Words and keywords](#words-and-keywords)) | now |
-| `@sync` | error recovery may resume before this rule or terminal | reserved, M9 |
+| `@sync` | error recovery may resume before this rule or terminal | reserved, after the first release |
 | `@memo` | remember the results of this rule (see [Remembered results](#remembered-results)) | now |
 | `@nomemo` | never remember the results of this rule | now |
 
@@ -324,7 +324,7 @@ A capture lasts until the rule activation that made it returns, and rules called
 | `e ^ label` | if `e` fails, stop the parse with the named error | now |
 | `%recover label: e` | in a parse that recovers, where the named error occurs, what `e` matches stands in the tree as an error node and the parse goes on | now |
 | `%error("message")` at the end of an alternative | an error alternative: it never matches, and where a parse fails, the first whose parts before it match gives the error | now |
-| `@sync` | recovery may resume before this rule | M9 |
+| `@sync` | recovery may resume before this rule | after the first release |
 
 A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text, and where the parse got further than that, it points where the parse got furthest and says what was expected there, as it would without the label. So a label names an error that happens where it stands: a named error says its name and what the grammar expected there, as `"]" ^ close` says `close: expected "]"`, and an error with a message says its message.
 
