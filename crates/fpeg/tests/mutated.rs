@@ -125,8 +125,10 @@ fn grammar_texts_with_one_edit_never_panic() {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or_default();
+            // A `.tree` file beside a sample holds its expected tree, no input of the grammar.
             let samples = files(&root.join("samples").join(name), None)
                 .iter()
+                .filter(|sample| sample.extension().is_none_or(|e| e != "tree"))
                 .filter_map(|sample| std::fs::read_to_string(sample).ok())
                 .filter(|sample| sample.len() <= MAX_SAMPLE_BYTES)
                 .collect();
