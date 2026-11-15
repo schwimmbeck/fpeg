@@ -229,6 +229,20 @@ def test_render_shows_each_error_with_its_line_and_a_caret() -> None:
     assert fpeg.ParseError("bad \x1b[2J value").render() == "error: bad \u241b[2J value"
 
 
+def test_str_shows_the_controls_that_a_grammar_wrote_as_marks() -> None:
+    with pytest.raises(fpeg.ParseError) as raised:
+        fpeg.Grammar(r'start: "a" ("b" ^ "bad\x1b[2J")').parse("ac")
+    assert raised.value.message == "bad\x1b[2J"
+    assert str(raised.value) == "line 1, column 2: bad\u241b[2J"
+    with pytest.raises(fpeg.ParseError) as raised:
+        fpeg.Grammar('start: A\nA "x\\u{202e}y": "a"').parse("b")
+    assert str(raised.value) == "line 1, column 1: expected x\ufffdy"
+    # A diagnostic may quote the grammar.
+    diagnostic = fpeg.Diagnostic("E101", "bad\x1b[2J", 1, 1, 1, 1)
+    assert diagnostic.message == "bad\x1b[2J"
+    assert str(diagnostic) == "<grammar>:1:1: error[E101]: bad\u241b[2J"
+
+
 # Errors of a long text shown one at a time, and a time that showing them stays well within
 # when the errors share the text's index, which indexing the text for each takes many times.
 ERRORS_SHOWN = 1_000

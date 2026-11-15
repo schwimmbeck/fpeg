@@ -14,6 +14,7 @@
 use std::fmt;
 
 use crate::grammar::Span;
+use crate::render::visible;
 
 /// How serious a diagnostic is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -53,11 +54,15 @@ impl Diagnostic {
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // A message may quote the grammar, which a terminal must not act on.
         let (severity, span) = (self.severity(), self.span);
         write!(
             f,
             "{severity}[{}]: {} at {}..{}",
-            self.code, self.message, span.start, span.end
+            self.code,
+            visible(&self.message),
+            span.start,
+            span.end
         )
     }
 }

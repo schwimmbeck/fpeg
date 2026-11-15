@@ -445,6 +445,8 @@ error[close]: expected ",", "]"
   |         ^
 ```
 
+A grammar writes the messages and display names that errors show, so `render` and `str(error)` show control and bidirectional characters as visible marks, where `message` keeps them as written. A terminal acts on none of them, even for a grammar from elsewhere.
+
 In the recovered tree an `<error>` node holds what the recovery took, which its `text` gives, and a `<missing>` token stands where the recovery took nothing. A `Transformer` gives them to its methods `__error__` and `__missing__`, which take what the methods of nodes and tokens take, and keeps them as they are where a class defines neither. A field inside the failed expression is `None`, but where the failed expression is a field `name=e`, the error item takes the field `name`.
 
 ```python

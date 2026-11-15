@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+use crate::render::visible;
+
 /// Rule activations that may be nested before a parse stops. The deepest nesting that CPython
 /// takes, 200 brackets, needs about 4,000 in the Python grammar.
 pub const DEFAULT_MAX_DEPTH: u32 = 5_000;
@@ -215,11 +217,13 @@ impl ParseError {
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The grammar wrote the messages and display names, which a terminal must not act on.
+        let message = visible(&self.message());
         match self.end() {
             end if end > self.position => {
-                write!(f, "error at {}..{end}: {}", self.position, self.message())
+                write!(f, "error at {}..{end}: {message}", self.position)
             }
-            _ => write!(f, "error at {}: {}", self.position, self.message()),
+            _ => write!(f, "error at {}: {message}", self.position),
         }
     }
 }

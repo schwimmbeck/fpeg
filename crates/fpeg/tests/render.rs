@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use fpeg::{Grammar, LineIndex, ParseError, Parser, Source};
+use fpeg::{Diagnostic, DiagnosticCode, Grammar, LineIndex, ParseError, Parser, Source, Span};
 
 /// A line of two million code points beyond ASCII, errors shown near its end, and a time that
 /// showing them stays well within when each costs what it shows, also in a build without
@@ -101,6 +101,21 @@ fn columns_follow_tabs_and_wide_characters_and_controls_show_as_marks() {
     let source = Source::new(text, Some("a\u{1b}[2J.txt"));
     let shown = source.render(Some("n"), "n: bad\nline", x, x);
     assert!(shown.starts_with("error[n]: bad\u{240a}line\n --> a\u{241b}[2J.txt:1:8\n"));
+}
+
+#[test]
+fn an_error_or_diagnostic_in_one_line_shows_controls_as_marks() {
+    let grammar = Grammar::from_text("start: \"a\" (\"b\" ^ \"bad\\x1b[2J\")\n").expect("it reads");
+    let parser = Parser::new(&grammar).expect("the grammar compiles");
+    let error = parser.parse("ac", "start").expect_err("c is no b");
+    assert_eq!(error.message(), "bad\u{1b}[2J");
+    assert_eq!(error.to_string(), "error at 1: bad\u{241b}[2J");
+    let diagnostic = Diagnostic {
+        code: DiagnosticCode::Syntax,
+        message: "x\u{202e}y".to_owned(),
+        span: Span::default(),
+    };
+    assert_eq!(diagnostic.to_string(), "error[E101]: x\u{fffd}y at 0..0");
 }
 
 #[test]

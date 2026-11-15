@@ -153,6 +153,15 @@ pub fn error_title(name: Option<&str>, message: &str) -> String {
     out
 }
 
+/// A text as [`Source::render`] shows it, with tabs as spaces and control and bidirectional
+/// characters as visible marks, so that a terminal acts on none of it: for messages that a
+/// grammar wrote, wherever they are printed.
+pub fn visible(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    push_shown(&mut out, text);
+    out
+}
+
 /// A line as shown, and the columns before a span on it and before its end.
 struct Shown {
     text: String,

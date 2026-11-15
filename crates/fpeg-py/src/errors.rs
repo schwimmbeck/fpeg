@@ -145,13 +145,14 @@ impl Diagnostic {
 
     fn rendered(&self) -> String {
         let path = self.path.as_deref().unwrap_or(TEXT_PATH);
+        // A message may quote the grammar, which a terminal must not act on.
         format!(
             "{path}:{}:{}: {}[{}]: {}",
             self.line,
             self.column,
             self.severity_of(),
             self.code,
-            self.message
+            fpeg::visible(&self.message)
         )
     }
 }
@@ -325,11 +326,14 @@ impl<'py> Report<'py> {
         })
     }
 
-    /// Where an error starts, and its message, as one line of text.
+    /// Where an error starts, and its message, as one line of text. The grammar wrote the
+    /// messages and display names, so control characters show as visible marks.
     fn line(found: &Found, start: Position) -> String {
         format!(
             "line {}, column {}: {}",
-            start.line, start.column, found.message
+            start.line,
+            start.column,
+            fpeg::visible(&found.message)
         )
     }
 

@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use fpeg::{
     Diagnostic, Grammar, LineIndex, ModuleFiles, NodeRef, ParseError, ParseErrorKind, Parser,
-    Severity, Source, Tree,
+    Severity, Source, Tree, visible,
 };
 
 mod profile;
@@ -131,8 +131,12 @@ fn report(path: &Path, text: &str, found: &[Diagnostic]) {
     let lines = LineIndex::new(text);
     for diagnostic in found {
         let (line, column) = lines.line_column(text, diagnostic.span.start as usize);
-        let (severity, code, message) =
-            (diagnostic.severity(), diagnostic.code, &diagnostic.message);
+        // A message may quote the grammar, which the terminal must not act on.
+        let (severity, code, message) = (
+            diagnostic.severity(),
+            diagnostic.code,
+            visible(&diagnostic.message),
+        );
         say(
             false,
             format_args!(
