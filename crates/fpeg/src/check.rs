@@ -31,7 +31,10 @@ pub fn check(grammar: &Grammar) -> Vec<Diagnostic> {
         Ok(grammar) => grammar,
         Err(errors) => return errors,
     };
-    grammar.locate(check_joined(&grammar))
+    // Placed at their directives, the problems of modules move ahead of later ones.
+    let mut found = grammar.locate(check_joined(&grammar));
+    found.sort_by_key(|diagnostic| (diagnostic.span.start, diagnostic.span.end));
+    found
 }
 
 /// The problems of a grammar joined with its modules.

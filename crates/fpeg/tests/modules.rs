@@ -316,3 +316,15 @@ fn an_imported_rule_keeps_to_its_own_module() {
     let joined = linked("%import m (x)\nstart: x", &[("m", module)]).expect("it joins");
     assert_eq!(fpeg::check(&joined), []);
 }
+
+#[test]
+fn the_problems_of_modules_stand_in_the_order_of_the_text() {
+    let module = "x: \"a\"? | \"b\"";
+    let text = "%import m (x)\nstart: x | y\ny: \"c\"? | \"d\"";
+    let joined = linked(text, &[("m", module)]).expect("it joins");
+    let lines: Vec<u32> = (fpeg::check(&joined).iter())
+        .map(|d| d.span.start)
+        .collect();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0] < lines[1], "{lines:?}");
+}

@@ -192,8 +192,9 @@ impl Grammar {
             }
         }
         if !missing.is_empty() {
+            let mut missing = grammar.locate(missing);
             missing.sort_by_key(|error| error.span.start);
-            return Err(grammar_error(py, text, path, &grammar.locate(missing)));
+            return Err(grammar_error(py, text, path, &missing));
         }
         let core = Arc::new(GrammarCore::new(py, parser, &functions)?);
         let mut grammars = GRAMMARS.lock().unwrap_or_else(PoisonError::into_inner);

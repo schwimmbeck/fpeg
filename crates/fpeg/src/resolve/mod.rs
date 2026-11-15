@@ -148,7 +148,11 @@ pub(crate) fn resolve(grammar: &Grammar) -> Result<ir::Grammar, Vec<Diagnostic>>
     let grammar = crate::grammar::link::link_library(grammar)?;
     resolve_counted(&grammar)
         .map(|(resolved, _)| resolved)
-        .map_err(|errors| grammar.locate(errors))
+        .map_err(|errors| {
+            let mut errors = grammar.locate(errors);
+            errors.sort_by_key(|error| (error.span.start, error.span.end));
+            errors
+        })
 }
 
 /// Resolve a grammar and keep the item counts of its rules, which `check` asks about the shapes
