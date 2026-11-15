@@ -44,10 +44,10 @@ def test_the_samples_give_an_ast_that_python_compiles() -> None:
 def own_parser() -> Any:
     """Return the module of the language's own parser, or skip without it or without Lark."""
     pytest.importorskip("lark")
-    if not corpus.ORD_PACKAGE.is_dir() or not corpus.ORD_FILES.is_dir():
-        pytest.skip("the ORD files are missing, run benchmarks/corpus.py first")
+    if not corpus.ordec_fetched():
+        pytest.skip("the ORD files are missing or damaged, run benchmarks/corpus.py first")
     # The parser keeps its table cache under XDG_CACHE_HOME, which stays out of the home folder.
-    os.environ.setdefault("XDG_CACHE_HOME", str(corpus.CORPORA.parent / ".cache"))
+    os.environ["XDG_CACHE_HOME"] = str(corpus.CORPORA.parent / ".cache")
     sys.path.insert(0, str(corpus.CORPORA))
     return importlib.import_module("ordpkg.parser")
 

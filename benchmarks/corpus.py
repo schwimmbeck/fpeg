@@ -30,14 +30,17 @@ ORDEC_PACKAGE_SHA256 = {
     "parser.py": "bf09618fe631d77fa2e22707e2d12dea495adcac7047832ef3087b9d6b718dbb",
     "python_transformer.py": "9b35b499e1dfe631ebd1ab6b9fcc591541bebbaaa3e9bea63ca01888b557cf1a",
 }
-# The hash of its 76 ORD files, over their paths below the archive's top folder and their contents.
-ORD_FILES_SHA256 = "916d9da4aae54e33a786104cffc81cb69d2ad19689cb5610835703dfa021af18"
+# The hash of its 76 ORD files, over their paths below the archive's top folder, their lengths
+# and their contents.
+ORD_FILES_SHA256 = "29cd293f10922a650ca5c0209d87f683e99ab7d38bbfadca0b900e221f2970d4"
 
 # The test suite of Lua 5.4, which the Lua grammar must parse, pinned to the hash lua.org lists.
 LUA_TESTS_URL = "https://www.lua.org/tests/lua-5.4.9-tests.tar.gz"
 
 # Seconds to wait for a download.
 DOWNLOAD_TIMEOUT_S = 60
+# Bytes a download may take, far above the archives fetched here.
+MAX_DOWNLOAD_BYTES = 64 << 20
 # Records in the generated JSON file, and the seed of their content. Changing either changes the
 # bytes of records.json, and its pinned hash with them.
 JSON_RECORDS = 9000
@@ -207,11 +210,19 @@ def write_whole(path: Path, text: str) -> None:
     partial.replace(path)
 
 
+def download(url: str) -> bytes:
+    """Return the bytes at a URL, or stop past the bytes a download may take."""
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response:
+        data = response.read(MAX_DOWNLOAD_BYTES + 1)
+    if len(data) > MAX_DOWNLOAD_BYTES:
+        raise SystemExit(f"{url} gives more than {MAX_DOWNLOAD_BYTES} bytes")
+    return data
+
+
 def fetch(url: str, path: Path, expected: str) -> None:
     """Download a file beside its target, and rename it once it has the pinned hash."""
     partial = path.with_suffix(".partial")
-    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response:
-        partial.write_bytes(response.read())
+    partial.write_bytes(download(url))
     check(partial, expected)
     partial.replace(path)
 
@@ -225,8 +236,7 @@ def fetch_ordec() -> None:
     package = f"{top}{ORDEC_PACKAGE_PATH}/"
     with tempfile.TemporaryDirectory(dir=CORPORA) as scratch:
         archive = Path(scratch) / "ordec.tar.gz"
-        with urllib.request.urlopen(ORDEC_ARCHIVE_URL, timeout=DOWNLOAD_TIMEOUT_S) as response:
-            archive.write_bytes(response.read())
+        archive.write_bytes(download(ORDEC_ARCHIVE_URL))
         unpacked_package = Path(scratch) / "ordpkg"
         unpacked_files = Path(scratch) / "ord"
         unpacked_package.mkdir()
@@ -235,7 +245,8 @@ def fetch_ordec() -> None:
             for member in tar.getmembers():
                 if not member.isfile():
                     continue
-                if member.name.removeprefix(package) in ORDEC_PACKAGE_SHA256:
+                inside = member.name.startswith(package)
+                if inside and member.name.removeprefix(package) in ORDEC_PACKAGE_SHA256:
                     member.name = member.name.removeprefix(package)
                     tar.extract(member, unpacked_package, filter="data")
                 elif member.name.startswith(top) and member.name.endswith(".ord"):
@@ -246,17 +257,24 @@ def fetch_ordec() -> None:
         if ord_files_digest(unpacked_files) != ORD_FILES_SHA256:
             raise SystemExit(f"the ORD files do not have the pinned SHA-256 {ORD_FILES_SHA256}")
         for unpacked, target in ((unpacked_package, ORD_PACKAGE), (unpacked_files, ORD_FILES)):
-            shutil.rmtree(target, ignore_errors=True)
+            # An old folder that cannot go would take the new one inside it.
+            if target.exists():
+                shutil.rmtree(target)
             shutil.move(unpacked, target)
 
 
 def ord_files_digest(folder: Path) -> str:
-    """Return the hash of the ORD files below a folder, over their paths and their contents."""
+    """Return the hash of the ORD files below a folder, over their paths and their contents.
+
+    Each content comes with its length, so that no content can pass for the end of one file
+    and the start of the next.
+    """
     digest = hashlib.sha256()
     paths = sorted(folder.rglob("*.ord"), key=lambda path: path.relative_to(folder).as_posix())
     for path in paths:
-        digest.update(path.relative_to(folder).as_posix().encode() + b"\0")
-        digest.update(path.read_bytes() + b"\0")
+        content = path.read_bytes()
+        digest.update(f"{path.relative_to(folder).as_posix()}\0{len(content)}\0".encode())
+        digest.update(content)
     return digest.hexdigest()
 
 
@@ -269,6 +287,12 @@ def check(path: Path, expected: str) -> None:
     """Stop when a file that was just made does not have the pinned hash."""
     if not matches(path, expected):
         raise SystemExit(f"{path} does not have the pinned SHA-256 {expected}")
+
+
+def ordec_fetched() -> bool:
+    """Return whether the application's parser package and its ORD files have their hashes."""
+    package = all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items())
+    return package and ORD_FILES.is_dir() and ord_files_digest(ORD_FILES) == ORD_FILES_SHA256
 
 
 def prepare() -> None:
@@ -284,9 +308,7 @@ def prepare() -> None:
     if not matches(CALCULATOR.path, CALCULATOR.sha256):
         write_calculator(CALCULATOR.path)
         check(CALCULATOR.path, CALCULATOR.sha256)
-    package = all(matches(ORD_PACKAGE / n, h) for n, h in ORDEC_PACKAGE_SHA256.items())
-    files = ORD_FILES.is_dir() and ord_files_digest(ORD_FILES) == ORD_FILES_SHA256
-    if not (package and files):
+    if not ordec_fetched():
         fetch_ordec()
     if not matches(LUA_TESTS.path, LUA_TESTS.sha256):
         fetch(LUA_TESTS_URL, LUA_TESTS.path, LUA_TESTS.sha256)
