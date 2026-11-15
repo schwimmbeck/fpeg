@@ -270,12 +270,24 @@ fn module_files_are_the_grammar_files_of_a_folder_by_plain_names() {
     std::fs::create_dir_all(&folder).expect("a folder");
     std::fs::write(folder.join("base.fpeg"), "\u{feff}start: \"a\"").expect("a file");
     let files = ModuleFiles::new(&folder);
-    assert_eq!(files.text("base").as_deref(), Some("start: \"a\""));
-    assert_eq!(files.text("missing"), None);
+    let text = |files: &ModuleFiles, name: &str| files.text(name).expect("it reads");
+    assert_eq!(text(&files, "base").as_deref(), Some("start: \"a\""));
+    assert_eq!(text(&files, "missing"), None);
     // A name that is a path would reach out of the folder.
     let inner = folder.join("inner");
     std::fs::create_dir_all(&inner).expect("a folder");
-    assert_eq!(ModuleFiles::new(&inner).text("../base"), None);
+    assert_eq!(text(&ModuleFiles::new(&inner), "../base"), None);
+    // A file that cannot be read is an error, so that the library's json does not stand in.
+    std::fs::write(folder.join("json.fpeg"), [0xff, 0xfe]).expect("a file");
+    std::fs::create_dir_all(folder.join("dir.fpeg")).expect("a folder");
+    assert!(files.text("dir").is_err());
+    let grammar = Grammar::from_text("%extends \"json\"").expect("it reads");
+    let errors = grammar.link(&files).expect_err("json.fpeg is no UTF-8");
+    assert!(
+        errors[0]
+            .message
+            .starts_with("the grammar json cannot be read")
+    );
     std::fs::remove_dir_all(&folder).expect("the folder goes");
 }
 

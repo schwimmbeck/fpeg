@@ -47,7 +47,7 @@ print(found)
 <grammar>:1:15: warning[W101]: this alternative is never tried, since the one before it cannot fail
 ```
 
-A grammar that extends or imports [modules](grammar.md#modules) takes them from `modules`, a mapping of their names to their texts, then, for `Grammar.open`, from the files beside its own, `m.fpeg` for the module `m`, then from the grammars that come with fpeg. `check` takes `modules` too.
+A grammar that extends or imports [modules](grammar.md#modules) takes them from `modules`, a mapping of their names to their texts, then, for `Grammar.open`, from the files beside its own, `m.fpeg` for the module `m`, then from the grammars that come with fpeg. A file beside that cannot be read is an error. `check` takes `modules` too.
 
 ```python
 base = 'start: item+\nitem: WORD\nWORD: [a-z]+\n%ignore " "+'

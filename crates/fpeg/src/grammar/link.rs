@@ -10,6 +10,7 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
+use std::io::{self, Read};
 use std::path::PathBuf;
 
 use super::{
@@ -44,27 +45,31 @@ fn bundled(name: &str) -> Option<&'static str> {
 /// Where the grammars that a grammar extends and imports come from, before those that come
 /// with the library.
 pub trait Modules {
-    /// The text of the grammar of this name, if there is one.
-    fn text(&self, name: &str) -> Option<String>;
+    /// The text of the grammar of this name, `None` if there is none, or the error of one
+    /// that cannot be read, which joining reports rather than look further.
+    fn text(&self, name: &str) -> io::Result<Option<String>>;
 }
 
 /// Modules given by name with their texts.
 impl<S: BuildHasher> Modules for HashMap<String, String, S> {
-    fn text(&self, name: &str) -> Option<String> {
-        self.get(name).cloned()
+    fn text(&self, name: &str) -> io::Result<Option<String>> {
+        Ok(self.get(name).cloned())
     }
 }
 
 /// The modules of the first, then those of the second.
 impl<A: Modules, B: Modules> Modules for (A, B) {
-    fn text(&self, name: &str) -> Option<String> {
-        self.0.text(name).or_else(|| self.1.text(name))
+    fn text(&self, name: &str) -> io::Result<Option<String>> {
+        match self.0.text(name)? {
+            Some(text) => Ok(Some(text)),
+            None => self.1.text(name),
+        }
     }
 }
 
 /// The grammar files of a folder: the module `m` is the file `m.fpeg`, UTF-8 with or without a
 /// byte order mark. A name that is not plain names none, so that a grammar cannot reach out of
-/// the folder.
+/// the folder. Only a regular file of at most the text that joining reads is read.
 #[derive(Clone, Debug)]
 pub struct ModuleFiles {
     folder: PathBuf,
@@ -80,15 +85,31 @@ impl ModuleFiles {
 }
 
 impl Modules for ModuleFiles {
-    fn text(&self, name: &str) -> Option<String> {
+    fn text(&self, name: &str) -> io::Result<Option<String>> {
         if !plain(name) {
-            return None;
+            return Ok(None);
         }
-        let text = std::fs::read_to_string(self.folder.join(format!("{name}.fpeg"))).ok()?;
-        Some(match text.strip_prefix('\u{feff}') {
+        let path = self.folder.join(format!("{name}.fpeg"));
+        let file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        // A device, a pipe or a folder could block or never end.
+        if !file.metadata()?.is_file() {
+            return Err(io::Error::other("it is not a file"));
+        }
+        let mut text = String::new();
+        let limit = u64::from(MAX_MODULE_TEXT_BYTES);
+        file.take(limit + 1).read_to_string(&mut text)?;
+        if text.len() as u64 > limit {
+            let message = format!("it is larger than {} MiB", MAX_MODULE_TEXT_BYTES >> 20);
+            return Err(io::Error::other(message));
+        }
+        Ok(Some(match text.strip_prefix('\u{feff}') {
             Some(rest) => rest.to_owned(),
             None => text,
-        })
+        }))
     }
 }
 
@@ -104,8 +125,8 @@ fn plain(name: &str) -> bool {
 struct Library;
 
 impl Modules for Library {
-    fn text(&self, _name: &str) -> Option<String> {
-        None
+    fn text(&self, _name: &str) -> io::Result<Option<String>> {
+        Ok(None)
     }
 }
 
@@ -312,7 +333,10 @@ impl Linker<'_> {
             );
             return Err(problem(DiagnosticCode::UnknownModule, message, name.span));
         }
-        let text = self.modules.text(&name.value);
+        let text = self.modules.text(&name.value).map_err(|error| {
+            let message = format!("the grammar {} cannot be read: {error}", name.value);
+            problem(DiagnosticCode::UnknownModule, message, name.span)
+        })?;
         let Some(text) = text.or_else(|| bundled(&name.value).map(str::to_owned)) else {
             let message = format!("no grammar is named {}", name.value);
             return Err(problem(DiagnosticCode::UnknownModule, message, name.span));
