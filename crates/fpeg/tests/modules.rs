@@ -106,9 +106,30 @@ fn a_misplaced_inherited_body_is_an_error() {
 
 #[test]
 fn a_grammar_that_no_module_provides_is_an_error() {
-    let found = found("%extends \"jsn\"\nstart: \"a\"");
-    assert_eq!(found.len(), 1, "{found:?}");
-    assert_eq!(found[0].code, DiagnosticCode::UnknownModule);
+    // A name that is not plain names no module, even one given by that name.
+    for (text, modules) in [
+        ("%extends \"jsn\"\nstart: \"a\"", &[][..]),
+        ("%import \"2d\" (x)\nstart: x", &[("2d", "x: \"x\"")][..]),
+        ("%import \"a.b\" (x)\nstart: x", &[("a.b", "x: \"x\"")][..]),
+    ] {
+        let errors = linked(text, modules).unwrap_err();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, DiagnosticCode::UnknownModule);
+    }
+}
+
+#[test]
+fn imports_of_one_module_through_several_paths_share_its_private_rules() {
+    let calc = "%import common (NUMBER, WS)\nstart: NUMBER+\n%ignore WS";
+    let text =
+        "%extends \"calc\"\n%import common (SIGNED_NUMBER)\nstart: (NUMBER | SIGNED_NUMBER)+";
+    let joined = linked(text, &[("calc", calc)]).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(Parser::new(&joined).is_ok());
+    // A whole module takes its own rules by name, and those private to it under its name.
+    let bits = "%import common (INT)\nbit: INT";
+    let text = "%import bits\n%import common (NUMBER)\nstart: bit NUMBER";
+    let joined = linked(text, &[("bits", bits)]).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(Parser::new(&joined).is_ok());
 }
 
 #[test]

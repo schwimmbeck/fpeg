@@ -63,8 +63,8 @@ impl<A: Modules, B: Modules> Modules for (A, B) {
 }
 
 /// The grammar files of a folder: the module `m` is the file `m.fpeg`, UTF-8 with or without a
-/// byte order mark. A name of other characters than letters, digits, `_` and `-` names none,
-/// so that a grammar cannot reach out of the folder.
+/// byte order mark. A name that is not plain names none, so that a grammar cannot reach out of
+/// the folder.
 #[derive(Clone, Debug)]
 pub struct ModuleFiles {
     folder: PathBuf,
@@ -81,8 +81,7 @@ impl ModuleFiles {
 
 impl Modules for ModuleFiles {
     fn text(&self, name: &str) -> Option<String> {
-        let plain = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
-        if name.is_empty() || !name.chars().all(plain) {
+        if !plain(name) {
             return None;
         }
         let text = std::fs::read_to_string(self.folder.join(format!("{name}.fpeg"))).ok()?;
@@ -91,6 +90,14 @@ impl Modules for ModuleFiles {
             None => text,
         })
     }
+}
+
+/// Whether a module name is plain: a letter, then letters, digits and underscores. A dot in it
+/// would make the private names of two modules alike, and other characters make names that
+/// no rule can have.
+fn plain(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Only the grammars that come with the library.
@@ -239,10 +246,15 @@ impl Linker<'_> {
             let module = self.joined(&base, through)?;
             grammar = extend(module, grammar)?;
         }
-        for taken in by_module(std::mem::take(&mut grammar.imports))? {
+        let imports = by_module(std::mem::take(&mut grammar.imports))?;
+        let mut names: HashSet<String> = (grammar.rules.iter())
+            .flat_map(|rule| levels(rule).chain([rule.name.text.as_str()]))
+            .map(str::to_owned)
+            .collect();
+        for taken in imports {
             let through = directive.unwrap_or(taken.module.span);
             let module = self.joined(&taken.module, through)?;
-            import(&mut grammar, module, &taken.module, taken.names)?;
+            import(&mut grammar, &mut names, module, &taken.module, taken.names)?;
         }
         Ok(grammar)
     }
@@ -278,6 +290,13 @@ impl Linker<'_> {
 
     /// The grammar model of a module.
     fn read(&mut self, name: &Text, directive: Span) -> Result<Grammar, Vec<Diagnostic>> {
+        if !plain(&name.value) {
+            let message = format!(
+                "a module name is a letter, then letters, digits and underscores, not {}",
+                name.value
+            );
+            return Err(problem(DiagnosticCode::UnknownModule, message, name.span));
+        }
         let text = self.modules.text(&name.value);
         let Some(text) = text.or_else(|| bundled(&name.value).map(str::to_owned)) else {
             let message = format!("no grammar is named {}", name.value);
@@ -500,12 +519,16 @@ fn references(rule: &Rule) -> Vec<&str> {
 
 /// Add the rules an import takes to the grammar under their names, and the rules they need
 /// under `module.name`, which no grammar can write, so that they clash with none. The levels of
-/// a precedence block always take such a name, since an import takes rules, not levels.
+/// a precedence block always take such a name, since an import takes rules, not levels. Such
+/// a name can only come from that rule of that module, so a copy that the grammar has already,
+/// through what it extends or another import, is shared. `names` holds the names of the
+/// grammar's rules and levels.
 fn import(
     grammar: &mut Grammar,
+    names: &mut HashSet<String>,
     module: Grammar,
     name: &Text,
-    names: Option<Vec<Name>>,
+    wanted: Option<Vec<Name>>,
 ) -> Result<(), Vec<Diagnostic>> {
     let rules: HashMap<&str, &Rule> = (module.rules.iter())
         .map(|rule| (rule.name.text.as_str(), rule))
@@ -519,23 +542,22 @@ fn import(
                 .chain([(owner, owner)])
         })
         .collect();
-    let taken: Vec<(&str, Span)> = match &names {
-        Some(names) => names.iter().map(|n| (n.text.as_str(), n.span)).collect(),
+    // Without names an import takes the module's own rules, not those private to it.
+    let taken: Vec<(&str, Span)> = match &wanted {
+        Some(wanted) => wanted.iter().map(|n| (n.text.as_str(), n.span)).collect(),
         None => (module.rules.iter())
+            .filter(|rule| !rule.name.text.contains('.'))
             .map(|rule| (rule.name.text.as_str(), name.span))
             .collect(),
     };
-    let own: HashSet<&str> = (grammar.rules.iter())
-        .flat_map(|rule| levels(rule).chain([rule.name.text.as_str()]))
-        .collect();
     let mut errors = Vec::new();
     for &(rule, span) in &taken {
         if !rules.contains_key(rule) {
             let message = format!("the grammar {} defines no rule {rule}", name.value);
             errors.extend(problem(DiagnosticCode::UnknownImport, message, span));
-        } else if own.contains(rule) {
+        } else if names.contains(rule) {
             let message = format!(
-                "the grammar defines {rule}, which it imports from {} too",
+                "the grammar has a rule {rule} already, which it imports from {} too",
                 name.value
             );
             errors.extend(problem(DiagnosticCode::ImportClash, message, span));
@@ -561,7 +583,8 @@ fn import(
         false => format!("{}.{rule}", name.value),
     };
     for rule in &module.rules {
-        if !needed.contains(rule.name.text.as_str()) {
+        let new_name = renamed(&rule.name.text);
+        if !needed.contains(rule.name.text.as_str()) || !names.insert(new_name.clone()) {
             continue;
         }
         let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
@@ -587,8 +610,9 @@ fn import(
                     .collect(),
             ),
         };
+        names.extend(levels(rule).map(&renamed));
         let mut copy = rule.clone();
-        copy.name.text = renamed(&rule.name.text);
+        copy.name.text = new_name;
         copy.body = body;
         grammar.rules.push(copy);
     }

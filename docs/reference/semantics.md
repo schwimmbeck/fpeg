@@ -52,7 +52,7 @@ A grammar with `%import m (a, b)` then adds rules of `m`, joined with what it ex
 - `a` and `b` under their names, and every rule they need, directly or through others, under `m.r` for its name `r`, a name no grammar can write. The levels of a precedence block come under `m.l`. References in the rules added follow the new names.
 - A name keeps the kind of the name it replaces: `m.R` is a terminal as `R` is, and `m._r` makes no node as `_r` makes none.
 - The flags of `m` join the grammar's. Its other directives do not count.
-- All imports of one grammar `m` add one set of rules, and one without names takes every rule of `m`.
+- All imports of one grammar `m` add one set of rules, and one without names takes every rule of `m` whose name has no dot. A rule under a private name that the grammar has already, through what it extends or another import, is the same rule and is added once.
 
 ## Translation into the core
 
