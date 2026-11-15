@@ -30,7 +30,7 @@ cell Divider:
 :lines: 4-
 ```
 
-Every rule that ORD changes is an ordinary rule of the Python grammar: the compound and the simple statements, the primary expressions and the atoms. `...` keeps what Python has. The new forms come first, since a statement such as `input vin` would otherwise start an expression statement with `input`, and the line would fail at its second name, as Python fails on it. A statement of ORD tries a primary before Python's statements try the same primary again, which `@memo` turns into one try.
+Every rule that ORD changes is an ordinary rule of the Python grammar: the compound and the simple statements, the primary expressions and the atoms. `...` keeps what Python has, and where it stands decides which reading wins. Python's compound statements come first, since each starts with a word of its own and a `match` with its case blocks would otherwise read as an instance placed under the kind `match`. The new simple statements come first, since `input vin` would otherwise start an expression statement with `input`, and the line would fail at its second name. Each of them ends where the statement ends, so that `type X = int` is left to Python. A statement of ORD tries a primary before Python's statements try the same primary again, which `@memo` turns into one try.
 
 ## The transformer
 

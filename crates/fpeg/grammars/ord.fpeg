@@ -9,14 +9,19 @@
 %extends "python"
 %keywords soft "cell" "viewgen" "net" "path" "anonymous"
 
-?compound: celldef
+// Python's compound statements come first: each starts with a word of its own, and `match` with
+// its case blocks would otherwise read as an instance placed under the kind `match`.
+?compound: ...
+         | celldef
          | viewgen
          | net_block
          | path_block
          | anonymous_block
          | node_block
-         | ...
 
+// The simple statements of ORD come first, since Python's expression statement would take the
+// first word of `input vin` and leave the line to fail. Each ends where the statement ends, so
+// that `type X = int` is left to Python.
 ?simple: constrain
        | net_line
        | path_line
@@ -32,13 +37,14 @@ constrain: "!" test=expression
 
 // A statement that places an instance or declares a port names its kind, then what it places.
 node_block: kind=primary target=context_target ":" body=block
-node_line: kind=primary targets=(context_target ++ ",")
+node_line: kind=primary targets=(context_target ++ ",") &_STATEMENT_END
 anonymous_block: "anonymous" kind=primary target=context_target ":" body=block
-anonymous_line: "anonymous" kind=primary targets=(context_target ++ ",")
+anonymous_line: "anonymous" kind=primary targets=(context_target ++ ",") &_STATEMENT_END
 net_block: "net" target=context_target ":" body=block
-net_line: "net" targets=(context_target ++ ",")
+net_line: "net" targets=(context_target ++ ",") &_STATEMENT_END
 path_block: "path" target=context_target ":" body=block
-path_line: "path" targets=(context_target ++ ",")
+path_line: "path" targets=(context_target ++ ",") &_STATEMENT_END
+_STATEMENT_END: ";" | _NEWLINE | !.
 
 ?context_target: target=context_target "." name=NAME -> target_attribute
                | target=context_target "[" %on(bracket, slices=slices "]") -> target_item

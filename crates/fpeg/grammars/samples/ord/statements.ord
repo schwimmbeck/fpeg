@@ -1,0 +1,15 @@
+from ordec.core import *
+from ordec.lib import Inv
+
+
+type Count = int
+
+
+cell Selector:
+    viewgen schematic(self, mode) -> Schematic:
+        type Width[T] = list[T]
+        match mode:
+            case Mode.FAST:
+                Inv first: .pos=(0, 0)
+            case _:
+                Inv slow: .pos=(4, 0)
