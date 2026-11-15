@@ -79,6 +79,21 @@ pub struct ParseError {
     pub position: usize,
     /// What went wrong.
     pub kind: ParseErrorKind,
+    /// The labeled errors that a parse in recovering mode recovered from on its way to this
+    /// error, in the order of the text. Empty for a parse in normal mode.
+    pub recoveries: Vec<Recovery>,
+}
+
+/// A labeled error that a parse in recovering mode recovered from: the error item that stands
+/// in the tree in place of what failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Recovery {
+    /// The name of the label.
+    pub label: String,
+    /// The byte offset where the label failed, where the item starts.
+    pub start: usize,
+    /// The byte offset where the recovery ended, `start` for a missing token.
+    pub end: usize,
 }
 
 /// The kinds of parse errors.

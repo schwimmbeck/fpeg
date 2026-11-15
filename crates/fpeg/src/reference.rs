@@ -232,12 +232,14 @@ impl Reference {
             return Err(ParseError {
                 position: 0,
                 kind: ParseErrorKind::UnknownStart(start.to_owned()),
+                recoveries: Vec::new(),
             });
         };
         if u32::try_from(input.len()).is_err() {
             return Err(ParseError {
                 position: 0,
                 kind: ParseErrorKind::Limit(Limit::InputSize),
+                recoveries: Vec::new(),
             });
         }
         let run = || Interp::new(&self.grammar, input, limits, memoize).parse(start_expr);
@@ -254,6 +256,7 @@ impl Reference {
             Err(_) => Err(ParseError {
                 position: 0,
                 kind: ParseErrorKind::Limit(Limit::Depth),
+                recoveries: Vec::new(),
             }),
             Ok(Err(panic)) => std::panic::resume_unwind(panic),
         }
@@ -396,11 +399,13 @@ impl<'a> Interp<'a> {
                 Err(ParseError {
                     position,
                     kind: ParseErrorKind::Label(text),
+                    recoveries: Vec::new(),
                 })
             }
             Err(Abort::Limit(limit)) => Err(ParseError {
                 position: self.farthest.unwrap_or(0),
                 kind: ParseErrorKind::Limit(limit),
+                recoveries: Vec::new(),
             }),
         }
     }
@@ -411,6 +416,7 @@ impl<'a> Interp<'a> {
             kind: ParseErrorKind::NoMatch {
                 expected: std::mem::take(&mut self.expected).into_iter().collect(),
             },
+            recoveries: Vec::new(),
         }
     }
 

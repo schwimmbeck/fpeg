@@ -272,6 +272,7 @@ impl Parser {
         let result = result.unwrap_or(Err(ParseError {
             position: 0,
             kind: ParseErrorKind::Limit(Limit::Steps),
+            recoveries: Vec::new(),
         }));
         (result, profile)
     }
@@ -379,7 +380,11 @@ fn attempt(
     profiling: bool,
 ) -> Attempt {
     let refused = |kind| Attempt {
-        result: Some(Err(ParseError { position: 0, kind })),
+        result: Some(Err(ParseError {
+            position: 0,
+            kind,
+            recoveries: Vec::new(),
+        })),
         steps: 0,
         profile: None,
     };
@@ -402,6 +407,7 @@ fn attempt(
         Ok(()) => machine.tree().map_err(|limit| ParseError {
             position,
             kind: ParseErrorKind::Limit(limit),
+            recoveries: Vec::new(),
         }),
         Err(Stop::NoMatch) => {
             // The second run holds its own memory, so the first gives its back.
@@ -418,6 +424,7 @@ fn attempt(
             Err(ParseError {
                 position,
                 kind: ParseErrorKind::NoMatch { expected },
+                recoveries: Vec::new(),
             })
         }
         Err(Stop::Error { label, position }) => Err(ParseError {
@@ -427,10 +434,12 @@ fn attempt(
                     .cloned()
                     .unwrap_or_default(),
             ),
+            recoveries: Vec::new(),
         }),
         Err(Stop::Limit(limit)) => Err(ParseError {
             position,
             kind: ParseErrorKind::Limit(limit),
+            recoveries: Vec::new(),
         }),
         Err(Stop::Budget) => {
             return Attempt {

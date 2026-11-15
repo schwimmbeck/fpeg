@@ -13,6 +13,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use crate::grammar::ValueBuilder;
+use crate::parse::Recovery;
 
 /// Identifies a kind of node or token in a grammar's kind table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -97,6 +98,7 @@ pub struct Tree {
     sizes: Vec<u32>,
     fields: Vec<FieldId>,
     names: Arc<Names>,
+    recoveries: Vec<Recovery>,
 }
 
 impl Tree {
@@ -110,7 +112,14 @@ impl Tree {
             sizes: Vec::new(),
             fields: Vec::new(),
             names,
+            recoveries: Vec::new(),
         }
+    }
+
+    /// The labeled errors the parse recovered from, in the order of the text, each standing in
+    /// the tree as an `<error>` node or a `<missing>` token. Empty after a parse in normal mode.
+    pub fn recoveries(&self) -> &[Recovery] {
+        &self.recoveries
     }
 
     /// Make room for `entries` more entries in every column, so that appending them moves none.
