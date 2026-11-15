@@ -11,8 +11,6 @@ fpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
 fpeg is at an early stage. The [command line](reference/cli.md) and the [Python package](reference/python-api.md) parse with every grammar but those that use a form of a later release ([E501](reference/diagnostics/E501.md)), and warn about grammars that likely do not do what they seem to. The Python package turns trees into Python values through a `Transformer`, an `Interpreter` or the value builders written in the grammar. The [roadmap](roadmap.md) says what comes next.
 ```
 
-## Getting started
-
 [Getting started](start.md) installs fpeg, writes a first grammar and turns the tree of a parse into Python values, in about five minutes.
 
 ## Examples
@@ -50,20 +48,40 @@ Complete programs for common tasks, each a grammar and a `Transformer`, to copy 
 - [Command line](reference/cli.md): `fpeg check`, `fpeg parse` and `fpeg profile`.
 - [Diagnostics](reference/diagnostics/index.md): every problem a grammar can have, with its code.
 - [Known limits](reference/known-limits.md): what fpeg does not do, or does at a cost, and why.
-- [Benchmarks](benchmarks.md): what fpeg and other parsers take on the same inputs.
+
+## Explanation
+
+- [Benchmarks](explanation/benchmarks.md): what fpeg and other parsers take on the same inputs.
 
 ```{toctree}
 :hidden:
 
 start
+```
+
+```{toctree}
+:hidden:
+:caption: Examples
+
 examples/calculator
 examples/configuration
 examples/csv
 examples/json
 examples/filter-language
-roadmap
+```
+
+```{toctree}
+:hidden:
+:caption: Tutorials
+
 tutorial/first-grammar
 tutorial/transformer
+```
+
+```{toctree}
+:hidden:
+:caption: Guides
+
 guide/operator-precedence
 guide/building-an-ast
 guide/indentation
@@ -72,6 +90,12 @@ guide/composing-grammars
 guide/a-language-over-python
 guide/errors
 guide/performance
+```
+
+```{toctree}
+:hidden:
+:caption: Reference
+
 reference/grammar
 reference/semantics
 reference/tree
@@ -79,6 +103,19 @@ reference/python-api
 reference/cli
 reference/diagnostics/index
 reference/known-limits
-benchmarks
+```
+
+```{toctree}
+:hidden:
+:caption: Explanation
+
+explanation/benchmarks
+```
+
+```{toctree}
+:hidden:
+:caption: Project
+
+roadmap
 development
 ```

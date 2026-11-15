@@ -42,4 +42,4 @@ The tests read the 76 programs of the application at a pinned commit with this g
 
 ## Time
 
-The benchmarks run the language's own pipeline and fpeg's on the same file, from source text to an `ast` with positions, and the [benchmarks page](../benchmarks.md) shows both.
+The benchmarks run the language's own pipeline and fpeg's on the same file, from source text to an `ast` with positions, and the [benchmarks page](../explanation/benchmarks.md) shows both.
