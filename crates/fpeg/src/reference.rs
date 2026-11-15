@@ -23,7 +23,7 @@ use crate::grammar::Grammar;
 use crate::ir::{self, CaptureId, FlagId, LabelId, RuleId};
 use crate::lines::LineIndex;
 use crate::parse::{
-    END_OF_INPUT, INDENTATION, Limit, Limits, ParseError, ParseErrorKind, Recovery,
+    END_OF_INPUT, Found, INDENTATION, Limit, Limits, ParseError, ParseErrorKind, Recovery,
 };
 use crate::tree::{FieldId, Kind, KindId, Names, Tree};
 
@@ -60,6 +60,8 @@ enum Item {
         field: FieldId,
         start: u32,
         end: u32,
+        /// The floor the label failed under.
+        floor: Option<usize>,
         children: Vec<Item>,
     },
 }
@@ -136,7 +138,7 @@ fn contains_token(items: &[Item]) -> bool {
 }
 
 /// The error items among `items` at any depth, in the order of the text, as recoveries.
-fn recoveries_in(items: &[Item], labels: &[ir::Label], out: &mut Vec<Recovery>) {
+fn recoveries_in(items: &[Item], labels: &[ir::Label], out: &mut Vec<Found>) {
     for item in items {
         match item {
             Item::Token { .. } => {}
@@ -145,10 +147,14 @@ fn recoveries_in(items: &[Item], labels: &[ir::Label], out: &mut Vec<Recovery>) 
                 label,
                 start,
                 end,
+                floor,
                 children,
                 ..
             } => {
-                out.push(recovery(*label, *start, *end, labels));
+                out.push(Found {
+                    recovery: recovery(*label, *start, *end, labels),
+                    floor: *floor,
+                });
                 recoveries_in(children, labels, out);
             }
         }
@@ -169,17 +175,13 @@ fn recovery(label: LabelId, start: u32, end: u32, labels: &[ir::Label]) -> Recov
     }
 }
 
-/// Lay out items, in order, as the top level of a tree, with the recoveries among them. It
-/// recurses as deeply as the tree nests, which the interpreter's own stack allows, since it
-/// built the items recursively.
-fn tree_from_items(items: Vec<Item>, names: Arc<Names>, labels: &[ir::Label]) -> Tree {
-    let mut recoveries = Vec::new();
-    recoveries_in(&items, labels, &mut recoveries);
+/// Lay out items, in order, as the top level of a tree. It recurses as deeply as the tree
+/// nests, which the interpreter's own stack allows, since it built the items recursively.
+fn tree_from_items(items: Vec<Item>, names: Arc<Names>) -> Tree {
     let mut tree = Tree::empty(names);
     for item in items {
         push_item(&mut tree, item);
     }
-    tree.set_recoveries(recoveries);
     tree
 }
 
@@ -405,13 +407,15 @@ enum Failed {
     Indentation,
 }
 
-/// What ends the whole parse: a labeled error, with the recoveries made before it, or a limit.
+/// What ends the whole parse: a labeled error, with the floor it failed under and the
+/// recoveries made before it, or a limit.
 #[derive(Debug)]
 enum Abort {
     Error {
         label: LabelId,
         position: usize,
-        recoveries: Vec<Recovery>,
+        floor: Option<usize>,
+        recoveries: Vec<Found>,
     },
     Limit(Limit),
 }
@@ -460,7 +464,7 @@ struct Interp<'a> {
     dependency: usize,
     farthest: Option<usize>,
     /// What failed at each position, outside lookahead and the skip expression.
-    expected_at: HashMap<usize, BTreeSet<Failed>>,
+    expected_at: HashMap<(usize, Option<usize>), BTreeSet<Failed>>,
     quiet: u32,
     steps: u64,
     depth: u32,
@@ -512,23 +516,24 @@ impl<'a> Interp<'a> {
             Outcome::Fail { .. } => Ok(None),
         });
         match result {
-            Ok(Some((end, items))) if end == self.input.len() => {
-                let mut tree = tree_from_items(items, Arc::clone(&self.g.names), &self.g.labels);
-                let recoveries = self.explained(tree.recoveries());
-                tree.set_recoveries(recoveries);
-                Ok(tree)
-            }
             Ok(Some((end, items))) => {
-                self.record_expected(end, Failed::EndOfInput);
-                let mut error = self.no_match();
-                recoveries_in(&items, &self.g.labels, &mut error.recoveries);
-                error.recoveries = self.explained(&error.recoveries);
-                Err(error)
+                let mut found = Vec::new();
+                recoveries_in(&items, &self.g.labels, &mut found);
+                if end < self.input.len() {
+                    self.record_expected(end, Failed::EndOfInput, None);
+                    let mut error = self.no_match();
+                    error.recoveries = self.explained(&found);
+                    return Err(error);
+                }
+                let mut tree = tree_from_items(items, Arc::clone(&self.g.names));
+                tree.set_recoveries(self.explained(&found));
+                Ok(tree)
             }
             Ok(None) => Err(self.no_match()),
             Err(Abort::Error {
                 label,
                 position,
+                floor,
                 recoveries,
             }) => {
                 let (text, named) = match self.g.labels.get(label.0 as usize) {
@@ -541,7 +546,7 @@ impl<'a> Interp<'a> {
                     kind: ParseErrorKind::Label {
                         label: text,
                         named,
-                        expected: self.expected_at(position),
+                        expected: self.expected_at(position, floor),
                     },
                     recoveries: self.explained(&recoveries),
                 })
@@ -559,7 +564,7 @@ impl<'a> Interp<'a> {
         ParseError {
             position,
             kind: ParseErrorKind::NoMatch {
-                expected: self.expected_at(position),
+                expected: self.expected_at(position, None),
             },
             recoveries: Vec::new(),
         }
@@ -572,6 +577,7 @@ impl<'a> Interp<'a> {
             Abort::Error {
                 label,
                 position,
+                floor,
                 recoveries,
             } => {
                 let mut before = Vec::new();
@@ -580,6 +586,7 @@ impl<'a> Interp<'a> {
                 Abort::Error {
                     label,
                     position,
+                    floor,
                     recoveries: before,
                 }
             }
@@ -587,9 +594,10 @@ impl<'a> Interp<'a> {
         }
     }
 
-    /// What failed at a position over the whole parse, as an expected set shows it, sorted.
-    fn expected_at(&self, position: usize) -> Vec<String> {
-        let Some(failed) = self.expected_at.get(&position) else {
+    /// What failed at a position under a floor over the whole parse, as an expected set shows
+    /// it, sorted.
+    fn expected_at(&self, position: usize, floor: Option<usize>) -> Vec<String> {
+        let Some(failed) = self.expected_at.get(&(position, floor)) else {
             return Vec::new();
         };
         let shown: BTreeSet<String> = (failed.iter())
@@ -602,26 +610,27 @@ impl<'a> Interp<'a> {
         shown.into_iter().collect()
     }
 
-    /// The recoveries, each with what failed where its label failed.
-    fn explained(&self, recoveries: &[Recovery]) -> Vec<Recovery> {
-        (recoveries.iter())
-            .map(|recovery| Recovery {
-                expected: self.expected_at(recovery.start),
-                ..recovery.clone()
+    /// The recoveries, each with what failed where its label failed under its floor.
+    fn explained(&self, found: &[Found]) -> Vec<Recovery> {
+        (found.iter())
+            .map(|found| Recovery {
+                expected: self.expected_at(found.recovery.start, found.floor),
+                ..found.recovery.clone()
             })
             .collect()
     }
 
     /// Record a failure at a position: what fails at the farthest one is the expected set of a
     /// parse that does not match, and what fails where a label fails explains the error.
-    fn record_expected(&mut self, position: usize, what: Failed) {
+    fn record_expected(&mut self, position: usize, what: Failed, floor: Option<usize>) {
         if self.quiet > 0 {
             return;
         }
-        if self.farthest.is_none_or(|farthest| position > farthest) {
+        if floor.is_none() && self.farthest.is_none_or(|farthest| position > farthest) {
             self.farthest = Some(position);
         }
-        self.expected_at.entry(position).or_default().insert(what);
+        let failed = self.expected_at.entry((position, floor)).or_default();
+        failed.insert(what);
     }
 
     fn char_at(&self, pos: usize) -> Option<char> {
@@ -964,7 +973,7 @@ impl<'a> Interp<'a> {
                         ..success
                     })),
                     Outcome::Fail { cut } => {
-                        self.record_expected(pos, Failed::Kind(*kind));
+                        self.record_expected(pos, Failed::Kind(*kind), ctx.floor);
                         Ok(Outcome::Fail { cut })
                     }
                 }
@@ -1026,7 +1035,7 @@ impl<'a> Interp<'a> {
                     };
                     self.eval(expr, pos, &inner)
                 } else {
-                    self.record_expected(at, Failed::Indentation);
+                    self.record_expected(at, Failed::Indentation, ctx.floor);
                     Interp::fail()
                 }
             }
@@ -1035,7 +1044,7 @@ impl<'a> Interp<'a> {
                 if self.column(at)? == ctx.column {
                     Interp::ok(pos, ctx)
                 } else {
-                    self.record_expected(at, Failed::Indentation);
+                    self.record_expected(at, Failed::Indentation, ctx.floor);
                     Interp::fail()
                 }
             }
@@ -1108,6 +1117,7 @@ impl<'a> Interp<'a> {
         let error = Abort::Error {
             label,
             position,
+            floor: ctx.floor,
             recoveries: Vec::new(),
         };
         // Inside a lookahead, a token and the skip expression what is made is dropped, so a
@@ -1131,6 +1141,7 @@ impl<'a> Interp<'a> {
                     field,
                     start: position as u32,
                     end: success.end as u32,
+                    floor: ctx.floor,
                     children: success.items,
                 }],
                 captures: ctx.captures.clone(),

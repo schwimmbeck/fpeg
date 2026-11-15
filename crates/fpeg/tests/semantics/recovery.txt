@@ -79,7 +79,21 @@ start: "(" ("1" ^ item) ")"
 %recover item: "x" ("1" ^ item) | ()
 --- recover "(xx)"
 (start ~"(" (<error> ~"x" (<error> ~"x" <missing>"")) ~")")
-errors: item: expected "1" at 1, item: expected "1" at 2, item: expected "1", "x" at 3
+errors: item: expected "1" at 1, item: expected "1" at 2, item: expected "1" at 3
+
+=== what a recovery tries does not explain the errors after it
+start: "[" ("1" ^ item) ("]" ^ close)
+%recover item: (!"]" .)*
+%recover close: ()
+--- recover "[x"
+(start ~"[" (<error> ~"x") <missing>"")
+errors: item: expected "1" at 1, close: expected "]" at 2
+
+=== a parse that does not match fails where the parse failed outside its recoveries
+start: "[" ("1" ^ item) "]"
+%recover item: "x" ("y" "z")?
+--- recover "[xy]"
+error at 2: expected "]"
 
 === a label does not recover where its recovery began
 start: "(" ("1" ^ item) ")"

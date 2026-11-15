@@ -105,6 +105,14 @@ impl Recovery {
     }
 }
 
+/// A recovery, and the floor its label failed under: the start of the recovery that was
+/// running then, if any. Only what failed under the same floor explains it.
+#[derive(Clone, Debug)]
+pub(crate) struct Found {
+    pub(crate) recovery: Recovery,
+    pub(crate) floor: Option<usize>,
+}
+
 /// A named error's message: its name, and what the grammar expected where it occurred.
 fn named(name: &str, expected: &[String]) -> String {
     match expected {

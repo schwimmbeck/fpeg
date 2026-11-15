@@ -83,7 +83,7 @@ fn a_failed_alternative_gives_back_the_nodes_it_made() {
     let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
     let mut machine = Machine::new(&parser.program, &input, Limits::default(), &[]);
     assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
-    let tree = machine.tree().expect("the tree fits");
+    let (tree, _) = machine.tree().expect("the tree fits");
     // Keeping them would hold the nodes of every one of the 2^12 failed attempts.
     assert!(
         machine.arena_len() <= tree.len(),
@@ -104,7 +104,7 @@ fn a_failure_cuts_the_arena_back_as_far_as_the_newest_remembered_node() {
     let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
     let mut machine = Machine::new(&parser.program, &input, Limits::default(), &[]);
     assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
-    let tree = machine.tree().expect("the tree fits");
+    let (tree, _) = machine.tree().expect("the tree fits");
     // The 2^12 failed attempts make more than twenty thousand nodes.
     assert!(
         machine.arena_len() <= 4 * tree.len(),

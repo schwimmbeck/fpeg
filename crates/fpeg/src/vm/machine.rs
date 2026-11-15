@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use super::profile::{Profile, Profiler};
 use super::program::{Inst, Program};
-use crate::parse::{END_OF_INPUT, INDENTATION, Limit, Limits, Recovery};
+use crate::parse::{END_OF_INPUT, Found, INDENTATION, Limit, Limits, Recovery};
 use crate::tree::{FieldId, KindId, Tree};
 
 /// Bytes of a literal compared in one step, about the work of one instruction.
@@ -473,10 +473,12 @@ struct OpenToken {
 pub(crate) enum Stop {
     /// The input does not match.
     NoMatch,
-    /// A labeled error, with the index of its label and its position.
+    /// A labeled error, with the index of its label, its position and the floor it failed
+    /// under.
     Error {
         label: u32,
         position: u32,
+        floor: Option<u32>,
     },
     Limit(Limit),
     /// The steps of the run's budget ran out before those of the limit.
@@ -549,12 +551,12 @@ pub(crate) struct Machine<'p, 'i> {
     floor: Option<u32>,
     /// The recoveries in progress, one for each `Recovering` entry of the stack.
     recovering_frames: Vec<RecoveryFrame>,
-    /// The label of each error item made, by the arena index of its node. An index that a
-    /// failure gave back is taken again by the next node, so an entry is current where its
-    /// node is of kind `<error>` or `<missing>`.
-    labels: HashMap<u32, u32>,
+    /// The label of each error item made and the floor it failed under, by the arena index of
+    /// its node. An index that a failure gave back is taken again by the next node, so an entry
+    /// is current where its node is of kind `<error>` or `<missing>`.
+    labels: HashMap<u32, (u32, Option<u32>)>,
     /// What a parse that stopped without a tree recovered from on its way.
-    ended: Vec<Recovery>,
+    ended: Vec<Found>,
     /// The ids of the captured texts met, one for equal texts, and the texts by id.
     texts: HashMap<&'i str, u32>,
     text_list: Vec<&'i str>,
@@ -572,20 +574,21 @@ pub(crate) struct Machine<'p, 'i> {
     memory: Memory,
     /// The farthest position a failure was recorded at.
     farthest: Option<u32>,
-    /// In diagnose mode, the positions the run before asks about, each with what failed there.
-    diagnose: BTreeMap<u32, BTreeSet<Expected>>,
+    /// In diagnose mode, the positions the run before asks about, each with the floor of the
+    /// error there and what failed at it under that floor.
+    diagnose: BTreeMap<(u32, Option<u32>), BTreeSet<Expected>>,
     /// The counts of a profiling parse.
     profiler: Option<Box<Profiler>>,
 }
 
 impl<'p, 'i> Machine<'p, 'i> {
     /// A machine for one parse. The input must fit 32-bit offsets. It collects what fails at the
-    /// positions of `diagnose`, which a run after the first asks about.
+    /// positions of `diagnose` under their floors, which a run after the first asks about.
     pub fn new(
         program: &'p Program,
         input: &'i str,
         limits: Limits,
-        diagnose: &[u32],
+        diagnose: &[(u32, Option<u32>)],
     ) -> Machine<'p, 'i> {
         Machine {
             program,
@@ -650,7 +653,7 @@ impl<'p, 'i> Machine<'p, 'i> {
 
     /// What a parse that stopped without a tree recovered from on its way, in the order of
     /// the text.
-    pub fn take_recoveries(&mut self) -> Vec<Recovery> {
+    pub fn take_recoveries(&mut self) -> Vec<Found> {
         std::mem::take(&mut self.ended)
     }
 
@@ -679,7 +682,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         }
     }
 
-    /// The farthest position a failure was recorded at.
+    /// The farthest position a failure was recorded at outside recoveries.
     pub fn farthest(&self) -> Option<u32> {
         self.farthest
     }
@@ -690,10 +693,10 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.nodes.len()
     }
 
-    /// In diagnose mode, what failed at a position it was asked about, as an expected set shows
-    /// it, sorted.
-    pub fn expected(&self, at: u32) -> Vec<String> {
-        let Some(expected) = self.diagnose.get(&at) else {
+    /// In diagnose mode, what failed at a position it was asked about under a floor, as an
+    /// expected set shows it, sorted.
+    pub fn expected(&self, at: u32, floor: Option<u32>) -> Vec<String> {
+        let Some(expected) = self.diagnose.get(&(at, floor)) else {
             return Vec::new();
         };
         let shown: BTreeSet<String> = (expected.iter())
@@ -1879,7 +1882,7 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// Stop the parse with a labeled error, unless a lookahead encloses it: then the lookahead
     /// fails, and a token the error passed through ends without a failure being recorded.
     fn throw(&mut self, label: u32) -> Result<(), Stop> {
-        let position = self.pos;
+        let (position, floor) = (self.pos, self.floor);
         while let Some(entry) = self.stack.pop() {
             match entry {
                 Entry::Predicate { alt, saved, quiet } => {
@@ -1930,7 +1933,11 @@ impl<'p, 'i> Machine<'p, 'i> {
         if self.recovering {
             self.ended = self.recoveries_among()?;
         }
-        Err(Stop::Error { label, position })
+        Err(Stop::Error {
+            label,
+            position,
+            floor,
+        })
     }
 
     /// Recover from the labeled error with this index where the parse recovers: outside a
@@ -1990,7 +1997,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             item.flags = HAS_TOKEN;
         }
         self.memory.room_in(&mut self.labels)?;
-        self.labels.insert(node, frame.label);
+        self.labels.insert(node, (frame.label, frame.floor));
         self.pc = frame.ret;
         Ok(())
     }
@@ -2013,7 +2020,7 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// a limit where listing those that shared nodes repeat takes more steps than are left. Its
     /// stack holds at most the items the machine holds already.
     #[cold]
-    fn recoveries_among(&self) -> Result<Vec<Recovery>, Stop> {
+    fn recoveries_among(&self) -> Result<Vec<Found>, Stop> {
         let mut found = Vec::new();
         // Only a recovery makes an error item.
         if self.labels.is_empty() {
@@ -2055,15 +2062,18 @@ impl<'p, 'i> Machine<'p, 'i> {
         Ok(found)
     }
 
-    /// An error item as a recovery, with the name of its label.
-    fn recovery_of(&self, item: &Item) -> Recovery {
-        let label = (self.labels.get(&item.value))
-            .and_then(|&label| self.program.labels.get(label as usize));
-        Recovery {
-            label: label.map_or_else(String::new, |label| label.text().to_owned()),
-            start: item.start as usize,
-            end: item.end as usize,
-            expected: Vec::new(),
+    /// An error item as a recovery, with the name of its label and the floor it failed under.
+    fn recovery_of(&self, item: &Item) -> Found {
+        let (label, floor) = self.labels.get(&item.value).copied().unzip();
+        let label = label.and_then(|label| self.program.labels.get(label as usize));
+        Found {
+            recovery: Recovery {
+                label: label.map_or_else(String::new, |label| label.text().to_owned()),
+                start: item.start as usize,
+                end: item.end as usize,
+                expected: Vec::new(),
+            },
+            floor: floor.flatten().map(|floor| floor as usize),
         }
     }
 
@@ -2071,10 +2081,10 @@ impl<'p, 'i> Machine<'p, 'i> {
         if self.quiet > 0 {
             return;
         }
-        if self.farthest.is_none_or(|farthest| pos > farthest) {
+        if self.floor.is_none() && self.farthest.is_none_or(|farthest| pos > farthest) {
             self.farthest = Some(pos);
         }
-        if let Some(expected) = self.diagnose.get_mut(&pos) {
+        if let Some(expected) = self.diagnose.get_mut(&(pos, self.floor)) {
             expected.insert(what);
         }
     }
@@ -2152,8 +2162,8 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// columns sized first. A tree that may repeat shared nodes is counted exactly, and refused
     /// before any of it is built where its repeats would take more steps than the parse has left.
     /// What the arena holds, the steps of the parse made. Any other tree has at most the
-    /// arena's entries.
-    pub fn tree(&self) -> Result<Tree, Limit> {
+    /// arena's entries. The recoveries among the items come beside the tree, which holds none.
+    pub fn tree(&self) -> Result<(Tree, Vec<Found>), Limit> {
         // What the layout holds besides the machine's own vectors counts as they do.
         let mut memory = self.memory;
         let entries = if self.shared {
@@ -2216,7 +2226,6 @@ impl<'p, 'i> Machine<'p, 'i> {
                 }
             }
         }
-        tree.set_recoveries(recoveries);
-        Ok(tree)
+        Ok((tree, recoveries))
     }
 }
