@@ -181,7 +181,7 @@ start: "a" |
 error[E101]: expected "!", "%def", "%error"
 at 12..12
 
-=== a grammar text with three syntax errors gives three, each where reading stopped
+=== a grammar text with three syntax errors gives each where reading stopped
 start: "a" |
 other: "b" )
 %flag

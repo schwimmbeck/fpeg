@@ -194,7 +194,15 @@ fn a_parse_starts_from_a_rule_or_a_level_but_not_from_an_unknown_name() {
     assert_eq!(error.kind, unknown);
 }
 
-// The case files match grammar errors by subset, so this exact list is written out.
+// The case files match grammar errors by subset, so these exact lists are written out.
+#[test]
+fn a_grammar_text_with_three_syntax_errors_gives_three() {
+    let text = "start: \"a\" |\nother: \"b\" )\n%flag\nlast: \"c\"\n";
+    let errors = Grammar::from_text(text).expect_err("three mistakes");
+    let starts: Vec<u32> = errors.iter().map(|e| e.span.start).collect();
+    assert_eq!(starts, [12, 24, 31], "{errors:?}");
+}
+
 #[test]
 fn a_precedence_block_with_parameters_reports_only_that() {
     let text = "start: t<\"x\">\nt<p>: %precedence {\n    b: p\n}\n";
