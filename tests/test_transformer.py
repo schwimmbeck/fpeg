@@ -363,6 +363,50 @@ def test_default_methods_apply_when_a_subclass_overrides_them() -> None:
     assert Defaults().transform(parse("f(a)")) == ("start", [("call", ["F", "A"])])
 
 
+RECOVERING = fpeg.Grammar(r"""
+start: "[" (item ("," (item ^ item))*)? "]" ^ close
+item: NUMBER
+NUMBER: [0-9]+
+%ignore " "+
+%recover item: (!("," | "]") .)*
+%recover close: ()
+""")
+
+
+def recovered(text: str) -> fpeg.Tree:
+    """The tree that a recovering parse of `text` raises with."""
+    with pytest.raises(fpeg.ParseError) as raised:
+        RECOVERING.parse(text, recover=True)
+    tree = raised.value.tree
+    assert isinstance(tree, fpeg.Tree)
+    return tree
+
+
+def test_error_and_missing_items_have_methods_of_their_own_or_stay_as_they_are() -> None:
+    class Values(fpeg.Transformer):
+        def start(self, children: list[Any]) -> list[Any]:
+            return children
+
+        def item(self, *children: fpeg.Token) -> int:
+            return int(children[0])
+
+        def __error__(self, children: list[Any], *, node: fpeg.Tree) -> Any:
+            return ("error", node.text)
+
+        def __missing__(self, token: fpeg.Token) -> Any:
+            return ("missing", token.start_pos)
+
+    tree = recovered("[1, x y, 3")
+    assert Values().transform(tree) == [1, ("error", "x y"), 3, ("missing", 10)]
+
+    class Plain(fpeg.Transformer):
+        def start(self, children: list[Any]) -> list[Any]:
+            return children
+
+    kinds = [getattr(v, "data", getattr(v, "type", None)) for v in Plain().transform(tree)]
+    assert kinds == ["item", "<error>", "item", "<missing>"]
+
+
 def test_terminal_methods_wait_without_visit_tokens() -> None:
     class Upper(fpeg.Transformer):
         def NAME(self, token: fpeg.Token) -> str:
@@ -679,6 +723,14 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     namespace: dict[str, Any] = {}
     exec(compile(source, "<template>", "exec"), namespace)
     assert namespace["Calls"]().transform(parse("f(a, [1]) ! k")) is None
+    # A grammar that recovers gets the methods of error and missing items too.
+    assert "__error__" not in source
+    recovering = RECOVERING.transformer_template()
+    assert "    def __error__(self, *children: Any) -> Any:" in recovering
+    assert "    def __missing__(self, token: fpeg.Token) -> Any:" in recovering
+    namespace = {}
+    exec(compile(recovering, "<template>", "exec"), namespace)
+    assert namespace["Transformer"]().transform(recovered("[1, x")) is None
     keyword = fpeg.Grammar('start: if\nif: "x"').transformer_template()
     assert "    def if_(self, *children: Any) -> Any:" in keyword
     # Builders give the nodes of one name kinds apart, and a method meets them all.

@@ -145,7 +145,9 @@ class Transformer:
     says what it gets: the fields of the node by name, `*children` for the children, one other
     parameter for the list of children, and keyword-only `meta`, `node` or `children` beside.
     `return fpeg.Discard` removes the node from its parent, and a method that yields puts each
-    value into the parent in the node's place.
+    value into the parent in the node's place. In a tree that a parse recovered, `__error__`
+    gives the value of an `<error>` node and `__missing__` that of a `<missing>` token, which
+    otherwise stay as they are.
 
     `class T(Transformer, strict=True)` makes every public method of `T` name a rule or terminal
     of the grammar it meets. `class T(Transformer, positions="ast")` gives each value made for
@@ -375,10 +377,20 @@ def handler(cls: type, name: str) -> str | None:
 
 
 def method_name(name: str) -> str:
-    """Return the method name of the rule or terminal `name`, `m__r` for an import's `m.r`."""
+    """Return the method name of the rule or terminal `name`, `m__r` for an import's `m.r`.
+
+    The node of what a recovery matched has its method `__error__`, and the token of one that
+    matched nothing `__missing__`.
+    """
+    if name in _RECOVERED:
+        return _RECOVERED[name]
     if "." in name and all(part.isidentifier() for part in name.split(".")):
         return name.replace(".", "__")
     return name
+
+
+# The methods of the kinds that a recovering parse makes.
+_RECOVERED = {"<error>": "__error__", "<missing>": "__missing__"}
 
 
 def answered(cls: type, method: str, name: str, answering: dict[str, str]) -> None:

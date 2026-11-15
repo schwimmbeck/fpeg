@@ -141,6 +141,18 @@ def test_pretty_indents_items_by_depth_and_names_their_fields() -> None:
     assert tree.pretty() == "start\n  call\n    name=f\n    args=a\n    kw=kw\tk\n"
 
 
+def test_pretty_shows_what_an_error_node_took_and_a_missing_token_by_its_kind() -> None:
+    grammar = fpeg.Grammar(
+        'start: "(" (NAME ^ name) ")" ^ close\nNAME: [a-z]+\n%ignore " "+\n'
+        '%recover name: (!")" .)*\n%recover close: ()'
+    )
+    with pytest.raises(fpeg.ParseError) as raised:
+        grammar.parse("(1 2", recover=True)
+    tree = raised.value.tree
+    assert isinstance(tree, fpeg.Tree)
+    assert tree.pretty() == "start\n  <error>\t'1 2'\n  <missing>\n"
+
+
 def test_subtrees_come_children_first_or_parents_first() -> None:
     tree = parse("f(a) ! k, g(b)")
     assert [t.data for t in tree.iter_subtrees()] == ["kw", "call", "call", "start"]
@@ -175,6 +187,7 @@ def test_pretty_and_repr_keep_a_lone_surrogate() -> None:
             return "\udc80"
 
     assert fpeg.Tree("a", ["\ud800"]).pretty() == "a\t\ud800\n"
+    assert fpeg.Tree("\ud800", []).pretty() == "\ud800\n"
     assert repr(fpeg.Tree("a", [Odd()])) == "Tree('a', [\udc80])"
 
 

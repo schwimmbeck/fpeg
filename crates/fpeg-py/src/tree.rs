@@ -324,6 +324,26 @@ fn cycle() -> PyErr {
     PyValueError::new_err("the tree contains itself")
 }
 
+/// The kind of the node of what a recovery matched.
+const ERROR_KIND: &str = "<error>";
+
+/// The kind of the token a recovery that matched nothing makes.
+const MISSING_KIND: &str = "<missing>";
+
+/// What `pretty` shows for an item that is no tree: its text, or the kind of a missing token,
+/// which has none.
+fn token_text<'py>(item: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyString>> {
+    let py = item.py();
+    if let Ok(kind) = item.getattr(intern!(py, "type"))
+        && kind
+            .extract::<&str>()
+            .is_ok_and(|kind| kind == MISSING_KIND)
+    {
+        return Ok(PyString::new(py, MISSING_KIND));
+    }
+    item.str()
+}
+
 /// Joins the parts of a text in Python, so that a text too large for memory raises MemoryError
 /// instead of ending the process, and a lone surrogate stays as it is.
 fn join<'py>(parts: &Bound<'py, PyList>) -> PyResult<Bound<'py, PyAny>> {
@@ -447,7 +467,8 @@ impl Tree {
     }
 
     /// The tree as lines indented by depth, with `name=` before an item that fills a field of a
-    /// node of a parse.
+    /// node of a parse. An `<error>` node of a parse shows the text it took, which hidden tokens
+    /// hold, and a `<missing>` token its kind, since it has no text.
     #[pyo3(signature = (indent_str = "  "))]
     fn pretty<'py>(slf: &Bound<'py, Self>, indent_str: &str) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
@@ -478,7 +499,7 @@ impl Tree {
                 parts.append(intern!(py, "="))?;
             }
             let Ok(tree) = obj.cast::<Tree>() else {
-                parts.append(obj.str()?)?;
+                parts.append(token_text(&obj)?)?;
                 parts.append(intern!(py, "\n"))?;
                 continue;
             };
@@ -487,8 +508,18 @@ impl Tree {
                 return Err(cycle());
             }
             pending.push(Step::Leave(key));
-            parts.append(tree.get().data_object(py).bind(py).str()?)?;
+            let data = tree.get().data_object(py).into_bound(py).str()?;
+            parts.append(&data)?;
             let children = tree.get().children_list(py)?;
+            if children.is_empty()
+                && data.to_str().is_ok_and(|data| data == ERROR_KIND)
+                && let Some(text) = tree.get().text(py)
+            {
+                parts.append(intern!(py, "\t"))?;
+                parts.append(text.repr()?)?;
+                parts.append(intern!(py, "\n"))?;
+                continue;
+            }
             let fields = tree.get().child_fields(children.len());
             // The length the fields were made for, as another thread may change a list built in
             // Python meanwhile.
@@ -498,7 +529,7 @@ impl Tree {
                     parts.append(field)?;
                     parts.append(intern!(py, "="))?;
                 }
-                parts.append(children.get_item(0)?.str()?)?;
+                parts.append(token_text(&children.get_item(0)?)?)?;
                 parts.append(intern!(py, "\n"))?;
                 continue;
             }

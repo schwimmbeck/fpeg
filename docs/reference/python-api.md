@@ -407,13 +407,43 @@ try:
 except fpeg.ParseError as error:
     for problem in error.errors:
         print(problem)
-    print(error.tree)
+    recovered = error.tree
+print(recovered.pretty())
 ```
 
 ```output
 line 1, column 5: item
 line 1, column 9: close
-Tree('start', [Tree('item', [Token('NUMBER', '1')]), Tree('<error>', []), Tree('item', [Token('NUMBER', '3')]), Token('<missing>', '')])
+start
+  item	1
+  <error>	'x'
+  item	3
+  <missing>
+
+```
+
+In the recovered tree an `<error>` node holds what the recovery took, which its `text` gives, and a `<missing>` token stands where the recovery took nothing. A `Transformer` gives them to its methods `__error__` and `__missing__`, which take what the methods of nodes and tokens take, and keeps them as they are where a class defines neither. A field that only the failed expression held is `None`.
+
+```python
+class Numbers(fpeg.Transformer):
+    def start(self, children):
+        return children
+
+    def item(self, *children):
+        return int(children[0])
+
+    def __error__(self, children, *, node):
+        return f"skipped {node.text!r}"
+
+    def __missing__(self, token):
+        return "missing"
+
+
+print(Numbers().transform(recovered))
+```
+
+```output
+[1, "skipped 'x'", 3, 'missing']
 ```
 
 ```{eval-rst}

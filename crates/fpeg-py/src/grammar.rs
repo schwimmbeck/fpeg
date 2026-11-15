@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 
 use fpeg::{
-    DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, DiagnosticCode, FieldCount, FieldId, Limits, ModuleFiles,
-    Parser,
+    DEFAULT_MAX_DEPTH, DEFAULT_MAX_STEPS, DiagnosticCode, FieldCount, FieldId, KindId, Limits,
+    ModuleFiles, Parser,
 };
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyUnicodeDecodeError, PyValueError};
 use pyo3::prelude::*;
@@ -498,6 +498,19 @@ impl Grammar {
             out.push_str(&format!(
                 "    def {method}({signature}) -> Any:\n{doc}        ...\n"
             ));
+        }
+        // A grammar with recoveries makes error nodes and missing tokens, whose methods have
+        // names of their own.
+        if kinds
+            .get(KindId::ERROR.0 as usize)
+            .is_some_and(|kind| kind.made)
+        {
+            out.push_str(
+                "\n    def __error__(self, *children: Any) -> Any:\n        \"\"\"Return the \
+                 value of an <error> node, what a recovery took where a label failed.\"\"\"\n        \
+                 ...\n\n    def __missing__(self, token: fpeg.Token) -> Any:\n        \"\"\"Return \
+                 the value of a <missing> token, where a recovery took nothing.\"\"\"\n        ...\n",
+            );
         }
         Ok(out)
     }
