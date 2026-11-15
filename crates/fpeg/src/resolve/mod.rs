@@ -1113,33 +1113,22 @@ impl<'g> Resolver<'g> {
             );
             self.error(DiagnosticCode::Precedence, message, rule.name.span);
         }
-        // Its levels would refer to parameters that nothing binds, which only adds errors.
+        // The pre-pass reported the parameters, and the levels would refer to parameters that
+        // nothing binds, which only adds errors.
         if !rule.params.is_empty() {
-            let message = format!(
-                "the precedence block {} cannot have parameters",
-                rule.name.text
-            );
-            self.error(DiagnosticCode::Precedence, message, rule.name.span);
             return ir::Expr::Empty;
         }
         let mut scope_names = HashMap::new();
         let mut ids = Vec::new();
         for level in levels {
-            // A level whose name another level owns, or a level of a block with parameters, gets
+            // A level whose name a rule or another level owns, which the pre-pass reported, gets
             // a rule of its own that only its block calls.
             let id = match self.levels.get(level.name.text.as_str()) {
                 Some(&(id, owner)) if std::ptr::eq(owner, level) => id,
                 _ => self.allocate(),
             };
             ids.push(id);
-            if self.by_name.contains_key(level.name.text.as_str()) {
-                let message = format!("the level {} has the name of a rule", level.name.text);
-                self.error(DiagnosticCode::Duplicate, message, level.name.span);
-            }
-            if scope_names.insert(level.name.text.clone(), id).is_some() {
-                let message = format!("the level {} is defined twice", level.name.text);
-                self.error(DiagnosticCode::Duplicate, message, level.name.span);
-            }
+            scope_names.insert(level.name.text.clone(), id);
         }
         let (no_params, no_sizes) = (HashMap::new(), HashMap::new());
         let scope = Scope {

@@ -170,7 +170,7 @@ impl Items {
         }
     }
 
-    /// The items of a field's match: those without a field get this one (S5).
+    /// The items of a field's match: those without a field get this one.
     fn labelled(mut self, field: FieldId) -> Items {
         if self.unfielded > 0 {
             let held = self.fields.entry(field).or_insert(0);

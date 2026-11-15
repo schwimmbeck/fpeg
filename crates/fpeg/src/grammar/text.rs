@@ -81,6 +81,7 @@ pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<
                 ParseErrorKind::Limit(limit) => {
                     let what = match limit {
                         Limit::InputSize => "is too large",
+                        Limit::Memory => "takes too much memory",
                         _ => "takes too long",
                     };
                     let message = format!("the grammar text {what} to read");
@@ -663,7 +664,7 @@ impl<'t> Converter<'t> {
             if c == '\\' {
                 let escape_len = escape_length(rest);
                 let decoded = self.unescape(&rest[..escape_len], at, true);
-                units.extend(decoded.chars().map(ClassUnit::Escaped));
+                units.extend(decoded.chars().map(ClassUnit::Char));
                 rest = &rest[escape_len..];
             } else {
                 units.push(if c == '-' {
@@ -677,29 +678,24 @@ impl<'t> Converter<'t> {
         let mut items = Vec::new();
         let mut i = 0;
         while i < units.len() {
-            match (&units[i], units.get(i + 1), units.get(i + 2)) {
-                (first, Some(ClassUnit::Dash), Some(last))
-                    if first.char().is_some() && last.char().is_some() =>
-                {
-                    let (Some(a), Some(b)) = (first.char(), last.char()) else {
-                        break;
-                    };
-                    items.push(ClassItem::Range(a, b));
-                    i += 3;
-                }
-                (ClassUnit::Property(property, negated), _, _) => {
-                    items.push(ClassItem::Property {
-                        property: *property,
-                        negated: *negated,
-                    });
-                    i += 1;
-                }
-                (unit, _, _) => {
-                    let c = unit.char().unwrap_or('-');
-                    items.push(ClassItem::Range(c, c));
-                    i += 1;
-                }
+            let range = match (&units[i], units.get(i + 1), units.get(i + 2)) {
+                (first, Some(ClassUnit::Dash), Some(last)) => first.char().zip(last.char()),
+                _ => None,
+            };
+            if let Some((a, b)) = range {
+                items.push(ClassItem::Range(a, b));
+                i += 3;
+                continue;
             }
+            items.push(match &units[i] {
+                ClassUnit::Property(property, negated) => ClassItem::Property {
+                    property: *property,
+                    negated: *negated,
+                },
+                ClassUnit::Char(c) => ClassItem::Range(*c, *c),
+                ClassUnit::Dash => ClassItem::Range('-', '-'),
+            });
+            i += 1;
         }
         ExprKind::Class(Class { negated, items })
     }
@@ -802,8 +798,8 @@ fn escape_length(rest: &str) -> usize {
 
 /// One element of a class body after escapes are decoded.
 enum ClassUnit {
+    /// A character, written or escaped, where an escaped dash is a character too.
     Char(char),
-    Escaped(char),
     Dash,
     Property(Property, bool),
 }
@@ -812,7 +808,7 @@ impl ClassUnit {
     /// The code point the unit stands for. A bare dash stands for itself only outside ranges.
     fn char(&self) -> Option<char> {
         match self {
-            ClassUnit::Char(c) | ClassUnit::Escaped(c) => Some(*c),
+            ClassUnit::Char(c) => Some(*c),
             ClassUnit::Dash => Some('-'),
             ClassUnit::Property(..) => None,
         }

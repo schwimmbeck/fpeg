@@ -156,18 +156,14 @@ fn text_value(text: &str) -> Text {
     }
 }
 
-fn boxed(kind: ExprKind) -> Expr {
-    Expr::new(kind)
-}
-
 /// `()`: the empty string.
 pub fn empty() -> Expr {
-    boxed(ExprKind::Empty)
+    Expr::new(ExprKind::Empty)
 }
 
 /// A literal.
 pub fn lit(text: &str) -> Expr {
-    boxed(ExprKind::Literal {
+    Expr::new(ExprKind::Literal {
         text: text.to_owned(),
         case_insensitive: false,
     })
@@ -175,7 +171,7 @@ pub fn lit(text: &str) -> Expr {
 
 /// An ASCII case-insensitive literal, `"text"i`.
 pub fn lit_i(text: &str) -> Expr {
-    boxed(ExprKind::Literal {
+    Expr::new(ExprKind::Literal {
         text: text.to_owned(),
         case_insensitive: true,
     })
@@ -183,7 +179,7 @@ pub fn lit_i(text: &str) -> Expr {
 
 /// A character class, `[...]`.
 pub fn class<const N: usize>(items: [ClassItem; N]) -> Expr {
-    boxed(ExprKind::Class(Class {
+    Expr::new(ExprKind::Class(Class {
         negated: false,
         items: items.to_vec(),
     }))
@@ -191,7 +187,7 @@ pub fn class<const N: usize>(items: [ClassItem; N]) -> Expr {
 
 /// A negated character class, `[^...]`.
 pub fn not_class<const N: usize>(items: [ClassItem; N]) -> Expr {
-    boxed(ExprKind::Class(Class {
+    Expr::new(ExprKind::Class(Class {
         negated: true,
         items: items.to_vec(),
     }))
@@ -217,12 +213,12 @@ pub fn prop(property: Property) -> ClassItem {
 
 /// `.`: any one code point.
 pub fn any() -> Expr {
-    boxed(ExprKind::Any)
+    Expr::new(ExprKind::Any)
 }
 
 /// A reference to a rule, parameter or level.
 pub fn r(name: &str) -> Expr {
-    boxed(ExprKind::Reference {
+    Expr::new(ExprKind::Reference {
         name: Name::new(name),
         args: Vec::new(),
     })
@@ -230,7 +226,7 @@ pub fn r(name: &str) -> Expr {
 
 /// A use of a template rule with arguments.
 pub fn r_args<const N: usize>(name: &str, args: [Expr; N]) -> Expr {
-    boxed(ExprKind::Reference {
+    Expr::new(ExprKind::Reference {
         name: Name::new(name),
         args: args.into(),
     })
@@ -238,17 +234,17 @@ pub fn r_args<const N: usize>(name: &str, args: [Expr; N]) -> Expr {
 
 /// A sequence.
 pub fn seq<const N: usize>(items: [Expr; N]) -> Expr {
-    boxed(ExprKind::Sequence(items.into()))
+    Expr::new(ExprKind::Sequence(items.into()))
 }
 
 /// An ordered choice.
 pub fn choice<const N: usize>(items: [Expr; N]) -> Expr {
-    boxed(ExprKind::Choice(items.into()))
+    Expr::new(ExprKind::Choice(items.into()))
 }
 
 /// Repetition between `min` and `max` times, unbounded if `max` is `None`.
 pub fn rep(expr: Expr, min: u32, max: Option<u32>) -> Expr {
-    boxed(ExprKind::Repeat {
+    Expr::new(ExprKind::Repeat {
         expr: Box::new(expr),
         min,
         max,
@@ -281,7 +277,7 @@ pub fn sep_some(item: Expr, separator: Expr) -> Expr {
 }
 
 fn separated(item: Expr, separator: Expr, at_least_one: bool) -> Expr {
-    boxed(ExprKind::Separated {
+    Expr::new(ExprKind::Separated {
         item: Box::new(item),
         separator: Box::new(separator),
         at_least_one,
@@ -290,17 +286,17 @@ fn separated(item: Expr, separator: Expr, at_least_one: bool) -> Expr {
 
 /// `&e`.
 pub fn and(expr: Expr) -> Expr {
-    boxed(ExprKind::And(Box::new(expr)))
+    Expr::new(ExprKind::And(Box::new(expr)))
 }
 
 /// `!e`.
 pub fn not(expr: Expr) -> Expr {
-    boxed(ExprKind::Not(Box::new(expr)))
+    Expr::new(ExprKind::Not(Box::new(expr)))
 }
 
 /// `label=e`.
 pub fn field(name: &str, expr: Expr) -> Expr {
-    boxed(ExprKind::Field {
+    Expr::new(ExprKind::Field {
         name: Name::new(name),
         expr: Box::new(expr),
     })
@@ -308,19 +304,19 @@ pub fn field(name: &str, expr: Expr) -> Expr {
 
 /// `~`.
 pub fn cut() -> Expr {
-    boxed(ExprKind::Cut)
+    Expr::new(ExprKind::Cut)
 }
 
 /// `%error("message")`, which makes the sequence it ends an error alternative.
 pub fn error_alternative(message: &str) -> Expr {
-    boxed(ExprKind::Error {
+    Expr::new(ExprKind::Error {
         message: text_value(message),
     })
 }
 
 /// `e ^ "message"`.
 pub fn label_message(expr: Expr, message: &str) -> Expr {
-    boxed(ExprKind::Label {
+    Expr::new(ExprKind::Label {
         expr: Box::new(expr),
         label: ErrorLabel::Message(text_value(message)),
     })
@@ -328,7 +324,7 @@ pub fn label_message(expr: Expr, message: &str) -> Expr {
 
 /// `e ^ name`, which `%recover` can give a recovery.
 pub fn label(expr: Expr, name: &str) -> Expr {
-    boxed(ExprKind::Label {
+    Expr::new(ExprKind::Label {
         expr: Box::new(expr),
         label: ErrorLabel::Named(Name::new(name)),
     })
@@ -336,7 +332,7 @@ pub fn label(expr: Expr, name: &str) -> Expr {
 
 /// `%on(flag, e)`.
 pub fn on(flag: &str, expr: Expr) -> Expr {
-    boxed(ExprKind::FlagOn {
+    Expr::new(ExprKind::FlagOn {
         flag: Name::new(flag),
         expr: Box::new(expr),
     })
@@ -344,7 +340,7 @@ pub fn on(flag: &str, expr: Expr) -> Expr {
 
 /// `%off(flag, e)`.
 pub fn off(flag: &str, expr: Expr) -> Expr {
-    boxed(ExprKind::FlagOff {
+    Expr::new(ExprKind::FlagOff {
         flag: Name::new(flag),
         expr: Box::new(expr),
     })
@@ -352,7 +348,7 @@ pub fn off(flag: &str, expr: Expr) -> Expr {
 
 /// `%if(flag)`.
 pub fn if_flag(flag: &str) -> Expr {
-    boxed(ExprKind::FlagTest {
+    Expr::new(ExprKind::FlagTest {
         flag: Name::new(flag),
         negated: false,
     })
@@ -360,7 +356,7 @@ pub fn if_flag(flag: &str) -> Expr {
 
 /// `%if(!flag)`.
 pub fn if_not_flag(flag: &str) -> Expr {
-    boxed(ExprKind::FlagTest {
+    Expr::new(ExprKind::FlagTest {
         flag: Name::new(flag),
         negated: true,
     })
@@ -368,17 +364,17 @@ pub fn if_not_flag(flag: &str) -> Expr {
 
 /// `%indent(e)`.
 pub fn indent(expr: Expr) -> Expr {
-    boxed(ExprKind::Indent(Box::new(expr)))
+    Expr::new(ExprKind::Indent(Box::new(expr)))
 }
 
 /// `%same`.
 pub fn same() -> Expr {
-    boxed(ExprKind::Same)
+    Expr::new(ExprKind::Same)
 }
 
 /// `%def(name, e)`.
 pub fn def(name: &str, expr: Expr) -> Expr {
-    boxed(ExprKind::Def {
+    Expr::new(ExprKind::Def {
         name: Name::new(name),
         expr: Box::new(expr),
     })
@@ -386,7 +382,7 @@ pub fn def(name: &str, expr: Expr) -> Expr {
 
 /// `%ref(name)`.
 pub fn capture_ref(name: &str) -> Expr {
-    boxed(ExprKind::Ref {
+    Expr::new(ExprKind::Ref {
         name: Name::new(name),
     })
 }
