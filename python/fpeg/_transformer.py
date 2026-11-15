@@ -110,7 +110,7 @@ class _VArgs:
 
 
 def v_args(
-    inline: bool = False, meta: bool = False, tree: bool = False, wrapper: None = None
+    inline: bool = False, meta: bool = False, tree: bool = False
 ) -> Callable[[_Callable], _Callable]:
     """Say by decorator how methods are called.
 
@@ -119,8 +119,6 @@ def v_args(
     without options of its own. fpeg reads the same from a signature without a decorator:
     `*children` for inline, and a keyword-only `meta` parameter for the position.
     """
-    if wrapper is not None:
-        raise TypeError("fpeg's v_args takes no wrapper")
     options = (inline, meta, tree)
 
     def decorate(target: _Callable) -> _Callable:
@@ -239,14 +237,14 @@ class Transformer:
         on_path: set[int] = set()
         # An item to transform, or a tree whose children's values start at a position of values.
         pending: list[tuple[Any, int]] = [(root, -1)]
-        while pending:
+        # The root comes last, and its values are what the walk gives.
+        while True:
             item, start = pending.pop()
             if start >= 0:
                 on_path.discard(id(item))
                 children = values[start:]
                 del values[start:]
                 own = self._owned_value(item, children)
-                # The root comes last, and its values are what the walk gives.
                 if item is root:
                     return own
                 values.extend(own)
@@ -258,7 +256,6 @@ class Transformer:
                 pending.extend((child, -1) for child in reversed(item.children))
             else:
                 values.extend(self._values(item))
-        return tuple(values)
 
     def _owned_value(self, tree: Tree, children: list[Any]) -> Sequence[Any]:
         cls = type(self)

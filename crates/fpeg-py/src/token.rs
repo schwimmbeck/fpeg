@@ -168,12 +168,10 @@ fn plain<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
 /// A position as Python sees it.
 fn position_object(py: Python<'_>, value: isize) -> Py<PyAny> {
     if value < 0 {
-        py.None()
-    } else {
-        value
-            .into_pyobject(py)
-            .map_or_else(|_| py.None(), |v| v.into_any().unbind())
+        return py.None();
     }
+    let Ok(value) = value.into_pyobject(py);
+    value.into_any().unbind()
 }
 
 /// A position given from Python: an int, or `None` for none.
@@ -209,15 +207,23 @@ fn trap(body: impl FnOnce(Python<'_>) -> PyResult<*mut ffi::PyObject>) -> *mut f
     }
 }
 
+/// The arguments of a call, in the order of their names.
+struct Arguments<'py> {
+    /// The arguments the call needs.
+    required: Vec<Bound<'py, PyAny>>,
+    /// The others, where given.
+    optional: Vec<Option<Bound<'py, PyAny>>>,
+}
+
 /// The arguments of a call, matched to `names` by position and keyword, the first `required`
-/// given.
+/// of which must be given.
 fn bind<'py>(
     args: &Bound<'py, PyTuple>,
     kwargs: Option<&Bound<'py, PyDict>>,
     names: &[&str],
     required: usize,
     what: &str,
-) -> PyResult<Vec<Option<Bound<'py, PyAny>>>> {
+) -> PyResult<Arguments<'py>> {
     if args.len() > names.len() {
         let message = format!("{what} takes at most {} arguments", names.len());
         return Err(PyTypeError::new_err(message));
@@ -238,11 +244,13 @@ fn bind<'py>(
         }
         values[index] = Some(value);
     }
-    if let Some(missing) = (0..required).find(|&i| values[i].is_none()) {
-        let message = format!("{what} needs the argument {}", names[missing]);
-        return Err(PyTypeError::new_err(message));
-    }
-    Ok(values)
+    let optional = values.split_off(required);
+    let required = (values.into_iter().zip(names))
+        .map(|(value, name)| {
+            value.ok_or_else(|| PyTypeError::new_err(format!("{what} needs the argument {name}")))
+        })
+        .collect::<PyResult<_>>()?;
+    Ok(Arguments { required, optional })
 }
 
 /// The arguments of `Token(...)`, in order.
@@ -257,28 +265,25 @@ const CONSTRUCTOR: [&str; 8] = [
     "end_pos",
 ];
 
-/// A token of a type and value with the given positions, as `Token(...)` makes it.
+/// A token of a type and value with the positions given in the order of `Token(...)`.
 fn construct<'py>(
     py: Python<'py>,
     subtype: *mut ffi::PyTypeObject,
-    values: &[Option<Bound<'py, PyAny>>],
+    kind_name: &Bound<'py, PyAny>,
+    text: &Bound<'py, PyAny>,
+    positions: &[Option<Bound<'py, PyAny>>],
 ) -> PyResult<Bound<'py, PyAny>> {
-    let value = |i: usize| values.get(i).and_then(Option::as_ref);
+    let value = |i: usize| positions.get(i).and_then(Option::as_ref);
     let positions = Positions {
-        start_pos: position_from(value(2))?,
-        line: position_from(value(3))?,
-        column: position_from(value(4))?,
-        end_line: position_from(value(5))?,
-        end_column: position_from(value(6))?,
-        end_pos: position_from(value(7))?,
+        start_pos: position_from(value(0))?,
+        line: position_from(value(1))?,
+        column: position_from(value(2))?,
+        end_line: position_from(value(3))?,
+        end_column: position_from(value(4))?,
+        end_pos: position_from(value(5))?,
     };
-    let kind_name = value(0).map_or_else(|| py.None().into_bound(py), Clone::clone);
-    let text = match value(1) {
-        Some(text) => text.clone(),
-        None => crate::string(py, "")?.into_any(),
-    };
-    let obj = new_str_subtype(py, subtype, text)?;
-    fill(&obj, kind_name, positions, 0, 0);
+    let obj = new_str_subtype(py, subtype, text.clone())?;
+    fill(&obj, kind_name.clone(), positions, 0, 0);
     Ok(obj)
 }
 
@@ -298,8 +303,9 @@ unsafe extern "C" fn token_new(
             };
             (args, kwargs)
         };
-        let values = bind(&args, kwargs.as_ref(), &CONSTRUCTOR, 2, "Token()")?;
-        Ok(construct(py, subtype, &values)?.into_ptr())
+        let Arguments { required, optional } =
+            bind(&args, kwargs.as_ref(), &CONSTRUCTOR, 2, "Token()")?;
+        Ok(construct(py, subtype, &required[0], &required[1], &optional)?.into_ptr())
     })
 }
 
@@ -381,7 +387,7 @@ unsafe extern "C" fn token_update(
             };
             (obj, args, kwargs)
         };
-        let values = bind(&args, kwargs.as_ref(), &["type", "value"], 0, "update()")?;
+        let values = bind(&args, kwargs.as_ref(), &["type", "value"], 0, "update()")?.optional;
         let given = |i: usize| values[i].clone().filter(|v| !v.is_none());
         let kind_name = given(0).unwrap_or_else(|| kind_name_of(&obj));
         let text = match given(1) {
@@ -414,21 +420,17 @@ unsafe extern "C" fn token_new_borrow_pos(
             (cls, args, kwargs)
         };
         let names = ["type", "value", "borrow_t"];
-        let values = bind(&args, kwargs.as_ref(), &names, 3, "new_borrow_pos()")?;
-        let borrowed = values[2].as_ref().map(|t| {
-            let attribute = |name: &str| t.getattr(name).ok().filter(|v| !v.is_none());
-            [
-                attribute("start_pos"),
-                attribute("line"),
-                attribute("column"),
-                attribute("end_line"),
-                attribute("end_column"),
-                attribute("end_pos"),
-            ]
-        });
-        let mut all = vec![values[0].clone(), values[1].clone()];
-        all.extend(borrowed.into_iter().flatten());
-        Ok(construct(py, cls.as_type_ptr(), &all)?.into_ptr())
+        let given = bind(&args, kwargs.as_ref(), &names, 3, "new_borrow_pos()")?.required;
+        let attribute = |name: &str| given[2].getattr(name).ok().filter(|v| !v.is_none());
+        let positions = [
+            attribute("start_pos"),
+            attribute("line"),
+            attribute("column"),
+            attribute("end_line"),
+            attribute("end_column"),
+            attribute("end_pos"),
+        ];
+        Ok(construct(py, cls.as_type_ptr(), &given[0], &given[1], &positions)?.into_ptr())
     })
 }
 

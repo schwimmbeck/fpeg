@@ -134,8 +134,6 @@ def test_a_star_parameter_or_inline_v_args_gets_the_children_as_arguments() -> N
             return (name, *rest)
 
     assert Decorated().transform(parse("f(a) ! k")).children == [("f", "a", "K")]
-    with pytest.raises(TypeError, match="takes no wrapper"):
-        fpeg.v_args(wrapper=print)  # type: ignore[arg-type] # a wrapper is refused
 
 
 def test_parameters_named_after_fields_get_one_value_none_or_a_list() -> None:
