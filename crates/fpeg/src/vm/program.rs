@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use super::Passes;
 use crate::analysis::Bytes;
-use crate::ir::{CharSet, Reserved};
+use crate::ir::{self, CharSet, Reserved};
 use crate::tree::{FieldId, Kind, KindId, Names};
 
 /// One instruction of the parsing machine.
@@ -334,8 +334,8 @@ pub(crate) struct Program {
     pub names: Arc<Names>,
     /// What an expected set shows for each kind.
     pub kind_display: Vec<String>,
-    /// The texts of the error labels.
-    pub labels: Vec<String>,
+    /// The error labels, messages and names.
+    pub labels: Vec<ir::Label>,
     /// Where the recovery routine of each label starts, for the labels that have one.
     pub recoveries: Vec<Option<u32>>,
     /// The kind table shown to callers.

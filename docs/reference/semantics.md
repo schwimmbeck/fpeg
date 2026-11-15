@@ -159,6 +159,7 @@ A parse that does not succeed fails at the *farthest failure position*, with an 
 
 - A `token` expression that fails at position `p` records `p`, outside of `not`, `and` and the skip expression. Of all recorded positions the largest is the farthest failure position. The expected set holds the kinds of the tokens that failed there, by display name where the grammar gives one.
 - An `indent` or `same` whose column check fails records the position it checked, expecting indentation.
+- A labeled error and an error item at position `p` have the expected set of `p` in the same way: what failed there in the whole parse. A named label shows it after its name.
 - If the input does not end where the parse ended, that position counts as a failure that expects the end of the input. The recoveries of the failed parse are the error items of the success.
 - A parse that ends in an error `(l, p, D)` fails with that error instead, and its recoveries are the error items in `D`.
 

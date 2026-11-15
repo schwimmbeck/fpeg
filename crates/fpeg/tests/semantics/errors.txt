@@ -8,7 +8,7 @@ error at 1: b is missing
 === a named error label stops the parse with its name
 start: "a" ("b" ^ missing_b)
 --- "a"
-error at 1: missing_b
+error at 1: missing_b: expected "b"
 
 === a labeled error is not caught by a choice
 start: "a" ("b" ^ "need b") | "a" "c"

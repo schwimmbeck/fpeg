@@ -190,7 +190,9 @@ impl Found {
     fn of_error(error: &fpeg::ParseError) -> Found {
         let (expected, label) = match &error.kind {
             ParseErrorKind::NoMatch { expected } => (expected.clone(), None),
-            ParseErrorKind::Label(label) => (Vec::new(), Some(label.clone())),
+            ParseErrorKind::Label {
+                label, expected, ..
+            } => (expected.clone(), Some(label.clone())),
             _ => (Vec::new(), None),
         };
         let limit = match &error.kind {
@@ -216,9 +218,9 @@ impl Found {
         Found {
             start: recovery.start,
             end: recovery.end,
-            message: recovery.label.clone(),
+            message: recovery.message(),
             label: Some(recovery.label.clone()),
-            expected: Vec::new(),
+            expected: recovery.expected.clone(),
             limit: None,
         }
     }

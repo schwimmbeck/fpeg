@@ -16,7 +16,7 @@
 //! pass before, its seed, and the rule's routine runs again for as long as each pass ends
 //! further.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher, RandomState};
 use std::sync::Arc;
 
@@ -572,20 +572,20 @@ pub(crate) struct Machine<'p, 'i> {
     memory: Memory,
     /// The farthest position a failure was recorded at.
     farthest: Option<u32>,
-    /// In diagnose mode, the farthest failure position of the run before, and what failed there.
-    diagnose: Option<(u32, BTreeSet<Expected>)>,
+    /// In diagnose mode, the positions the run before asks about, each with what failed there.
+    diagnose: BTreeMap<u32, BTreeSet<Expected>>,
     /// The counts of a profiling parse.
     profiler: Option<Box<Profiler>>,
 }
 
 impl<'p, 'i> Machine<'p, 'i> {
-    /// A machine for one parse. The input must fit 32-bit offsets. With `diagnose`, it collects
-    /// what fails at that position.
+    /// A machine for one parse. The input must fit 32-bit offsets. It collects what fails at the
+    /// positions of `diagnose`, which a run after the first asks about.
     pub fn new(
         program: &'p Program,
         input: &'i str,
         limits: Limits,
-        diagnose: Option<u32>,
+        diagnose: &[u32],
     ) -> Machine<'p, 'i> {
         Machine {
             program,
@@ -631,7 +631,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             budget: limits.max_steps,
             memory: Memory::new(limits.memory_bytes(input.len())),
             farthest: None,
-            diagnose: diagnose.map(|at| (at, BTreeSet::new())),
+            diagnose: (diagnose.iter()).map(|&at| (at, BTreeSet::new())).collect(),
             profiler: None,
         }
     }
@@ -690,9 +690,10 @@ impl<'p, 'i> Machine<'p, 'i> {
         self.nodes.len()
     }
 
-    /// In diagnose mode, what failed at the position, as an expected set shows it, sorted.
-    pub fn expected(&self) -> Vec<String> {
-        let Some((_, expected)) = &self.diagnose else {
+    /// In diagnose mode, what failed at a position it was asked about, as an expected set shows
+    /// it, sorted.
+    pub fn expected(&self, at: u32) -> Vec<String> {
+        let Some(expected) = self.diagnose.get(&at) else {
             return Vec::new();
         };
         let shown: BTreeSet<String> = (expected.iter())
@@ -2059,9 +2060,10 @@ impl<'p, 'i> Machine<'p, 'i> {
         let label = (self.labels.get(&item.value))
             .and_then(|&label| self.program.labels.get(label as usize));
         Recovery {
-            label: label.cloned().unwrap_or_default(),
+            label: label.map_or_else(String::new, |label| label.text().to_owned()),
             start: item.start as usize,
             end: item.end as usize,
+            expected: Vec::new(),
         }
     }
 
@@ -2072,9 +2074,7 @@ impl<'p, 'i> Machine<'p, 'i> {
         if self.farthest.is_none_or(|farthest| pos > farthest) {
             self.farthest = Some(pos);
         }
-        if let Some((at, expected)) = &mut self.diagnose
-            && pos == *at
-        {
+        if let Some(expected) = self.diagnose.get_mut(&pos) {
             expected.insert(what);
         }
     }

@@ -104,6 +104,15 @@ pub(crate) enum Label {
     Named(String),
 }
 
+impl Label {
+    /// The message or the name.
+    pub fn text(&self) -> &str {
+        match self {
+            Label::Message(text) | Label::Named(text) => text,
+        }
+    }
+}
+
 /// The reserved words, compared exactly or, for case-insensitive literals, by ASCII lowercase.
 #[derive(Debug, Default)]
 pub(crate) struct Reserved {

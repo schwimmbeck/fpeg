@@ -412,8 +412,8 @@ print(recovered.pretty())
 ```
 
 ```output
-line 1, column 5: item
-line 1, column 9: close
+line 1, column 5: item: expected NUMBER
+line 1, column 9: close: expected ",", "]"
 start
   item	1
   <error>	'x'

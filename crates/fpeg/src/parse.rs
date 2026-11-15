@@ -94,6 +94,23 @@ pub struct Recovery {
     pub start: usize,
     /// The byte offset where the recovery ended, `start` for a missing token.
     pub end: usize,
+    /// What the grammar expected where the label failed, sorted.
+    pub expected: Vec<String>,
+}
+
+impl Recovery {
+    /// The label's name, and what the grammar expected where it failed.
+    pub fn message(&self) -> String {
+        named(&self.label, &self.expected)
+    }
+}
+
+/// A named error's message: its name, and what the grammar expected where it occurred.
+fn named(name: &str, expected: &[String]) -> String {
+    match expected {
+        [] => name.to_owned(),
+        _ => format!("{name}: expected {}", expected.join(", ")),
+    }
 }
 
 /// The kinds of parse errors.
@@ -105,7 +122,14 @@ pub enum ParseErrorKind {
         expected: Vec<String>,
     },
     /// A labeled error occurred.
-    Label(String),
+    Label {
+        /// The message of `e ^ "message"`, or the name of `e ^ name`.
+        label: String,
+        /// Whether the label is a name, which its message follows with what was expected.
+        named: bool,
+        /// What the grammar expected where the error occurred, sorted.
+        expected: Vec<String>,
+    },
     /// The parse hit a limit.
     Limit(Limit),
     /// The start rule does not exist or cannot start a parse.
@@ -134,7 +158,12 @@ impl ParseError {
         match &self.kind {
             ParseErrorKind::NoMatch { expected } if expected.is_empty() => "no match".to_owned(),
             ParseErrorKind::NoMatch { expected } => format!("expected {}", expected.join(", ")),
-            ParseErrorKind::Label(label) => label.clone(),
+            ParseErrorKind::Label {
+                label,
+                named: true,
+                expected,
+            } => named(label, expected),
+            ParseErrorKind::Label { label, .. } => label.clone(),
             ParseErrorKind::Limit(Limit::Depth) => {
                 "rule calls nest deeper than the depth limit".to_owned()
             }

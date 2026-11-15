@@ -213,11 +213,7 @@ pub(crate) fn compile(
             span: Span::default(),
         }]);
     }
-    let labels = (grammar.labels.iter())
-        .map(|label| match label {
-            ir::Label::Message(text) | ir::Label::Named(text) => text.clone(),
-        })
-        .collect();
+    let labels = grammar.labels.clone();
     Ok(Program {
         code: c.code,
         strings: c.strings,

@@ -155,13 +155,19 @@ def test_parse_errors_place_the_failure_in_code_points_and_name_what_was_expecte
     assert not isinstance(error, fpeg.LimitError)
 
 
-def test_a_labelled_error_carries_its_label() -> None:
+def test_a_labelled_error_carries_its_label_and_a_named_one_what_was_expected() -> None:
     grammar = fpeg.Grammar('start: "a" ("b" ^ "a b must follow")')
     with pytest.raises(fpeg.ParseError) as raised:
         grammar.parse("ac")
     assert raised.value.label == "a b must follow"
-    assert raised.value.expected == ()
+    assert raised.value.message == "a b must follow"
+    assert raised.value.expected == ('"b"',)
     assert (raised.value.line, raised.value.column) == (1, 2)
+    named = fpeg.Grammar('start: "a" (("b" | "c" "d") ^ letter)')
+    with pytest.raises(fpeg.ParseError) as raised:
+        named.parse("ae")
+    assert raised.value.label == "letter"
+    assert raised.value.message == 'letter: expected "b", "c"'
 
 
 RECOVERING = r"""
@@ -183,7 +189,9 @@ def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:
     error = raised.value
     # The first error describes the whole, which says each on a line.
     assert (error.label, error.line, error.column) == ("item", 1, 5)
-    assert str(error) == "line 1, column 5: item\nline 1, column 9: close"
+    assert str(error) == (
+        'line 1, column 5: item: expected NUMBER\nline 1, column 9: close: expected ",", "]"'
+    )
     spans = [(e.label, e.pos, e.end_pos, e.tree, e.errors) for e in error.errors]
     assert spans == [("item", 4, 5, None, ()), ("close", 8, 8, None, ())]
     assert isinstance(error.tree, fpeg.Tree)
@@ -193,13 +201,14 @@ def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:
     with pytest.raises(fpeg.ParseError) as raised:
         grammar.parse("[1, x] 4", recover=True)
     assert raised.value.tree is None
-    assert [e.message for e in raised.value.errors] == ["item", "expected end of input"]
+    messages = [e.message for e in raised.value.errors]
+    assert messages == ["item: expected NUMBER", "expected end of input"]
     assert raised.value.message == "expected end of input"
     # Without recover, the first error ends the parse and is the one error.
     with pytest.raises(fpeg.ParseError) as raised:
         grammar.parse("[1, x, 3")
     assert raised.value.tree is None
-    assert [str(e) for e in raised.value.errors] == ["line 1, column 5: item"]
+    assert [str(e) for e in raised.value.errors] == ["line 1, column 5: item: expected NUMBER"]
 
 
 def test_limits_end_a_parse_with_a_limit_error() -> None:

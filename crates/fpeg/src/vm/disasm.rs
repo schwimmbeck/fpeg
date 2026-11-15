@@ -24,8 +24,8 @@ impl Display for Program {
             headings.insert(pc, "skip:".to_owned());
         }
         for (label, pc) in self.recoveries.iter().enumerate() {
-            if let (Some(pc), Some(text)) = (pc, self.labels.get(label)) {
-                headings.insert(*pc, format!("recover {text}:"));
+            if let (Some(pc), Some(label)) = (pc, self.labels.get(label)) {
+                headings.insert(*pc, format!("recover {}:", label.text()));
             }
         }
         for (name, &pc) in &self.entries {
@@ -151,12 +151,12 @@ impl Program {
             Inst::FailTwice => "FailTwice".to_owned(),
             Inst::LabelChoice(target) => format!("LabelChoice {target}"),
             Inst::Throw(label) => match self.labels.get(label as usize) {
-                Some(text) => format!("Throw {}", quoted(text)),
+                Some(label) => format!("Throw {}", quoted(label.text())),
                 None => format!("Throw ?{label}"),
             },
             Inst::Recover { label, field } => {
                 let label = match self.labels.get(label as usize) {
-                    Some(text) => quoted(text),
+                    Some(label) => quoted(label.text()),
                     None => format!("?{label}"),
                 };
                 match self.names.fields.get(usize::from(field.0)) {

@@ -326,7 +326,7 @@ A capture lasts until the rule activation that made it returns, and rules called
 | `%error("message")` at the end of an alternative | an error alternative, tried only when a failed parse is explained | M8 |
 | `@sync` | recovery may resume before this rule | M8 |
 
-A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text.
+A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text. A named error says its name and what the grammar expected there, as `"]" ^ close` says `close: expected "]"`, and an error with a message says its message.
 
 ## Values
 

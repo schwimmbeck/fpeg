@@ -43,7 +43,9 @@ pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<
                 format!("expected {}", expected.join(", ")),
             ),
             // The grammar of grammars labels what must follow, such as a separator.
-            ParseErrorKind::Label(what) => (DiagnosticCode::Syntax, format!("expected {what}")),
+            ParseErrorKind::Label { label, .. } => {
+                (DiagnosticCode::Syntax, format!("expected {label}"))
+            }
             ParseErrorKind::Limit(Limit::Depth) => (
                 DiagnosticCode::TooDeep,
                 "the grammar text nests too deeply to read".to_owned(),

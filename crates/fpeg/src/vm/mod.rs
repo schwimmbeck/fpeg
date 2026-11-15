@@ -21,7 +21,7 @@ use std::sync::OnceLock;
 use crate::diag::Diagnostic;
 use crate::grammar::Grammar;
 use crate::ir;
-use crate::parse::{Limit, Limits, ParseError, ParseErrorKind};
+use crate::parse::{Limit, Limits, ParseError, ParseErrorKind, Recovery};
 use crate::tree::{Kind, Names, Tree};
 use machine::{Machine, Stop};
 pub use profile::{Profile, ProfileRow};
@@ -395,6 +395,17 @@ struct Attempt {
     profile: Option<Profile>,
 }
 
+/// The recoveries, each with what failed where its label failed, as a run that collected it
+/// found.
+fn explained(diagnosed: &Machine<'_, '_>, recoveries: &[Recovery]) -> Vec<Recovery> {
+    (recoveries.iter())
+        .map(|recovery| Recovery {
+            expected: diagnosed.expected(recovery.start as u32),
+            ..recovery.clone()
+        })
+        .collect()
+}
+
 /// How a parse runs.
 #[derive(Clone, Copy, Debug, Default)]
 struct Run {
@@ -428,7 +439,7 @@ fn attempt(
     if u32::try_from(input.len()).is_err() {
         return refused(ParseErrorKind::Limit(Limit::InputSize));
     }
-    let machine = |diagnose| {
+    let machine = |diagnose: &[u32]| {
         let machine = Machine::new(program, input, limits, diagnose).budgeted(budget);
         if how.recovering {
             machine.recovering()
@@ -436,7 +447,14 @@ fn attempt(
             machine
         }
     };
-    let mut first = machine(None);
+    // A run after the first collects what failed where the errors stand. It follows the first
+    // exactly, so it ends the same way.
+    let diagnosed = |positions: &[u32]| {
+        let mut again = machine(positions);
+        let _ = again.run(entry);
+        again
+    };
+    let mut first = machine(&[]);
     if how.profiling {
         first = first.profiling();
     }
@@ -446,23 +464,35 @@ fn attempt(
     let farthest = first.farthest();
     let position = farthest.unwrap_or(0) as usize;
     let recoveries = first.take_recoveries();
+    let starts: Vec<u32> = recoveries.iter().map(|r| r.start as u32).collect();
     let result = match outcome {
-        Ok(()) => first.tree().map_err(|limit| ParseError {
-            position,
-            kind: ParseErrorKind::Limit(limit),
-            recoveries: Vec::new(),
-        }),
+        Ok(()) => match first.tree() {
+            Ok(tree) if tree.recoveries().is_empty() => Ok(tree),
+            Ok(mut tree) => {
+                // The second run holds its own memory, so the first gives its back.
+                drop(first);
+                let starts: Vec<u32> = tree.recoveries().iter().map(|r| r.start as u32).collect();
+                let again = diagnosed(&starts);
+                let explained = explained(&again, tree.recoveries());
+                tree.set_recoveries(explained);
+                Ok(tree)
+            }
+            Err(limit) => Err(ParseError {
+                position,
+                kind: ParseErrorKind::Limit(limit),
+                recoveries: Vec::new(),
+            }),
+        },
         Err(Stop::NoMatch) => {
-            // The second run holds its own memory, so the first gives its back.
             drop(first);
-            let expected = match farthest {
-                Some(at) => {
-                    let mut again = machine(Some(at));
-                    // The second run follows the first exactly, so it ends the same way.
-                    let _ = again.run(entry);
-                    again.expected()
+            let positions: Vec<u32> = starts.iter().copied().chain(farthest).collect();
+            let (expected, recoveries) = match positions.is_empty() {
+                true => (Vec::new(), recoveries),
+                false => {
+                    let again = diagnosed(&positions);
+                    let expected = farthest.map_or_else(Vec::new, |at| again.expected(at));
+                    (expected, explained(&again, &recoveries))
                 }
-                None => Vec::new(),
             };
             Err(ParseError {
                 position,
@@ -470,15 +500,25 @@ fn attempt(
                 recoveries,
             })
         }
-        Err(Stop::Error { label, position }) => Err(ParseError {
-            position: position as usize,
-            kind: ParseErrorKind::Label(
-                (program.labels.get(label as usize))
-                    .cloned()
-                    .unwrap_or_default(),
-            ),
-            recoveries,
-        }),
+        Err(Stop::Error { label, position }) => {
+            drop(first);
+            let positions: Vec<u32> = starts.iter().copied().chain([position]).collect();
+            let again = diagnosed(&positions);
+            let (label, named) = match program.labels.get(label as usize) {
+                Some(ir::Label::Named(name)) => (name.clone(), true),
+                Some(ir::Label::Message(text)) => (text.clone(), false),
+                None => (String::new(), false),
+            };
+            Err(ParseError {
+                position: position as usize,
+                kind: ParseErrorKind::Label {
+                    label,
+                    named,
+                    expected: again.expected(position),
+                },
+                recoveries: explained(&again, &recoveries),
+            })
+        }
         Err(Stop::Limit(limit)) => Err(ParseError {
             position,
             kind: ParseErrorKind::Limit(limit),

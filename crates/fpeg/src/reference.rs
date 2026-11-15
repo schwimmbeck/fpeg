@@ -165,6 +165,7 @@ fn recovery(label: LabelId, start: u32, end: u32, labels: &[ir::Label]) -> Recov
         label,
         start: start as usize,
         end: end as usize,
+        expected: Vec::new(),
     }
 }
 
@@ -395,6 +396,15 @@ enum Outcome {
     Fail { cut: bool },
 }
 
+/// What a failure expects, shown as text only when an expected set is reported.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Failed {
+    Kind(KindId),
+    EndOfInput,
+    /// A column check failed.
+    Indentation,
+}
+
 /// What ends the whole parse: a labeled error, with the recoveries made before it, or a limit.
 #[derive(Debug)]
 enum Abort {
@@ -449,7 +459,8 @@ struct Interp<'a> {
     /// The smallest depth of a table entry the evaluation in progress consulted.
     dependency: usize,
     farthest: Option<usize>,
-    expected: BTreeSet<String>,
+    /// What failed at each position, outside lookahead and the skip expression.
+    expected_at: HashMap<usize, BTreeSet<Failed>>,
     quiet: u32,
     steps: u64,
     depth: u32,
@@ -475,7 +486,7 @@ impl<'a> Interp<'a> {
             text_ids: HashMap::new(),
             dependency: usize::MAX,
             farthest: None,
-            expected: BTreeSet::new(),
+            expected_at: HashMap::new(),
             quiet: 0,
             steps: 0,
             nesting: 0,
@@ -501,15 +512,17 @@ impl<'a> Interp<'a> {
             Outcome::Fail { .. } => Ok(None),
         });
         match result {
-            Ok(Some((end, items))) if end == self.input.len() => Ok(tree_from_items(
-                items,
-                Arc::clone(&self.g.names),
-                &self.g.labels,
-            )),
+            Ok(Some((end, items))) if end == self.input.len() => {
+                let mut tree = tree_from_items(items, Arc::clone(&self.g.names), &self.g.labels);
+                let recoveries = self.explained(tree.recoveries());
+                tree.set_recoveries(recoveries);
+                Ok(tree)
+            }
             Ok(Some((end, items))) => {
-                self.record_expected(end, END_OF_INPUT.to_owned());
+                self.record_expected(end, Failed::EndOfInput);
                 let mut error = self.no_match();
                 recoveries_in(&items, &self.g.labels, &mut error.recoveries);
+                error.recoveries = self.explained(&error.recoveries);
                 Err(error)
             }
             Ok(None) => Err(self.no_match()),
@@ -518,14 +531,19 @@ impl<'a> Interp<'a> {
                 position,
                 recoveries,
             }) => {
-                let text = match self.g.labels.get(label.0 as usize) {
-                    Some(ir::Label::Message(m) | ir::Label::Named(m)) => m.clone(),
-                    None => String::new(),
+                let (text, named) = match self.g.labels.get(label.0 as usize) {
+                    Some(ir::Label::Message(text)) => (text.clone(), false),
+                    Some(ir::Label::Named(name)) => (name.clone(), true),
+                    None => (String::new(), false),
                 };
                 Err(ParseError {
                     position,
-                    kind: ParseErrorKind::Label(text),
-                    recoveries,
+                    kind: ParseErrorKind::Label {
+                        label: text,
+                        named,
+                        expected: self.expected_at(position),
+                    },
+                    recoveries: self.explained(&recoveries),
                 })
             }
             Err(Abort::Limit(limit)) => Err(ParseError {
@@ -537,10 +555,11 @@ impl<'a> Interp<'a> {
     }
 
     fn no_match(&mut self) -> ParseError {
+        let position = self.farthest.unwrap_or(0);
         ParseError {
-            position: self.farthest.unwrap_or(0),
+            position,
             kind: ParseErrorKind::NoMatch {
-                expected: std::mem::take(&mut self.expected).into_iter().collect(),
+                expected: self.expected_at(position),
             },
             recoveries: Vec::new(),
         }
@@ -568,20 +587,41 @@ impl<'a> Interp<'a> {
         }
     }
 
-    fn record_expected(&mut self, position: usize, what: String) {
+    /// What failed at a position over the whole parse, as an expected set shows it, sorted.
+    fn expected_at(&self, position: usize) -> Vec<String> {
+        let Some(failed) = self.expected_at.get(&position) else {
+            return Vec::new();
+        };
+        let shown: BTreeSet<String> = (failed.iter())
+            .map(|what| match what {
+                Failed::Kind(kind) => self.kind_display(*kind),
+                Failed::EndOfInput => END_OF_INPUT.to_owned(),
+                Failed::Indentation => INDENTATION.to_owned(),
+            })
+            .collect();
+        shown.into_iter().collect()
+    }
+
+    /// The recoveries, each with what failed where its label failed.
+    fn explained(&self, recoveries: &[Recovery]) -> Vec<Recovery> {
+        (recoveries.iter())
+            .map(|recovery| Recovery {
+                expected: self.expected_at(recovery.start),
+                ..recovery.clone()
+            })
+            .collect()
+    }
+
+    /// Record a failure at a position: what fails at the farthest one is the expected set of a
+    /// parse that does not match, and what fails where a label fails explains the error.
+    fn record_expected(&mut self, position: usize, what: Failed) {
         if self.quiet > 0 {
             return;
         }
-        match self.farthest {
-            Some(farthest) if position < farthest => {}
-            Some(farthest) if position == farthest => {
-                self.expected.insert(what);
-            }
-            _ => {
-                self.farthest = Some(position);
-                self.expected = BTreeSet::from([what]);
-            }
+        if self.farthest.is_none_or(|farthest| position > farthest) {
+            self.farthest = Some(position);
         }
+        self.expected_at.entry(position).or_default().insert(what);
     }
 
     fn char_at(&self, pos: usize) -> Option<char> {
@@ -924,8 +964,7 @@ impl<'a> Interp<'a> {
                         ..success
                     })),
                     Outcome::Fail { cut } => {
-                        let what = self.kind_display(*kind);
-                        self.record_expected(pos, what);
+                        self.record_expected(pos, Failed::Kind(*kind));
                         Ok(Outcome::Fail { cut })
                     }
                 }
@@ -987,7 +1026,7 @@ impl<'a> Interp<'a> {
                     };
                     self.eval(expr, pos, &inner)
                 } else {
-                    self.record_expected(at, INDENTATION.to_owned());
+                    self.record_expected(at, Failed::Indentation);
                     Interp::fail()
                 }
             }
@@ -996,7 +1035,7 @@ impl<'a> Interp<'a> {
                 if self.column(at)? == ctx.column {
                     Interp::ok(pos, ctx)
                 } else {
-                    self.record_expected(at, INDENTATION.to_owned());
+                    self.record_expected(at, Failed::Indentation);
                     Interp::fail()
                 }
             }
