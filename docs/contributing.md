@@ -1,6 +1,10 @@
-# Development
+---
+orphan: true
+---
 
-How to build fpeg from a checkout and run the checks. The working rules for contributors, people and agents alike, are in `AGENTS.md` in the repository root.
+# Contributing
+
+How to build fpeg from a checkout, run the checks and work on its parts. The working rules for contributors, people and agents alike, are in `AGENTS.md` in the repository root.
 
 ## Requirements
 

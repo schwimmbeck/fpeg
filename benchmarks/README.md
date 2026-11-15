@@ -1,6 +1,6 @@
 # Benchmarks
 
-The benchmark harness, the baseline suites and the recorded results. How to run them is in `docs/development.md`.
+The benchmark harness, the baseline suites and the recorded results. How to run them is in `docs/contributing.md`.
 
 | Path | What it holds |
 |---|---|

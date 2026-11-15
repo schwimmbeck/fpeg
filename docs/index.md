@@ -119,5 +119,6 @@ explanation/benchmarks
 :caption: Project
 
 roadmap
-development
 ```
+
+To work on fpeg itself, [Contributing](contributing.md) says how to build it from a checkout and run its checks.

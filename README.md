@@ -107,7 +107,7 @@ A precedence block lists the operator levels from loosest to tightest. A level t
 
 ## Install
 
-fpeg is not on PyPI yet. To build it from a checkout, follow [Development](docs/development.md).
+fpeg is not on PyPI yet. To build it from a checkout, follow [Contributing](docs/contributing.md).
 
 ## Documentation
 

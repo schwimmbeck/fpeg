@@ -11,7 +11,7 @@ pip install fpeg
 ```
 
 ```{note}
-fpeg is not released yet. Until its first release, build it from a checkout as [Development](development.md) describes.
+fpeg is not released yet. Until its first release, build it from a checkout as [Contributing](contributing.md) describes.
 ```
 
 Then check that it imports:
