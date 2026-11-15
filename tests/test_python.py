@@ -14,6 +14,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import fpeg
 import pytest
 from fpeg import python
 
@@ -245,6 +246,18 @@ def test_the_transformer_refuses_a_python_older_than_its_ast(
     monkeypatch.setattr(python, "_AST_PYTHON", (99, 0))
     with pytest.raises(RuntimeError, match="needs it"):
         python.ToAst()
+
+
+def test_parse_takes_limits_and_refuses_an_escape_that_python_cannot_decode() -> None:
+    deep = "(" * 150 + "1" + ")" * 150 + "\n"
+    with pytest.raises(fpeg.LimitError):
+        python.parse(deep)
+    assert isinstance(python.parse(deep, max_depth=100_000), ast.Module)
+    backslash = chr(92)
+    # The grammar takes the form of these, and Python cannot decode them.
+    for escape in ("N{BOGUS}", "U00110000"):
+        with pytest.raises(SyntaxError):
+            python.parse(f'f"{backslash}{escape}"\n')
 
 
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])

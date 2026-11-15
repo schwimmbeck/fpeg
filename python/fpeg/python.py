@@ -240,14 +240,19 @@ def _decode(text: str, raw: bool, braces: bool) -> str:
                 j += 1
             out.append(chr(int(text[i + 1 : j], 8)))
             i = j
-        elif nxt in _HEX_ESCAPES:
-            size = _HEX_ESCAPES[nxt]
-            out.append(chr(int(text[i + 2 : i + 2 + size], 16)))
-            i += 2 + size
-        elif nxt == "N" and text.startswith("{", i + 2):
-            end = text.index("}", i + 3)
-            out.append(unicodedata.lookup(text[i + 3 : end]))
-            i = end + 1
+        elif nxt in _HEX_ESCAPES or (nxt == "N" and text.startswith("{", i + 2)):
+            # An escape that Python cannot decode is a syntax error, as in a string without `f`.
+            try:
+                if nxt == "N":
+                    end = text.index("}", i + 3)
+                    out.append(unicodedata.lookup(text[i + 3 : end]))
+                    i = end + 1
+                else:
+                    size = _HEX_ESCAPES[nxt]
+                    out.append(chr(int(text[i + 2 : i + 2 + size], 16)))
+                    i += 2 + size
+            except (KeyError, ValueError) as error:
+                raise SyntaxError(f"(unicode error) {error}") from None
         else:
             out.append("\\")
             i += 1
@@ -812,9 +817,17 @@ class ToAst(ToAstBase, positions="ast"):
     """The tree of the Python grammar as Python's `ast`, with positions stamped natively."""
 
 
-def parse(source: str) -> Any:
+def parse(
+    source: str,
+    *,
+    max_steps: int | None = None,
+    max_depth: int | None = None,
+    max_memory: int | None = None,
+) -> Any:
     """Return the `ast` of a source as the Python grammar reads it, positions included.
 
-    It needs Python 3.15, whose `ast` it builds, and raises `RuntimeError` on an older one.
+    The limits are those of `Grammar.parse`. It needs Python 3.15, whose `ast` it builds, and
+    raises `RuntimeError` on an older one.
     """
-    return ToAst().transform(GRAMMAR.parse(source))
+    tree = GRAMMAR.parse(source, max_steps=max_steps, max_depth=max_depth, max_memory=max_memory)
+    return ToAst().transform(tree)

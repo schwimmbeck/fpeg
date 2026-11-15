@@ -418,6 +418,8 @@ print(ast.dump(module.body[0].value))
 BinOp(left=Name(id='price'), op=Mult(), right=BinOp(left=Constant(value=1), op=Add(), right=Name(id='rate')))
 ```
 
+`parse` takes the limits of `Grammar.parse`, as `max_depth` for brackets nested deeper than the default allows. It reads what the Python grammar reads, which takes a few forms that CPython refuses only after parsing, such as an assignment to a call. Where the grammar refuses a text it raises `ParseError`, and `SyntaxError` for an escape that Python cannot decode.
+
 `python.GRAMMAR` is the grammar and `python.ToAst` the transformer behind `parse`, with a method for each kind of node and positions stamped as `ast` counts them. A language that adds to Python extends both, a grammar that starts with `%extends "python"` and a subclass of `ToAst` with methods for its new rules, as the [guide to composing grammars](../guide/composing-grammars.md#extending-python) shows. A method may give a list of statements where one statement stands. `python.ToAstBase` holds the same methods without stamping, for a subclass that sets positions its own way.
 
 ```{eval-rst}
