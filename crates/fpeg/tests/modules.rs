@@ -273,3 +273,29 @@ fn module_files_are_the_grammar_files_of_a_folder_by_plain_names() {
     assert_eq!(ModuleFiles::new(&inner).text("../base"), None);
     std::fs::remove_dir_all(&folder).expect("the folder goes");
 }
+
+#[test]
+fn an_imported_rule_keeps_to_its_own_module() {
+    // A name the module lacks is its error, and takes no rule of the grammar that imports it.
+    let errors = linked("%import m (x)\nstart: x\ny: \"q\"", &[("m", "x: y")]).unwrap_err();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].code, DiagnosticCode::UnknownRule);
+    // A private rule's alias names a private kind, which the grammar's own alias does not meet.
+    let module = "pub: item\nitem: \"x\" -> leaf";
+    let joined = linked(
+        "%import m (pub)\nstart: pub leaf\nleaf: \"y\"",
+        &[("m", module)],
+    );
+    let parser = Parser::new(&joined.expect("it joins")).unwrap_or_else(|e| panic!("{e:?}"));
+    let tree = parser
+        .parse("xy", "start")
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(
+        tree.to_text("xy", false),
+        "(start (pub (m.leaf ~\"x\")) (leaf ~\"y\"))"
+    );
+    // Only the flags of the rules taken join, so no other flag of the module is left unused.
+    let module = "%flag a b\nx: %on(a, z)\nz: %if(a) \"x\"\ny: %if(b) \"y\"";
+    let joined = linked("%import m (x)\nstart: x", &[("m", module)]).expect("it joins");
+    assert_eq!(fpeg::check(&joined), []);
+}

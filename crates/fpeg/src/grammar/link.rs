@@ -496,8 +496,15 @@ fn levels(rule: &Rule) -> impl Iterator<Item = &str> {
     levels.iter().map(|level| level.name.text.as_str())
 }
 
-/// The names a rule refers to, rules and levels, its parameters left out.
-fn references(rule: &Rule) -> Vec<&str> {
+/// What the alternatives of a rule use.
+struct Uses<'r> {
+    /// The names it refers to, rules and levels, its parameters left out.
+    names: Vec<&'r Name>,
+    /// The flags it sets or tests.
+    flags: Vec<&'r str>,
+}
+
+fn uses(rule: &Rule) -> Uses<'_> {
     let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
     let mut pending: Vec<&Expr> = match &rule.body {
         RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
@@ -505,16 +512,23 @@ fn references(rule: &Rule) -> Vec<&str> {
             .flat_map(|level| level.alternatives.iter().map(|a| &a.expr))
             .collect(),
     };
-    let mut found = Vec::new();
+    let mut used = Uses {
+        names: Vec::new(),
+        flags: Vec::new(),
+    };
     while let Some(expr) = pending.pop() {
-        if let ExprKind::Reference { name, .. } = &expr.kind
-            && !params.contains(name.text.as_str())
-        {
-            found.push(name.text.as_str());
+        match &expr.kind {
+            ExprKind::Reference { name, .. } if !params.contains(name.text.as_str()) => {
+                used.names.push(name);
+            }
+            ExprKind::FlagOn { flag, .. }
+            | ExprKind::FlagOff { flag, .. }
+            | ExprKind::FlagTest { flag, .. } => used.flags.push(flag.text.as_str()),
+            _ => {}
         }
         pending.extend(expr.children());
     }
-    found
+    used
 }
 
 /// Add the rules an import takes to the grammar under their names, and the rules they need
@@ -569,14 +583,28 @@ fn import(
     let public: HashSet<&str> = taken.iter().map(|&(rule, _)| rule).collect();
     let mut needed = public.clone();
     let mut pending: Vec<&str> = needed.iter().copied().collect();
+    let mut flags: HashSet<&str> = HashSet::new();
     while let Some(rule) = pending.pop() {
-        for used in references(rules[rule]) {
-            if let Some(&owner) = owners.get(used)
-                && needed.insert(owner)
-            {
-                pending.push(owner);
+        let used = uses(rules[rule]);
+        flags.extend(used.flags);
+        for name in used.names {
+            match owners.get(name.text.as_str()) {
+                Some(&owner) => {
+                    if needed.insert(owner) {
+                        pending.push(owner);
+                    }
+                }
+                // A name its module lacks would take a rule of the grammar that imports it.
+                None => {
+                    let message = format!("unknown rule {}", name.text);
+                    errors.extend(problem(DiagnosticCode::UnknownRule, message, name.span));
+                }
             }
         }
+    }
+    if !errors.is_empty() {
+        errors.sort_by_key(|error| error.span.start);
+        return Err(errors);
     }
     let renamed = |rule: &str| match public.contains(rule) {
         true => rule.to_owned(),
@@ -588,11 +616,21 @@ fn import(
             continue;
         }
         let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
+        // The kinds that a private rule's aliases name are private too.
+        let private = !public.contains(rule.name.text.as_str());
+        let alias = |alias: &Name| match private {
+            true => Name {
+                text: format!("{}.{}", name.value, alias.text),
+                span: alias.span,
+            },
+            false => alias.clone(),
+        };
         let alternatives = |alternatives: &[Alternative]| -> Vec<Alternative> {
             (alternatives.iter())
                 .map(|a| Alternative {
                     expr: rename_references(&a.expr, &params, &owners, &renamed),
-                    ..a.clone()
+                    alias: a.alias.as_ref().map(alias),
+                    builder: a.builder.clone(),
                 })
                 .collect()
         };
@@ -616,7 +654,10 @@ fn import(
         copy.body = body;
         grammar.rules.push(copy);
     }
-    join_flags(&mut grammar.flags, module.flags);
+    let used: Vec<Name> = (module.flags.into_iter())
+        .filter(|flag| flags.contains(flag.text.as_str()))
+        .collect();
+    join_flags(&mut grammar.flags, used);
     Ok(())
 }
 

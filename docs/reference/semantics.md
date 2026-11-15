@@ -49,9 +49,9 @@ A grammar with `%extends "m"` is joined with the grammar `m` before anything els
 
 A grammar with `%import m (a, b)` then adds rules of `m`, joined with what it extends and imports first:
 
-- `a` and `b` under their names, and every rule they need, directly or through others, under `m.r` for its name `r`, a name no grammar can write. The levels of a precedence block come under `m.l`. References in the rules added follow the new names.
+- `a` and `b` under their names, and every rule they need, directly or through others, under `m.r` for its name `r`, a name no grammar can write. The levels of a precedence block come under `m.l`, and the aliases `x` of a rule under a private name under `m.x`. References in the rules added follow the new names. A reference to a name that `m` lacks is an error.
 - A name keeps the kind of the name it replaces: `m.R` is a terminal as `R` is, and `m._r` makes no node as `_r` makes none.
-- The flags of `m` join the grammar's. Its other directives do not count.
+- The flags of `m` that the rules added set or test join the grammar's. Its other directives do not count.
 - All imports of one grammar `m` add one set of rules, and one without names takes every rule of `m` whose name has no dot. A rule under a private name that the grammar has already, through what it extends or another import, is the same rule and is added once.
 
 ## Translation into the core
