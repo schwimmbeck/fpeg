@@ -219,6 +219,8 @@ assert "        key holds one item." in template
 .. autoclass:: fpeg.Transformer
    :members: transform, __default__, __default_token__
 
+.. autoclass:: fpeg.Positions
+
 .. autofunction:: fpeg.v_args
 ```
 

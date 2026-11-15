@@ -747,8 +747,11 @@ class Spot:
     end_column: int
 
 
-def test_a_positions_record_names_the_attributes_the_units_and_the_classes() -> None:
-    record = fpeg.Positions("line", "column", "end_line", "end_column", Spot, 0, 1, "utf-16")
+@pytest.mark.parametrize(("unit", "column"), [("code points", 5), ("utf-8", 8), ("utf-16", 6)])
+def test_a_positions_record_names_the_attributes_the_units_and_the_classes(
+    unit: Any, column: int
+) -> None:
+    record = fpeg.Positions("line", "column", "end_line", "end_column", Spot, 0, 1, unit)
 
     class Spots(fpeg.Transformer, positions=record):
         def start(self, children: list[Any]) -> Any:
@@ -766,9 +769,34 @@ def test_a_positions_record_names_the_attributes_the_units_and_the_classes() -> 
     fraktur_a = "\U0001d51e"
     first, second = Spots().transform(SUMS.parse(fraktur_a + " + b"))
     # A value of no class the record names stays as it is, and the first letter, beyond the
-    # Basic Multilingual Plane, takes two UTF-16 units.
+    # Basic Multilingual Plane, takes one code point, four UTF-8 bytes or two UTF-16 units.
     assert first == fraktur_a
-    assert (second.line, second.column, second.end_line, second.end_column) == (0, 6, 0, 7)
+    assert (second.line, second.column, second.end_line, second.end_column) == (
+        0,
+        column,
+        0,
+        column + 1,
+    )
+
+
+def test_positions_reach_what_builders_defaults_and_generators_give() -> None:
+    grammar = fpeg.Grammar(
+        'start: NAME pair\npair: "(" NAME ")"\nNAME: [a-z]+ => spot\n%ignore " "+',
+        functions={"spot": lambda text: Spot()},
+    )
+    record = fpeg.Positions("line", "column", "end_line", "end_column", Spot)
+
+    class Spots(fpeg.Transformer, positions=record):
+        def __default__(self, data: Any, children: list[Any], meta: Any) -> Spot:
+            return Spot()
+
+        def start(self, *children: Spot) -> Iterator[Spot]:
+            yield from children
+            yield Spot()
+
+    built, defaulted, yielded = Spots().transform(grammar.parse("ab (cd)"))
+    spans = [(spot.column, spot.end_column) for spot in (built, defaulted, yielded)]
+    assert spans == [(0, 2), (3, 7), (0, 7)]
 
 
 def test_utf16_columns_take_no_longer_on_one_long_line() -> None:
