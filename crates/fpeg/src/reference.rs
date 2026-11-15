@@ -649,7 +649,8 @@ impl<'a> Interp<'a> {
         let mut attempts: Vec<&Attempt> = (self.attempts.iter())
             .filter(|attempt| attempt.ctx.floor == floor)
             .collect();
-        attempts.sort_by_key(|attempt| (attempt.pos, attempt.index));
+        let rank = |index: u32| self.g.error_ranks.get(index as usize).copied();
+        attempts.sort_by_key(|attempt| (attempt.pos, rank(attempt.index)));
         let left = Limits {
             max_steps: self.limits.max_steps.saturating_sub(self.steps),
             ..self.limits

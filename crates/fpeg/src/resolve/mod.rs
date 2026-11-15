@@ -132,8 +132,8 @@ struct Resolver<'g> {
     captures: Interner,
     labels: Vec<ir::Label>,
     label_ids: HashMap<ir::Label, LabelId>,
-    /// How many error alternatives were lowered.
-    error_alternatives: u32,
+    /// Where the `%error` of each error alternative lowered starts, by index.
+    error_starts: Vec<u32>,
     word: CharSet,
     soft: HashSet<&'g str>,
     reserved: ir::Reserved,
@@ -180,7 +180,7 @@ pub(crate) fn resolve_counted(
         captures: Interner::default(),
         labels: Vec::new(),
         label_ids: HashMap::new(),
-        error_alternatives: 0,
+        error_starts: Vec::new(),
         word: CharSet {
             negated: false,
             items: vec![
@@ -367,7 +367,8 @@ pub(crate) fn resolve_counted(
         reserved: r.reserved,
         tab_width: grammar.tabs.map_or(DEFAULT_TAB_WIDTH, |t| t.value),
         labels: r.labels,
-        error_alternatives: r.error_alternatives,
+        error_alternatives: r.error_starts.len() as u32,
+        error_ranks: ranks(&r.error_starts),
         recoveries,
     };
     Ok((resolved, counts))
@@ -388,6 +389,20 @@ fn expressions(rule: &Rule) -> Vec<&Expr> {
             .flat_map(|level| level.alternatives.iter().map(|a| &a.expr))
             .collect(),
     }
+}
+
+/// The rank of each error alternative in the order of the text, given where each `%error`
+/// starts, and among those of one place, the instances of a rule, in the order they were made.
+fn ranks(starts: &[u32]) -> Vec<u32> {
+    let mut order: Vec<usize> = (0..starts.len()).collect();
+    order.sort_by_key(|&index| (starts.get(index), index));
+    let mut ranks = vec![0; starts.len()];
+    for (rank, index) in order.into_iter().enumerate() {
+        if let Some(slot) = ranks.get_mut(index) {
+            *slot = rank as u32;
+        }
+    }
+    ranks
 }
 
 fn choice(mut items: Vec<ir::Expr>) -> ir::Expr {
@@ -848,6 +863,13 @@ impl<'g> Resolver<'g> {
         }
     }
 
+    /// The index of a new error alternative whose `%error` stands at `span`.
+    fn error_alternative(&mut self, span: Span) -> u32 {
+        let index = self.error_starts.len() as u32;
+        self.error_starts.push(span.start);
+        index
+    }
+
     fn label(&mut self, label: ir::Label) -> LabelId {
         if let Some(&id) = self.label_ids.get(&label) {
             return id;
@@ -1227,14 +1249,13 @@ impl<'g> Resolver<'g> {
                 // An error alternative tests the parts before it, and what follows it never
                 // matches, since it fails.
                 let error = (items.iter().enumerate()).find_map(|(at, item)| match &item.kind {
-                    ExprKind::Error { message } => Some((at, message)),
+                    ExprKind::Error { message } => Some((at, message, item.span)),
                     _ => None,
                 });
                 match error {
-                    Some((at, message)) => {
+                    Some((at, message, span)) => {
                         parts.truncate(at);
-                        let index = self.error_alternatives;
-                        self.error_alternatives += 1;
+                        let index = self.error_alternative(span);
                         E::ErrorAlternative {
                             expr: Box::new(E::Seq(parts)),
                             message: message.value.clone(),
@@ -1376,8 +1397,7 @@ impl<'g> Resolver<'g> {
                 self.atom(expr, atom, scope)
             }
             ExprKind::Error { message } => {
-                let index = self.error_alternatives;
-                self.error_alternatives += 1;
+                let index = self.error_alternative(expr.span);
                 E::ErrorAlternative {
                     expr: Box::new(E::Empty),
                     message: message.value.clone(),

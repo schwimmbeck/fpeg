@@ -328,7 +328,7 @@ A capture lasts until the rule activation that made it returns, and rules called
 
 A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text, and where the parse got further than that, it points where the parse got furthest and says what was expected there, as it would without the label. So a label names an error that happens where it stands: a named error says its name and what the grammar expected there, as `"]" ^ close` says `close: expected "]"`, and an error with a message says its message.
 
-An error alternative gives a common mistake a message of its own. It never matches, so it changes nothing that the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, each error alternative that it tried outside a lookahead is tested where it was tried, and the first in the order of the text whose parts before `%error` match there gives its message over the text they matched, in place of the error.
+An error alternative gives a common mistake a message of its own. It never matches, so it changes nothing that the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, each error alternative that it tried outside a lookahead is tested where it was tried, in the order of those places in the text and at one place in the order of the grammar, and the first whose parts before `%error` match there gives its message over the text they matched, in place of the error.
 
 ```fpeg
 start: assignment+

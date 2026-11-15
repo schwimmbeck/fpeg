@@ -58,7 +58,7 @@ Put a label where the text can only be a mistake: after a comma a number must co
 
 ## Messages for common mistakes
 
-An error alternative, an alternative that ends in `%error("message")`, gives a mistake that people make a message of its own. It never matches, so it changes nothing the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, the first error alternative in the text whose parts before `%error` match where the parse tried it gives its message, over the text those parts matched:
+An error alternative, an alternative that ends in `%error("message")`, gives a mistake that people make a message of its own. It never matches, so it changes nothing the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, the error alternative tried first in the text whose parts before `%error` match where the parse tried it gives its message, over the text those parts matched:
 
 ```python
 lists = fpeg.Grammar(r"""

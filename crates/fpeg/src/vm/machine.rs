@@ -705,7 +705,7 @@ impl<'p, 'i> Machine<'p, 'i> {
 
     /// The error alternative that explains the failed parse whose error stands under `floor`.
     /// The attempts under it are tested in the order of their positions, and at one position
-    /// in the order of the alternatives, each as a parse of its own, with the steps the run
+    /// in the order of the text, each as a parse of its own, with the steps the run
     /// left. The index of the first that matches, and where its longest match starts and ends,
     /// or none where none matches, or the limit the tests reach.
     pub fn explain(&self, floor: Option<u32>) -> Result<Option<(u32, u32, u32)>, Stop> {
@@ -713,7 +713,8 @@ impl<'p, 'i> Machine<'p, 'i> {
             .filter(|attempt| attempt.floor == floor)
             .copied()
             .collect();
-        let key = |a: &Attempt| (a.pos, a.index, a.flags, a.column, a.map);
+        let rank = |a: &Attempt| self.program.error_ranks.get(a.index as usize).copied();
+        let key = |a: &Attempt| (a.pos, rank(a), a.index, a.flags, a.column, a.map);
         attempts.sort_by_key(key);
         attempts.dedup_by_key(|a| key(a));
         let left = Limits {

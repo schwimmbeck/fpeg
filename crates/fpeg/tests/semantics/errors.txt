@@ -62,6 +62,12 @@ start: "a" ("b" "c" ("d" | %error("far")) | %error("near"))
 --- "abcx"
 error at 1: near
 
+=== attempts at one position are tested in the order their alternatives stand in the grammar
+pair<x>: x x | "b" %error("first")
+start: pair<"a"> | "b" %error("second")
+--- "b"
+error at 0..1: first
+
 === an attempt is tested in the context it was made in, with its captures
 start: %def(q, "'") ("x" %ref(q) | "y" %ref(q) %error("y is no x"))
 --- "'y'"

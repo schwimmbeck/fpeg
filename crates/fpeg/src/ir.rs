@@ -47,6 +47,10 @@ pub(crate) struct Grammar {
     /// How many error alternatives the grammar has. A failed parse is explained where it has
     /// one.
     pub error_alternatives: u32,
+    /// The rank of each error alternative in the order of the text, by index, which orders the
+    /// attempts at one position. A module's text comes after the text that uses it, and the
+    /// instances of a rule come in the order they were made.
+    pub error_ranks: Vec<u32>,
     /// The recovery of each label, by label id, where `%recover` gives it one: the expression a
     /// parse in recovering mode matches where the label fails.
     pub recoveries: Vec<Option<Expr>>,
@@ -224,8 +228,8 @@ pub(crate) enum Expr {
         skip: bool,
     },
     /// `%error(message)` after the parts of a sequence, `expr`: it fails, and where a failed
-    /// parse is explained, its attempts are tested. `index` orders it among the others, in the
-    /// order the translation made them.
+    /// parse is explained, its attempts are tested. `index` names it in the tables of the
+    /// grammar, and its rank in [`Grammar::error_ranks`] orders it among the others.
     ErrorAlternative {
         expr: Box<Expr>,
         message: String,

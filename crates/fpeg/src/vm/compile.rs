@@ -263,6 +263,7 @@ pub(crate) fn compile(
         error_messages: (c.error_alternatives.iter())
             .map(|found| found.map_or_else(String::new, |(_, message)| message.to_owned()))
             .collect(),
+        error_ranks: grammar.error_ranks.clone(),
         error_tests,
         explains: grammar.error_alternatives > 0,
         kinds: grammar.kinds(),

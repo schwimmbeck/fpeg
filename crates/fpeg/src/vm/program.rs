@@ -351,6 +351,8 @@ pub(crate) struct Program {
     pub recoveries: Vec<Option<u32>>,
     /// The messages of the error alternatives, by index.
     pub error_messages: Vec<String>,
+    /// The rank of each error alternative in the order of the text, by index.
+    pub error_ranks: Vec<u32>,
     /// Where the test routine of each error alternative starts, for those compiled.
     pub error_tests: Vec<Option<u32>>,
     /// Whether the grammar has an error alternative, so that a failed parse is explained.
