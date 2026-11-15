@@ -7,10 +7,6 @@ fpeg is a general-purpose parsing library for Parsing Expression Grammars (PEG).
 - The parse produces a compact, lossless tree with exact source positions.
 - From Python you read that tree or turn it into your own objects with a `Transformer`, a class with one method per rule.
 
-```{note}
-fpeg is at an early stage. The [command line](reference/cli.md) and the [Python package](reference/python-api.md) parse with every grammar but those that use a form of a later release ([E501](reference/diagnostics/E501.md)), and warn about grammars that likely do not do what they seem to. The Python package turns trees into Python values through a `Transformer`, an `Interpreter` or the value builders written in the grammar. The [roadmap](roadmap.md) says what comes next.
-```
-
 [Getting started](start.md) installs fpeg, writes a first grammar and turns the tree of a parse into Python values, in about five minutes.
 
 ## Examples
@@ -118,7 +114,7 @@ explanation/benchmarks
 :hidden:
 :caption: Project
 
-roadmap
+planned
 ```
 
-To work on fpeg itself, [Contributing](contributing.md) says how to build it from a checkout and run its checks.
+What later releases bring is on the page of [planned features](planned.md). To work on fpeg itself, [Contributing](contributing.md) says how to build it from a checkout and run its checks.

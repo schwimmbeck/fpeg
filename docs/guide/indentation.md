@@ -22,9 +22,9 @@ outline = fpeg.Grammar(OUTLINE)
 
 text = """\
 project: fpeg
-milestones:
-  m6: context
-  m7: modules
+languages:
+  core: Rust
+  binding: Python
 license: MIT
 """
 print(outline.parse(text).pretty())
@@ -36,14 +36,14 @@ start
     key=project
     value=fpeg
   entries=entry
-    key=milestones
+    key=languages
     children=children
       entries=entry
-        key=m6
-        value=context
+        key=core
+        value=Rust
       entries=entry
-        key=m7
-        value=modules
+        key=binding
+        value=Python
   entries=entry
     key=license
     value=MIT

@@ -2,7 +2,7 @@
 
 This page is the normative reference for the syntax of fpeg grammars, draft 0. What a grammar means is defined on the [semantics](semantics.md) page. Where this page and the code disagree, one of them has a bug.
 
-Some constructs are part of the language from the start but take effect in a later release. Their status is marked where they are described.
+Some constructs are part of the language but planned for a later release. Their status is marked where they are described, and the page of [planned features](../planned.md) lists them.
 
 ## A first grammar
 
@@ -108,7 +108,7 @@ Attributes stand on their own lines directly above a rule.
 |---|---|---|
 | `@lexical` | the rule is a lexical rule | now |
 | `@reserved` | the terminal never matches a reserved word (see [Words and keywords](#words-and-keywords)) | now |
-| `@sync` | error recovery may resume before this rule or terminal | reserved, after the first release |
+| `@sync` | error recovery may resume before this rule or terminal | reserved, planned |
 | `@memo` | remember the results of this rule (see [Remembered results](#remembered-results)) | now |
 | `@nomemo` | never remember the results of this rule | now |
 
@@ -324,7 +324,7 @@ A capture lasts until the rule activation that made it returns, and rules called
 | `e ^ label` | if `e` fails, stop the parse with the named error | now |
 | `%recover label: e` | in a parse that recovers, where the named error occurs, what `e` matches stands in the tree as an error node and the parse goes on | now |
 | `%error("message")` at the end of an alternative | an error alternative: it never matches, and where a parse fails, the first whose parts before it match gives the error | now |
-| `@sync` | recovery may resume before this rule | after the first release |
+| `@sync` | recovery may resume before this rule | planned |
 
 A label stops the parse however `e` fails, also after a cut inside `e`. The error points at the start of `e`, after any ignored text, and where the parse got further than that, it points where the parse got furthest and says what was expected there, as it would without the label. So a label names an error that happens where it stands: a named error says its name and what the grammar expected there, as `"]" ^ close` says `close: expected "]"`, and an error with a message says its message.
 
@@ -378,10 +378,10 @@ NAME: [a-z]+
 | `%extends "json"` | start from the rules and directives of another grammar | now |
 | `...` | in a rule that replaces an inherited one, the inherited alternatives | now |
 | `%import common (WS, INT)` | take the named rules from another grammar, with what they depend on | now |
-| `%import python as py` | take a whole grammar under a prefix | after the first release |
+| `%import python as py` | take a whole grammar under a prefix | planned |
 
 - A rule defined again replaces the inherited one for every reference, also in the inherited rules. Replacing `?value` above lets every array and member hold a name.
-- `...` stands as a whole alternative, at most once and without an alias or a builder of its own, and puts the inherited alternatives there, with their aliases and builders: `?value: ... | NAME` tries them first, `?value: NAME | ...` last. A rule that uses it takes the parameters of the rule it replaces ([E605](diagnostics/E605.md)). In a precedence block, or for one, it waits for a release after the first ([E501](diagnostics/E501.md)).
+- `...` stands as a whole alternative, at most once and without an alias or a builder of its own, and puts the inherited alternatives there, with their aliases and builders: `?value: ... | NAME` tries them first, `?value: NAME | ...` last. A rule that uses it takes the parameters of the rule it replaces ([E605](diagnostics/E605.md)). In a precedence block, or for one, it is planned ([E501](diagnostics/E501.md)).
 - A rule that replaces another says its own markers and attributes, `?` and `@memo` included.
 - The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's.
 - A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn.
