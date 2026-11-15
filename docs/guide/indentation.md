@@ -119,7 +119,7 @@ start
     args=1
 ```
 
-The closing `")"` stands inside `%on`, since ignored text is skipped before a token: the line break before `b)` is skipped while the flag is set. The `_NL` after the call is outside, so the line ends the statement. A rule that the brackets call keeps the flag, and so does the skip expression, which is why a nested call needs nothing more.
+The line break before `b)` is skipped while the flag is set. The closing `")"` stands inside `%on` too, since ignored text is skipped before a token: a line break right before a `)` would be skipped only so. The `_NL` after the call is outside, so the line ends the statement. A rule that the brackets call keeps the flag, and so does the skip expression, which is why a nested call needs nothing more.
 
 ## Continuation lines
 
