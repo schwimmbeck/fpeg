@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use fpeg::{DiagnosticCode, Grammar};
+use fpeg::Grammar;
 
 fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("the docs directory is readable") {
@@ -62,9 +62,7 @@ fn grammar_blocks_in_the_docs_read_and_complete_ones_pass_the_check() {
             match Grammar::from_text(&block) {
                 Err(errors) => failures.push(format!("{at}: {errors:?}")),
                 Ok(grammar) if grammar.rules.iter().any(|r| r.name.text == "start") => {
-                    // What the parser does not run yet is no fault of an example.
-                    let mut found = fpeg::check(&grammar);
-                    found.retain(|diagnostic| diagnostic.code != DiagnosticCode::NotYet);
+                    let found = fpeg::check(&grammar);
                     if !found.is_empty() {
                         failures.push(format!("{at}: {found:?}"));
                     }
