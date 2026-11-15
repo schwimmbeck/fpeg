@@ -707,7 +707,9 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// The attempts under it are tested in the order of their positions, and at one position
     /// in the order of the text, each as a parse of its own, with the steps the run
     /// left. The index of the first that matches, and where its longest match starts and ends,
-    /// or none where none matches, or the limit the tests reach.
+    /// or none where none matches, or the limit the tests reach. Where it was tried in several
+    /// contexts, the farthest end over them, and the farthest start after the ignored text over
+    /// those that reach it, so that the order of the contexts counts for nothing.
     pub fn explain(&self, floor: Option<u32>) -> Result<Option<(u32, u32, u32)>, Stop> {
         let mut attempts: Vec<Attempt> = (self.attempts.keys())
             .filter(|attempt| attempt.floor == floor)
@@ -724,10 +726,12 @@ impl<'p, 'i> Machine<'p, 'i> {
             ..self.limits
         };
         let mut tester = Machine::new(self.program, self.input, left, &[]);
-        let mut found: Option<(Attempt, u32)> = None;
+        // The longest match of the first alternative that matches, and the contexts it reaches
+        // that end in.
+        let mut found: Option<(u32, Vec<Attempt>)> = None;
         for attempt in attempts {
-            if found
-                .is_some_and(|(first, _)| (first.pos, first.index) != (attempt.pos, attempt.index))
+            if let Some((_, reaching)) = &found
+                && (reaching[0].pos, reaching[0].index) != (attempt.pos, attempt.index)
             {
                 break;
             }
@@ -735,28 +739,35 @@ impl<'p, 'i> Machine<'p, 'i> {
                 continue;
             };
             let captures = self.captured(attempt.map);
-            match tester.test_attempt(routine, &attempt, &captures) {
-                Ok(Some(end)) if found.is_none_or(|(_, longest)| end > longest) => {
-                    found = Some((attempt, end));
+            match (
+                tester.test_attempt(routine, &attempt, &captures)?,
+                &mut found,
+            ) {
+                (Some(end), Some((longest, reaching))) if end == *longest => reaching.push(attempt),
+                (Some(end), found) if found.as_ref().is_none_or(|(longest, _)| end > *longest) => {
+                    *found = Some((end, vec![attempt]));
                 }
-                Ok(_) => {}
-                Err(stop) => return Err(stop),
+                _ => {}
             }
         }
-        let Some((attempt, end)) = found else {
+        let Some((end, reaching)) = found else {
             return Ok(None);
         };
         // The error starts after the ignored text, as a label's does, or where the attempt was
         // made where the ignored text there does not match.
-        let mut start = attempt.pos;
-        if self.program.error_skips.get(attempt.index as usize) == Some(&true)
+        let index = reaching[0].index;
+        let mut start = reaching[0].pos;
+        if self.program.error_skips.get(index as usize) == Some(&true)
             && let Some(routine) = self.program.skip_test
-            && let Some(skipped) =
-                tester.test_attempt(routine, &attempt, &self.captured(attempt.map))?
         {
-            start = skipped;
+            for attempt in &reaching {
+                let captures = self.captured(attempt.map);
+                if let Some(skipped) = tester.test_attempt(routine, attempt, &captures)? {
+                    start = start.max(skipped);
+                }
+            }
         }
-        Ok(Some((attempt.index, start, end.max(start))))
+        Ok(Some((index, start, end.max(start))))
     }
 
     /// Whether error alternatives record no attempts where they could: inside a lookahead of a

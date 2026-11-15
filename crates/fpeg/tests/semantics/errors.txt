@@ -69,6 +69,19 @@ NUMBER: [0-9]+
 --- "a = 1; x == 2;"
 error at 7..11: = assigns, == compares
 
+=== an error alternative tried in several contexts starts after the farthest ignored text of them
+%ignore "\n" [ \t]* %indent(())
+start: %indent(start) | () %error("e2")
+--- "\n\t"
+error at 2: e2
+
+=== whichever context sorts or comes first, the farthest skip of them starts the error
+%flag f
+%ignore %if(f) " "
+start: %on(f, start) | () %error("e2")
+--- " "
+error at 1: e2
+
 === attempts at one position are tested in the order their alternatives stand in the grammar
 pair<x>: x x | "b" %error("first")
 start: pair<"a"> | "b" %error("second")

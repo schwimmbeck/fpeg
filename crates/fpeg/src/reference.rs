@@ -644,8 +644,9 @@ impl<'a> Interp<'a> {
     /// under the floor of the error are tested in the order of their positions, and at one
     /// position in the order of the alternatives, each matched where it was made as a parse of
     /// its own. The first alternative that matches, with its longest match, gives its message
-    /// over what it matched in place of the error. Explaining is part of the parse: the tests
-    /// have the steps the parse left, and a limit they reach ends the parse at it.
+    /// over what it matched in place of the error, from the farthest end of the skip over the
+    /// contexts that reach that match. Explaining is part of the parse: the tests have the
+    /// steps the parse left, and a limit they reach ends the parse at it.
     fn explain(&self, error: ParseError, floor: Option<usize>) -> ParseError {
         let table = error_alternatives(self.g);
         let mut attempts: Vec<&Attempt> = (self.attempts.iter())
@@ -664,14 +665,21 @@ impl<'a> Interp<'a> {
         // A test is sheltered: it records no failure, and a label in it fails it.
         tester.quiet = 1;
         tester.looking = 1;
+        let limit = |limit| ParseError {
+            position: self.farthest.unwrap_or(0),
+            kind: ParseErrorKind::Limit(limit),
+            recoveries: Vec::new(),
+        };
         let mut seen = HashSet::new();
-        let mut found: Option<(&Attempt, usize)> = None;
+        // The longest match of the first alternative that matches, and the contexts that reach
+        // it.
+        let mut found: Option<(usize, Vec<Ctx>, &Attempt)> = None;
         for attempt in attempts {
             let Some(&Some((tested, _, _))) = table.get(attempt.index as usize) else {
                 continue;
             };
-            if found
-                .is_some_and(|(first, _)| (first.pos, first.index) != (attempt.pos, attempt.index))
+            if let Some((_, _, first)) = &found
+                && (first.pos, first.index) != (attempt.pos, attempt.index)
             {
                 break;
             }
@@ -682,44 +690,36 @@ impl<'a> Interp<'a> {
             if !seen.insert((attempt.index, attempt.pos, ctx.clone())) {
                 continue;
             }
-            match tester.eval(tested, attempt.pos, &ctx) {
-                Ok(Outcome::Ok(success)) if found.is_none_or(|(_, end)| success.end > end) => {
-                    found = Some((attempt, success.end));
+            match (tester.eval(tested, attempt.pos, &ctx), &mut found) {
+                (Ok(Outcome::Ok(success)), Some((end, reaching, _))) if success.end == *end => {
+                    reaching.push(ctx);
                 }
-                Err(Abort::Limit(limit)) => {
-                    return ParseError {
-                        position: self.farthest.unwrap_or(0),
-                        kind: ParseErrorKind::Limit(limit),
-                        recoveries: Vec::new(),
-                    };
+                (Ok(Outcome::Ok(success)), found)
+                    if found.as_ref().is_none_or(|(end, _, _)| success.end > *end) =>
+                {
+                    *found = Some((success.end, vec![ctx], attempt));
                 }
+                (Err(Abort::Limit(reached)), _) => return limit(reached),
                 _ => {}
             }
         }
-        let message = found.and_then(|(attempt, _)| table.get(attempt.index as usize)?.as_ref());
-        let Some(((attempt, end), &(_, message, skip))) = found.zip(message) else {
+        let message = (found.as_ref())
+            .and_then(|(_, _, attempt)| table.get(attempt.index as usize)?.as_ref());
+        let Some(((end, reaching, attempt), &(_, message, skip))) = found.zip(message) else {
             return error;
         };
         // The error starts after the ignored text, as a label's does, or where the attempt was
         // made where the ignored text there does not match.
-        let ctx = Ctx {
-            floor: None,
-            ..attempt.ctx.clone()
-        };
-        let position = match skip {
-            true => match tester.skip_end(attempt.pos, &ctx) {
-                Ok(position) => position,
-                Err(Abort::Limit(limit)) => {
-                    return ParseError {
-                        position: self.farthest.unwrap_or(0),
-                        kind: ParseErrorKind::Limit(limit),
-                        recoveries: Vec::new(),
-                    };
+        let mut position = attempt.pos;
+        if skip {
+            for ctx in &reaching {
+                match tester.skip_end(attempt.pos, ctx) {
+                    Ok(skipped) => position = position.max(skipped),
+                    Err(Abort::Limit(reached)) => return limit(reached),
+                    Err(_) => {}
                 }
-                Err(_) => attempt.pos,
-            },
-            false => attempt.pos,
-        };
+            }
+        }
         ParseError {
             position,
             kind: ParseErrorKind::ErrorAlternative {
