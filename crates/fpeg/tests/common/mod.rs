@@ -3,10 +3,9 @@
 
 //! Helpers that several test files share.
 
-// Each test file is its own crate and uses a different part of these helpers.
 #![allow(
     dead_code,
-    reason = "every test file uses only some of the shared helpers"
+    reason = "each test file is a crate of its own and uses only some of these helpers"
 )]
 
 pub mod cases;

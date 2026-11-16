@@ -448,7 +448,8 @@ fn a_template_that_nothing_uses_is_measured_as_every_rule_is() {
     assert_eq!(errors[0].code, DiagnosticCode::TooDeep);
     let found = fpeg::check(&grammar);
     assert_eq!(found, errors);
-    // Dropping an expression this deep recurses once a level.
+    // Dropping an expression this deep recurses once a level, which would overflow the stack of
+    // the test's thread, and dropping is no part of what the test checks, so it leaks.
     std::mem::forget(grammar);
 }
 

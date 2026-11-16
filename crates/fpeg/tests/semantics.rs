@@ -3,7 +3,7 @@
 
 //! Runs the case files in `tests/semantics/` on the reference interpreter. `common/cases.rs`
 //! describes their format. Every grammar must also print to text that reads back to the same
-//! text.
+//! grammar.
 //!
 //! `FPEG_BLESS=1 cargo test` rewrites the expectations with the actual results, to review
 //! as a diff.
