@@ -145,7 +145,7 @@ This prepares the inputs, runs every suite and writes a summary and the raw resu
 | `--mode rigorous` | twice the pyperf worker processes. The Rust suite measures as in the default mode |
 | `--mode smoke` | one value per Python benchmark and criterion's quick mode, to check that every suite runs |
 | `--pgo` | run the Rust suite a second time, built with a profile that a short run of its passes suite trained, as the suite `rust-pgo`. It needs rustup's component `llvm-tools` |
-| `--record` | move the finished run to `benchmarks/results/<date>-<platform>` to commit it, with a letter after the date for each later run of the same day, and draw the chart of the README from it. It needs every suite, `--pgo` and the default or rigorous mode |
+| `--record` | move the finished run to `benchmarks/results/<date>-<platform>` to commit it, with a letter after the date for each later run of the same day, and draw the chart of the README from it. It needs every suite, `--pgo`, the default or rigorous mode, and no uncommitted changes, since a record names its commit |
 
 The chart, `docs/_static/benchmarks.svg`, shows three of the suites, and `uv run python benchmarks/chart.py benchmarks/results/<run>` draws it from another record. A test holds the chart to the record it names, so that it cannot drift from its data.
 

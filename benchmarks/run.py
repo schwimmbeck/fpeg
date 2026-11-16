@@ -371,11 +371,17 @@ def main() -> None:
     args = parser.parse_args()
 
     today = datetime.date.today().isoformat()
-    record = record_folder(today, PLATFORM_NAMES.get(sys.platform, sys.platform))
-    title = record.name
-    if args.record and (args.suite or not args.pgo or args.mode not in RECORD_MODES):
-        modes = " or ".join(RECORD_MODES)
-        raise SystemExit(f"--record needs every suite, --pgo and the mode {modes}")
+    platform_name = PLATFORM_NAMES.get(sys.platform, sys.platform)
+    record = None
+    if args.record:
+        complete = set(args.suite or SUITES) == set(SUITES)
+        if not complete or not args.pgo or args.mode not in RECORD_MODES:
+            modes = " or ".join(RECORD_MODES)
+            raise SystemExit(f"--record needs every suite, --pgo and the mode {modes}")
+        if git("status", "--porcelain", "--untracked-files=no"):
+            raise SystemExit("--record needs a clean tree, since a record names its commit")
+        record = record_folder(today, platform_name)
+    title = record.name if record else f"{today}-{platform_name}"
     shutil.rmtree(LAST_RUN, ignore_errors=True)
     LAST_RUN.mkdir(parents=True)
 
@@ -398,7 +404,7 @@ def main() -> None:
         summary(title, args.mode, env, rows), encoding="utf-8", newline="\n"
     )
     out = LAST_RUN
-    if args.record:
+    if record:
         RESULTS.mkdir(exist_ok=True)
         out = LAST_RUN.rename(record)
         chart.write(out)
