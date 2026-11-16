@@ -8,7 +8,6 @@ defined twice. So the documents made here hold no dates, and their keys are two 
 which keeps a single edit from defining one twice.
 """
 
-import math
 import random
 import re
 import string
@@ -18,6 +17,7 @@ from typing import Any, NamedTuple
 
 import fpeg
 import pytest
+from helpers import same
 
 SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "toml"
 TOML = fpeg.Grammar.open(SAMPLES.parent.parent / "toml.fpeg")
@@ -147,20 +147,6 @@ TO_PYTHON = ToPython()
 
 def load(text: str) -> Any:
     return TO_PYTHON.transform(TOML.parse(text))
-
-
-def same(a: Any, b: Any) -> bool:
-    """Equal values of equal types, keys in the same order, nan equal to nan."""
-    if type(a) is not type(b):
-        return False
-    if isinstance(a, dict):
-        return list(a) == list(b) and all(same(a[k], b[k]) for k in a)
-    if isinstance(a, list):
-        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b, strict=True))
-    if isinstance(a, float):
-        both_nan = math.isnan(a) and math.isnan(b)
-        return both_nan or (a == b and math.copysign(1, a) == math.copysign(1, b))
-    return a == b
 
 
 class Writer:

@@ -4,12 +4,12 @@
 """The JSON grammar against `json.loads`: equal values of equal types, and the same verdict."""
 
 import json
-import math
 import random
 from pathlib import Path
 from typing import Any
 
 import fpeg
+from helpers import same
 
 SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "json"
 JSON = fpeg.Grammar.open(SAMPLES.parent.parent / "json.fpeg")
@@ -38,19 +38,6 @@ def refuse(name: str) -> Any:
 def reference(text: str) -> Any:
     """`json.loads`, which takes NaN and the infinities too unless told not to."""
     return json.loads(text, parse_constant=refuse)
-
-
-def same(a: Any, b: Any) -> bool:
-    """Equal values of equal types, dict keys in the same order, -0.0 apart from 0.0."""
-    if type(a) is not type(b):
-        return False
-    if isinstance(a, dict):
-        return list(a) == list(b) and all(same(a[k], b[k]) for k in a)
-    if isinstance(a, list):
-        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b, strict=True))
-    if isinstance(a, float):
-        return a == b and math.copysign(1, a) == math.copysign(1, b)
-    return a == b
 
 
 def verdict(text: str) -> tuple[bool, Any]:

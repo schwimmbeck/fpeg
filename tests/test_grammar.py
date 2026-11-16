@@ -8,6 +8,7 @@ from pathlib import Path
 
 import fpeg
 import pytest
+from helpers import RECOVERING
 
 PAIRS = r"""
 start: pair ("," pair)*
@@ -173,16 +174,6 @@ def test_a_named_error_carries_its_name_and_what_was_expected() -> None:
         named.parse("ae")
     assert raised.value.label == "letter"
     assert raised.value.message == 'letter: expected "b", "c"'
-
-
-RECOVERING = r"""
-start: "[" (item ("," (item ^ item))*)? "]" ^ close
-item: NUMBER
-NUMBER: [0-9]+
-%ignore " "+
-%recover item: (!("," | "]") .)*
-%recover close: ()
-"""
 
 
 def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:

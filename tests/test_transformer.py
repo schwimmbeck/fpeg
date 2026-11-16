@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 import fpeg
+import helpers
 import pytest
 
 if TYPE_CHECKING:
@@ -360,14 +361,7 @@ def test_default_methods_apply_when_a_subclass_overrides_them() -> None:
     assert Defaults().transform(parse("f(a)")) == ("start", [("call", ["F", "A"])])
 
 
-RECOVERING = fpeg.Grammar(r"""
-start: "[" (item ("," (item ^ item))*)? "]" ^ close
-item: NUMBER
-NUMBER: [0-9]+
-%ignore " "+
-%recover item: (!("," | "]") .)*
-%recover close: ()
-""")
+RECOVERING = fpeg.Grammar(helpers.RECOVERING)
 
 
 def recovered(text: str) -> fpeg.Tree:
