@@ -5,8 +5,8 @@ name: Release
 
 # A tag that the maintainer pushes starts a release. vX.Y.Z publishes to crates.io and PyPI after
 # an approval in the environment release, makes the GitHub release and deploys the docs.
-# vX.Y.Z-rc.N rehearses everything before that and publishes to TestPyPI alone. A job that fails
-# runs again on its own, and the publishing jobs skip what is out already.
+# vX.Y.Z-rc.N rehearses everything before that and publishes to TestPyPI alone. A job that failed
+# can be run again on its own, and the publishing jobs skip what is out already.
 on:
   push:
     tags: ["v*"]
@@ -337,7 +337,7 @@ jobs:
   docs:
     name: Documentation
     if: ${{ !contains(github.ref_name, '-') }}
-    needs: pypi
+    needs: [crates-io, pypi]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
