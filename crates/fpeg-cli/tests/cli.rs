@@ -569,3 +569,102 @@ fn profile_needs_a_grammar_and_an_input() {
     assert_eq!(out.status.code(), Some(2));
     assert!(text(&out.stderr).starts_with("error: profile needs a grammar and an input\n"));
 }
+
+/// A page of the documentation, with line feeds for line breaks.
+fn page(name: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs")
+        .join(name);
+    let text = std::fs::read_to_string(&path).expect("the page reads");
+    text.replace("\r\n", "\n")
+}
+
+/// The fenced blocks of a page in order, each with its language and its text.
+fn blocks(page: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut open: Option<(String, String)> = None;
+    for line in page.lines() {
+        match open.as_mut() {
+            None => {
+                open = line
+                    .strip_prefix("```")
+                    .map(|l| (l.to_owned(), String::new()))
+            }
+            Some(_) if line == "```" => found.extend(open.take()),
+            Some((_, text)) => {
+                text.push_str(line);
+                text.push('\n');
+            }
+        }
+    }
+    found
+}
+
+/// Run the binary in a directory, so that it prints paths as they are written.
+fn run_in(dir: &std::path::Path, args: &[&str]) -> Output {
+    let out = Command::new(env!("CARGO_BIN_EXE_fpeg"))
+        .args(args)
+        .current_dir(dir)
+        .output();
+    out.expect("the fpeg binary runs")
+}
+
+/// What the binary prints for a command over the first grammar of a page, as `g.fpeg`, and an
+/// input, as `input.txt`: its output, or its errors where it has no output.
+fn printed_for(page: &str, test: &str, command: &[&str], input: &str) -> String {
+    let blocks = blocks(page);
+    let grammar = blocks.iter().find(|(language, _)| language == "fpeg");
+    let grammar = &grammar.expect("the page has a grammar").1;
+    let paths = files(test, &[("g.fpeg", grammar), ("input.txt", input)]);
+    let dir = paths[0].parent().expect("a directory");
+    let out = run_in(dir, &[command, &["g.fpeg", "input.txt"]].concat());
+    match out.stdout.is_empty() {
+        true => text(&out.stderr).trim_end().to_owned(),
+        false => text(&out.stdout),
+    }
+}
+
+/// Assert that a page shows what a command printed.
+fn assert_shown(page: &str, printed: &str) {
+    assert!(page.contains(printed), "the page does not show:\n{printed}");
+}
+
+#[test]
+fn the_reference_pages_show_what_parse_and_profile_print() {
+    let cli = page("reference/cli.md");
+    for command in [&["parse"][..], &["parse", "--json"], &["profile"]] {
+        assert_shown(&cli, &printed_for(&cli, "pages_cli", command, "1 + 23"));
+    }
+    assert_shown(&cli, &printed_for(&cli, "pages_cli", &["parse"], "1 +"));
+    let tree = page("reference/tree.md");
+    let printed = printed_for(&tree, "pages_tree", &["parse"], "x = 1, y = 2");
+    assert_shown(&tree, &printed);
+}
+
+#[test]
+fn the_guide_to_performance_shows_what_profile_prints() {
+    // Each table follows the grammar it profiles, all on the input the guide names.
+    let guide = page("guide/performance.md");
+    let mut grammar = None;
+    let mut tables = 0;
+    for (language, block) in blocks(&guide) {
+        match (language.as_str(), &grammar) {
+            ("fpeg", _) => grammar = Some(block),
+            ("text", Some(grammar)) if block.starts_with("rule ") => {
+                let paths = files(
+                    "pages_guide",
+                    &[("g.fpeg", grammar), ("input.txt", "((((x))))")],
+                );
+                let dir = paths[0].parent().expect("a directory");
+                let out = run_in(dir, &["profile", "g.fpeg", "input.txt"]);
+                assert_eq!(text(&out.stdout), block);
+                tables += 1;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(tables, GUIDE_TABLES);
+}
+
+/// The profiles that the guide to performance shows.
+const GUIDE_TABLES: usize = 3;
