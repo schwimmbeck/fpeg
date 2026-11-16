@@ -575,6 +575,32 @@ def test_a_method_that_two_rules_reach_is_refused() -> None:
         Both().transform(grammar.parse("ab"))
 
 
+def test_a_tree_that_a_transform_builds_anew_has_no_fields() -> None:
+    # A node whose child's value changed comes back rebuilt, with its text.
+    class Leaves(fpeg.Transformer):
+        def NAME(self, token: fpeg.Token) -> str:
+            return token.upper()
+
+    rebuilt = Leaves().transform(parse("f(a)"))
+    call = rebuilt.children[0]
+    assert (call.data, call.children, call.text) == ("call", ["F", "A"], "f(a)")
+
+    class FieldsOnRebuilt(fpeg.Transformer):
+        def call(self, name: Any, args: Any, kw: Any) -> None: ...
+
+    with pytest.raises(TypeError, match="built in Python or rebuilt by a transform"):
+        FieldsOnRebuilt().transform(rebuilt)
+
+    # The tree that v_args(tree=True) passes is built anew as well.
+    class TreeOption(fpeg.Transformer):
+        @fpeg.v_args(tree=True)
+        def call(self, tree: fpeg.Tree) -> Any:
+            return tree.field("name")
+
+    with pytest.raises(TypeError, match="built in Python or rebuilt by a transform"):
+        TreeOption().transform(parse("f(a)"))
+
+
 def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
     class Built(fpeg.Transformer):
         def pair(self, children: list[Any]) -> tuple[Any, ...]:
@@ -594,21 +620,6 @@ def test_a_tree_built_in_python_is_transformed_by_its_data() -> None:
 
     with pytest.raises(TypeError, match="has no fields"):
         FieldsOnBuilt().transform(built)
-
-    # A node whose child's value changed comes back rebuilt, with its text and without fields.
-    class Leaves(fpeg.Transformer):
-        def NAME(self, token: fpeg.Token) -> str:
-            return token.upper()
-
-    rebuilt = Leaves().transform(parse("f(a)"))
-    call = rebuilt.children[0]
-    assert (call.data, call.children, call.text) == ("call", ["F", "A"], "f(a)")
-
-    class FieldsOnRebuilt(fpeg.Transformer):
-        def call(self, name: Any, args: Any, kw: Any) -> None: ...
-
-    with pytest.raises(TypeError, match="built in Python or rebuilt by a transform"):
-        FieldsOnRebuilt().transform(rebuilt)
 
     loop = fpeg.Tree("start", [])
     loop.children.append(loop)

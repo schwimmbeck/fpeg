@@ -459,8 +459,8 @@ impl Tree {
     fn field(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
         let Inner::View { parsed, index } = &self.inner else {
             return Err(PyTypeError::new_err(
-                "fields belong to trees of a parse, and this tree was built in Python, or rebuilt \
-                 by a transform since the value of one of its children changed",
+                "fields belong to trees of a parse, and this tree was built in Python or rebuilt \
+                 by a transform",
             ));
         };
         let node = (parsed.tree.node(*index as usize))
