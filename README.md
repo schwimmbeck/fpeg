@@ -8,6 +8,7 @@
 [![CI](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml/badge.svg)](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/schwimmbeck/fpeg/graph/badge.svg)](https://codecov.io/gh/schwimmbeck/fpeg)
 [![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue)](#licence)
+[![REUSE status](https://api.reuse.software/badge/github.com/schwimmbeck/fpeg)](https://api.reuse.software/info/github.com/schwimmbeck/fpeg)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-blue)](Cargo.toml)
 
