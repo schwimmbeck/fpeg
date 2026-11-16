@@ -9,7 +9,6 @@ language's own parser gives, compared by `ast.dump` on the 76 files of the appli
 
 import ast
 import importlib
-import os
 import sys
 import warnings
 from pathlib import Path
@@ -41,14 +40,17 @@ def test_the_samples_give_an_ast_that_python_compiles() -> None:
         compile(module, str(path), "exec")
 
 
-def own_parser() -> Any:
-    """Return the module of the language's own parser, or skip without it or without Lark."""
+def own_parser(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Return the module of the language's own parser, or skip without it or without Lark.
+
+    The environment and the module path it sets are restored after the test.
+    """
     pytest.importorskip("lark")
     if not corpus.ordec_fetched():
         pytest.skip("the ORD files are missing or damaged, run benchmarks/corpus.py first")
     # The parser keeps its table cache under XDG_CACHE_HOME, which stays out of the home folder.
-    os.environ["XDG_CACHE_HOME"] = str(corpus.CORPORA.parent / ".cache")
-    sys.path.insert(0, str(corpus.CORPORA))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(corpus.CORPORA.parent / ".cache"))
+    monkeypatch.syspath_prepend(str(corpus.CORPORA))
     return importlib.import_module("ordpkg.parser")
 
 
@@ -61,8 +63,10 @@ def dumped(module: ast.AST) -> str:
 
 
 @pytest.mark.corpus
-def test_every_ord_file_gives_the_tree_of_the_language_s_own_parser_and_compiles() -> None:
-    parser = own_parser()
+def test_every_ord_file_gives_the_tree_of_the_language_s_own_parser_and_compiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parser = own_parser(monkeypatch)
     paths = sorted(corpus.ORD_FILES.rglob("*.ord"))
     differ: list[str] = []
     for path in paths:

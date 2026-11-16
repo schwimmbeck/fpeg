@@ -45,5 +45,7 @@ def test_a_pre_release_needs_no_section() -> None:
 
 
 def test_a_tag_must_name_the_version_of_the_workspace() -> None:
-    with pytest.raises(SystemExit, match="does not name the version"):
-        release_notes.notes("v0.2.1", "0.2.0", CHANGELOG)
+    # Also the tag of a pre-release, which needs no section of its own.
+    for tag in ["v0.2.1", "v0.2.0-rc.1"]:
+        with pytest.raises(SystemExit, match="does not name the version"):
+            release_notes.notes(tag, "0.2.0", CHANGELOG)

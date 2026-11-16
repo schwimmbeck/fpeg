@@ -285,6 +285,9 @@ def test_parse_refuses_a_literal_that_python_cannot_read() -> None:
 @pytest.mark.parametrize("line_break", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
 @pytest.mark.parametrize("path", FILES)
 def test_a_file_gives_the_tree_of_cpython(path: Path, line_break: str) -> None:
+    # A Python that a distribution splits into packages may lack some files of its library.
+    if not path.is_file():
+        pytest.skip(f"this Python has no {path}")
     # Reading a file as text turns its line breaks into line feeds.
     compare(path.read_text(encoding="utf-8").replace("\n", line_break))
 

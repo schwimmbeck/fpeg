@@ -791,7 +791,7 @@ pub fn check_seeds(check: fn(u64) -> Option<String>) {
                     let problem = outcome.unwrap_or_else(|_| Some("panicked".to_owned()));
                     if let Some(problem) = problem {
                         let mut failures = failures.lock().expect("no thread panics holding it");
-                        failures.push(format!("seed {seed}: {problem}"));
+                        failures.push((seed, problem));
                     }
                 }
             });
@@ -800,7 +800,11 @@ pub fn check_seeds(check: fn(u64) -> Option<String>) {
     let mut failures = failures
         .into_inner()
         .expect("no thread panicked holding it");
+    // By seed as a number, so that the first failures are those of the smallest seeds.
     failures.sort();
     failures.truncate(REPORTED_FAILURES);
-    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+    let shown: Vec<String> = (failures.iter())
+        .map(|(seed, problem)| format!("seed {seed}: {problem}"))
+        .collect();
+    assert!(shown.is_empty(), "{}", shown.join("\n\n"));
 }
