@@ -185,9 +185,10 @@ pub(crate) fn grammar() -> Grammar {
         seq([
             lit("%if"),
             lit("("),
-            field("negated", opt(lit("!"))),
-            field("flag", r("NAME")),
-            lit(")"),
+            on(
+                "nested",
+                seq([field("negated", opt(lit("!"))), field("flag", r("NAME")), lit(")")]),
+            ),
         ]),
     );
     g.rule(
@@ -206,10 +207,17 @@ pub(crate) fn grammar() -> Grammar {
             ),
         ]),
     );
-    g.rule("ref", seq([lit("%ref"), lit("("), field("name", r("NAME")), lit(")")]));
+    g.rule(
+        "ref",
+        seq([lit("%ref"), lit("("), on("nested", seq([field("name", r("NAME")), lit(")")]))]),
+    );
     g.rule(
         "error_alternative",
-        seq([lit("%error"), lit("("), field("message", r("STRING")), lit(")")]),
+        seq([
+            lit("%error"),
+            lit("("),
+            on("nested", seq([field("message", r("STRING")), lit(")")])),
+        ]),
     );
     g.rule(
         "directive",

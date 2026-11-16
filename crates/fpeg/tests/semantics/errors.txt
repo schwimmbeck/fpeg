@@ -50,6 +50,18 @@ start: "a" | %error("no a here")
 --- "b"
 error at 0: no a here
 
+=== line breaks inside the parentheses of the forms that start with % are skipped
+%flag f
+start: %on(f, %if(
+    f
+) "a") | %error(
+    "no a here"
+)
+--- "a"
+(start ~"a")
+--- "b"
+error at 0: no a here
+
 === the first error alternative that matches explains the error, over what it matched
 start: "a" ("b" %error("not b") | "b" "c" %error("not bc") | "d")
 --- "abc"

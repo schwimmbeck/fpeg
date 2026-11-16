@@ -446,12 +446,12 @@ args: "<" %on(nested, items=(choice ++ ",") ">")
 ?special: flag_on | flag_off | flag_test | indent | same | def | ref | error_alternative
 flag_on: "%on" "(" %on(nested, flag=NAME "," expr=choice ")")
 flag_off: "%off" "(" %on(nested, flag=NAME "," expr=choice ")")
-flag_test: "%if" "(" negated="!"? flag=NAME ")"
+flag_test: "%if" "(" %on(nested, negated="!"? flag=NAME ")")
 indent: "%indent" "(" %on(nested, expr=choice ")")
 same: "%same"
 def: "%def" "(" %on(nested, name=NAME "," expr=choice ")")
-ref: "%ref" "(" name=NAME ")"
-error_alternative: "%error" "(" message=STRING ")"
+ref: "%ref" "(" %on(nested, name=NAME ")")
+error_alternative: "%error" "(" %on(nested, message=STRING ")")
 
 ?directive: ignore | word | flags | tabs | keywords | import | extends | recover
 ignore: "%ignore" expr=choice
