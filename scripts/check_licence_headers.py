@@ -4,7 +4,8 @@
 """Check that every source file starts with SPDX lines.
 
 A file of the project starts with the project's two lines. A file that holds outside code keeps
-its own copyright lines and needs a licence compatible with both MIT and Apache-2.0. Reads the
+its own copyright lines beside the project's and needs a licence compatible with both MIT and
+Apache-2.0. Reads the
 files git tracks or would track, so ignored build output is skipped. A file type the check does
 not know is an error, so that a new kind of source file cannot go unchecked. The copies of the
 licence texts in the published crates must equal the texts at the root.
@@ -78,6 +79,9 @@ def header_problem(path: Path, comment: str) -> str | None:
     licences = [t.removeprefix(LICENCE_TAG) for t in tags if t.startswith(LICENCE_TAG)]
     if not holders or len(licences) != 1:
         return "missing the SPDX header"
+    # A holder that differs from the project's by one letter is no outside code.
+    if PROJECT_HOLDER not in holders:
+        return f"the copyright lines lack the project's, {PROJECT_HOLDER}"
     if holders == [PROJECT_HOLDER] and licences == [PROJECT_LICENCE]:
         return None
     if holders == [PROJECT_HOLDER]:
