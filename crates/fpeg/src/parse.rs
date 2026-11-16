@@ -217,7 +217,7 @@ impl ParseError {
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // The grammar wrote the messages and display names, which a terminal must not act on.
+        // The grammar wrote the messages and display names, which a console must not act on.
         let message = visible(&self.message());
         match self.end() {
             end if end > self.position => {

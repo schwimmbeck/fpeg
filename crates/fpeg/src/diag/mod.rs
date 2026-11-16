@@ -54,7 +54,7 @@ impl Diagnostic {
 
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // A message may quote the grammar, which a terminal must not act on.
+        // A message may quote the grammar, which a console must not act on.
         let (severity, span) = (self.severity(), self.span);
         write!(
             f,

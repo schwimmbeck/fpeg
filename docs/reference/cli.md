@@ -44,7 +44,7 @@ start
 
 A token shows its kind and its text, and a field its name before the item. `~` marks a hidden token, here the anonymous literal `"+"`, whose kind is the literal itself. With `--spans` every item also shows its byte span, as in `start@0..6` and `first=N"1"@0..1`.
 
-`--json` prints the tree as JSON instead: an array of the top items, where a node has `kind`, `start`, `end` and `children`, a token has `kind`, `start`, `end` and `text`, and either has `field` when it fills one. A hidden token has `"hidden": true`. Spans are byte offsets. Controls and the characters that change the direction of text are escaped, so that printing the JSON cannot rewrite the terminal.
+`--json` prints the tree as JSON instead: an array of the top items, where a node has `kind`, `start`, `end` and `children`, a token has `kind`, `start`, `end` and `text`, and either has `field` when it fills one. A hidden token has `"hidden": true`. Spans are byte offsets. Controls and the characters that change the direction of text are escaped, so that printing the JSON cannot rewrite the console.
 
 ```text
 [{"kind":"start","start":0,"end":6,"children":[{"kind":"N","field":"first","start":0,"end":1,"text":"1"},{"kind":"\"+\"","start":2,"end":3,"text":"+","hidden":true},{"kind":"N","start":4,"end":6,"text":"23"}]}]
@@ -60,7 +60,7 @@ error: expected N
   |    ^
 ```
 
-A [named error](grammar.md#errors) shows its name in brackets, as `error[close]: expected "]"`. Tabs show as spaces, control characters as visible marks, so that no input can rewrite the terminal, and a line too long to show is cut around the error.
+A [named error](grammar.md#errors) shows its name in brackets, as `error[close]: expected "]"`. Tabs show as spaces, control characters as visible marks, so that no input can rewrite the console, and a line too long to show is cut around the error.
 
 With `--recover` the parse goes on past an error whose label the grammar gives a recovery. The tree printed holds an `<error>` node for what each recovery took and a `<missing>` token where it took nothing, and each error follows on standard error where the parse had got furthest when its label failed, with carets to the end of what its recovery took. An input with errors fails the command all the same. A parse that fails even so prints the errors it recovered from before the one that ended it.
 

@@ -131,7 +131,7 @@ fn report(path: &Path, text: &str, found: &[Diagnostic]) {
     let lines = LineIndex::new(text);
     for diagnostic in found {
         let (line, column) = lines.line_column(text, diagnostic.span.start as usize);
-        // A message may quote the grammar, which the terminal must not act on.
+        // A message may quote the grammar, which the console must not act on.
         let (severity, code, message) = (
             diagnostic.severity(),
             diagnostic.code,

@@ -151,7 +151,7 @@ impl Diagnostic {
 
     fn rendered(&self) -> String {
         let path = self.path.as_deref().unwrap_or(TEXT_PATH);
-        // A message may quote the grammar, which a terminal must not act on.
+        // A message may quote the grammar, which a console must not act on.
         format!(
             "{path}:{}:{}: {}[{}]: {}",
             self.line,

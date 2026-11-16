@@ -68,7 +68,7 @@ impl<'t> Source<'t> {
     /// says it once.
     ///
     /// Tabs show as spaces, and control and bidirectional characters as visible marks, so that
-    /// no text can rewrite the report on a terminal. A line too wide is cut around the error.
+    /// no text can rewrite the report on a console. A line too wide is cut around the error.
     pub fn render(&self, name: Option<&str>, message: &str, start: usize, end: usize) -> String {
         let start = self.text.floor_char_boundary(start);
         let end = self.text.floor_char_boundary(end).max(start);
