@@ -19,6 +19,10 @@ mod profile;
 const USAGE: &str = "\
 Usage: fpeg <command> [options]
 
+Options:
+  -h, --help                   print this help
+  -V, --version                print the version
+
 Commands:
   check GRAMMAR...             report the errors and warnings of grammars
   parse GRAMMAR [INPUT]        parse INPUT, or standard input, and print its tree
@@ -33,10 +37,7 @@ Options of parse and profile:
 
 Options of parse:
   --spans                      show the byte span of every node and token
-  --recover                    go on past errors where the grammar has recoveries
-
-  -h, --help                   print this help
-  -V, --version                print the version";
+  --recover                    go on past errors where the grammar has recoveries";
 
 /// Exit status when a grammar has problems or an input does not parse.
 const EXIT_PROBLEM: u8 = 1;
@@ -66,13 +67,16 @@ enum Failure {
 fn main() -> ExitCode {
     // args_os, since std::env::args panics on an argument that is not valid Unicode.
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+    // An argument that starts with a dash is an option wherever it stands, so help may follow
+    // a command and its arguments.
+    let help = args.iter().any(|arg| arg == "--help" || arg == "-h");
     let outcome = match args.first().map(|arg| arg.to_string_lossy()).as_deref() {
-        Some("--version" | "-V") if args.len() == 1 => {
-            say(false, format_args!("fpeg {}", fpeg::VERSION));
+        _ if help => {
+            say(false, format_args!("{USAGE}"));
             Ok(())
         }
-        Some("--help" | "-h") if args.len() == 1 => {
-            say(false, format_args!("{USAGE}"));
+        Some("--version" | "-V") if args.len() == 1 => {
+            say(false, format_args!("fpeg {}", fpeg::VERSION));
             Ok(())
         }
         Some("check") => check(&args[1..]),
@@ -81,7 +85,7 @@ fn main() -> ExitCode {
         None => Err(Failure::Usage(String::new())),
         Some(first) => {
             // A known flag takes no second argument, so then the second is the culprit.
-            let flag = ["--version", "-V", "--help", "-h"].contains(&first);
+            let flag = ["--version", "-V"].contains(&first);
             let culprit = args.get(usize::from(flag)).map(|a| a.to_string_lossy());
             Err(Failure::Usage(format!(
                 "unexpected argument '{}'",

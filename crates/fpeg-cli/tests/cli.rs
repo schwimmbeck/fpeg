@@ -73,11 +73,16 @@ fn version_flag_prints_the_core_version() {
 }
 
 #[test]
-fn help_flag_prints_the_usage() {
-    for flag in ["--help", "-h"] {
-        let out = run([flag]);
-        assert!(out.status.success(), "{flag}");
-        assert!(out.stderr.is_empty(), "{flag}: {}", text(&out.stderr));
+fn help_flag_prints_the_usage_alone_or_after_a_command() {
+    for args in [
+        &["--help"][..],
+        &["-h"],
+        &["parse", "--help"],
+        &["check", "grammar.fpeg", "-h"],
+    ] {
+        let out = run(args);
+        assert!(out.status.success(), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}: {}", text(&out.stderr));
         let usage = text(&out.stdout);
         assert!(
             usage.starts_with("Usage: fpeg <command> [options]\n"),
