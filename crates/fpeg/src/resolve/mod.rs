@@ -204,6 +204,7 @@ pub(crate) fn resolve_counted(
     r.directives();
     for rule in &grammar.rules {
         r.check_name(&rule.name);
+        r.check_forms(rule);
         if r.by_name.insert(&rule.name.text, rule).is_some() {
             r.error(
                 DiagnosticCode::Duplicate,
@@ -910,19 +911,9 @@ impl<'g> Resolver<'g> {
         deep
     }
 
-    fn lower_rule(&mut self, pending: Pending<'g>) {
-        let Pending { id, rule, args } = pending;
-        // A rule too deep to lower is reported where the rules are first read.
-        let deep = (rule.body.alternatives()).any(|a| a.expr.measure().1 > MAX_EXPRESSION_DEPTH);
-        if deep {
-            self.rules[id.0 as usize] = Some(ir::Rule {
-                name: rule.name.text.clone(),
-                span: rule.name.span,
-                body: ir::Expr::Empty,
-                memo: ir::MemoMark::None,
-            });
-            return;
-        }
+    /// Check the attributes, the markers and the display name of a rule, which hold for every
+    /// use, so that a template nothing uses is checked as well.
+    fn check_forms(&mut self, rule: &Rule) {
         let kind = rule.kind();
         for attribute in &rule.attributes {
             if attribute.text == "sync" {
@@ -962,18 +953,34 @@ impl<'g> Resolver<'g> {
             let message = format!("the inlined rule {} cannot be transparent", rule.name.text);
             self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
+        if rule.has_attribute("memo") && rule.has_attribute("nomemo") {
+            let message = format!(
+                "the rule {} cannot be both @memo and @nomemo",
+                rule.name.text
+            );
+            self.error(DiagnosticCode::RuleForm, message, rule.name.span);
+        }
+    }
+
+    fn lower_rule(&mut self, pending: Pending<'g>) {
+        let Pending { id, rule, args } = pending;
+        // A rule too deep to lower is reported where the rules are first read.
+        let deep = (rule.body.alternatives()).any(|a| a.expr.measure().1 > MAX_EXPRESSION_DEPTH);
+        if deep {
+            self.rules[id.0 as usize] = Some(ir::Rule {
+                name: rule.name.text.clone(),
+                span: rule.name.span,
+                body: ir::Expr::Empty,
+                memo: ir::MemoMark::None,
+            });
+            return;
+        }
+        let kind = rule.kind();
+        // The pass over every rule reported a rule marked both ways.
         let memo = match (rule.has_attribute("memo"), rule.has_attribute("nomemo")) {
-            (true, true) => {
-                let message = format!(
-                    "the rule {} cannot be both @memo and @nomemo",
-                    rule.name.text
-                );
-                self.error(DiagnosticCode::RuleForm, message, rule.name.span);
-                ir::MemoMark::None
-            }
             (true, false) => ir::MemoMark::Memo,
             (false, true) => ir::MemoMark::NoMemo,
-            (false, false) => ir::MemoMark::None,
+            _ => ir::MemoMark::None,
         };
         let params: HashMap<String, Expr> = rule
             .params

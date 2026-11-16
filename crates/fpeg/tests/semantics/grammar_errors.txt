@@ -299,6 +299,17 @@ T "": "a"
 --- grammar
 the display name of T cannot be empty
 
+=== the attributes and markers of a template that nothing uses are checked as well
+start: "a"
+@sync
+t<x>: x
+u<x> "you": x
+?_v<x>: x
+--- grammar
+@sync is not supported yet
+only terminals can have a display name, not u
+the inlined rule _v cannot be transparent
+
 === nothing can follow %error, which ends its alternative, and what follows is not read further
 start: "a" | "b" %error("no b") nope
 --- grammar

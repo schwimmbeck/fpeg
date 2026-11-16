@@ -140,7 +140,7 @@ list<item, separator>: item (separator item)*
 args: "(" list<expr, ","> ")"
 ```
 
-A rule with parameters is a template. Parameters are names that stand for expressions inside the body. Each use with a distinct list of arguments becomes a rule of its own, with the same name, before anything is matched. The arguments are expressions, and a use must pass as many as the rule declares.
+A rule with parameters is a template. Parameters are names that stand for expressions inside the body. Each use with a distinct list of arguments becomes a rule of its own, with the same name, before anything is matched. The arguments are expressions, and a use must pass as many as the rule declares. The body of a template is checked in each of its uses, so a template that nothing uses has only its attributes, markers and parameters checked.
 
 ### Left recursion
 
