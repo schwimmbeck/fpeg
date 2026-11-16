@@ -378,7 +378,7 @@ def main() -> None:
     shutil.rmtree(LAST_RUN, ignore_errors=True)
     LAST_RUN.mkdir(parents=True)
 
-    corpus.prepare()
+    corpus.prepare_inputs()
     env = environment()
     rows: list[Row] = []
     for suite in args.suite or SUITES:

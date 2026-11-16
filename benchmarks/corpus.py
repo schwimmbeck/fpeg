@@ -295,8 +295,8 @@ def ordec_fetched() -> bool:
     return package and ORD_FILES.is_dir() and ord_files_digest(ORD_FILES) == ORD_FILES_SHA256
 
 
-def prepare() -> None:
-    """Make every input that is missing or damaged, then check all of them."""
+def prepare_inputs() -> None:
+    """Make every input of the benchmarks that is missing or damaged, then check all of them."""
     CORPORA.mkdir(exist_ok=True)
     if not matches(RECORDS_JSON.path, RECORDS_JSON.sha256):
         # Python's random module could change its output, which this check would catch.
@@ -310,6 +310,11 @@ def prepare() -> None:
         check(CALCULATOR.path, CALCULATOR.sha256)
     if not ordec_fetched():
         fetch_ordec()
+
+
+def prepare() -> None:
+    """Make the inputs of the benchmarks and fetch the corpora of the tests."""
+    prepare_inputs()
     if not matches(LUA_TESTS.path, LUA_TESTS.sha256):
         fetch(LUA_TESTS_URL, LUA_TESTS.path, LUA_TESTS.sha256)
 
