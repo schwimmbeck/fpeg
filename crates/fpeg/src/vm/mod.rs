@@ -130,7 +130,8 @@ impl Default for Passes {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Memo {
     /// The rules that a choice can try twice at one position, through the starts of two of
-    /// its alternatives, the left-recursive rules that do not run as a loop, and the rules
+    /// its alternatives or of a part that goes on after a failed try and the part after it,
+    /// as in `item? item`, the left-recursive rules that do not run as a loop, and the rules
     /// the grammar marks `@memo`, without those it marks `@nomemo`.
     #[default]
     Grammar,

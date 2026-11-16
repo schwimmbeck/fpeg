@@ -7,8 +7,8 @@ use std::fmt;
 
 use crate::render::visible;
 
-/// Rule activations that may be nested before a parse stops. The deepest nesting that CPython
-/// takes, 200 brackets, needs about 4,000 in the Python grammar.
+/// Rule activations that may be nested before a parse stops. The Python grammar takes the
+/// deepest nesting that CPython takes, 200 brackets, within it, which a test holds.
 pub const DEFAULT_MAX_DEPTH: u32 = 5_000;
 
 /// Steps a parse may take before it stops. A step is an instruction of the parsing machine,
@@ -16,9 +16,8 @@ pub const DEFAULT_MAX_DEPTH: u32 = 5_000;
 /// node counts its items, comparing a long literal, taking a run of a class or looking up a
 /// reserved word counts its length, and testing a class beyond ASCII counts its items. A tree
 /// that repeats the nodes of a remembered match or of a left recursion counts what laying out
-/// the repeats takes. Ten to twenty seconds on a desktop. A parse of JSON meets the memory
-/// limit first, at two to four hundred megabytes. A parse that fails runs a second time to
-/// find what was expected, which takes as long again.
+/// the repeats takes. A parse that fails runs a second time to find what was expected, which
+/// takes as long again.
 pub const DEFAULT_MAX_STEPS: u64 = 4_000_000_000;
 
 /// Bytes of memory a parse may hold by default for each byte of its input.

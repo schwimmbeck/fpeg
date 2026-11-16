@@ -9,9 +9,9 @@
 //!
 //! One shortcut keeps deep grammars tractable without changing a result: a rule call whose
 //! evaluation consulted no left-recursion table entry from outside itself depends only on the
-//! rule, the position, the context, whether failures are being recorded, and on the entries
-//! made since, so its result is remembered under the first four and reused while no entry made
-//! since could be reached. Without it, every operator level of a precedence block re-parses the
+//! rule, the position, the context, whether failures are being recorded and whether a lookahead
+//! encloses it, and on the entries made since, so its result is remembered under the first
+//! five and reused while no entry made since could be reached. Without it, every operator level of a precedence block re-parses the
 //! levels below it in each growing step, which is exponential in the number of levels.
 
 use std::collections::hash_map::Entry;
@@ -257,8 +257,7 @@ impl fmt::Debug for Reference {
 impl Reference {
     /// Evaluation steps a parse may take by default. Work beyond a plain step counts too, so the
     /// limit bounds the time a parse takes: copying a remembered result counts one step per
-    /// item, and capturing, comparing, looking up or scanning text counts one per byte. About
-    /// ten seconds, enough for a megabyte of Python.
+    /// item, and capturing, comparing, looking up or scanning text counts one per byte.
     pub const DEFAULT_MAX_STEPS: u64 = 200_000_000;
 
     /// Resolve a grammar, or report the problems in it, the first hundred at most.

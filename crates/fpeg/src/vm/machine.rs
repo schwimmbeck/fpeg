@@ -184,8 +184,9 @@ struct Seeded {
 
 /// What a remembered result depends on: the rule, the position, the flags that are on, the rest
 /// of the context, whether failures were being recorded, since a result found while they were
-/// not recorded none, and whether a lookahead enclosed the call, since then error alternatives
-/// recorded no attempts. Without the last two, it is the key of the table of left recursion.
+/// not recorded none, and whether the call ran where error alternatives record no attempts,
+/// inside a lookahead of a run that explains a failed parse. Without the last two, it is the
+/// key of the table of left recursion.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MemoKey {
     rule: u32,

@@ -24,7 +24,8 @@ impl KindId {
     pub const ERROR: KindId = KindId(0);
     /// A token the parser expected but did not find. Reserved in every kind table.
     pub const MISSING: KindId = KindId(1);
-    /// Text the parser skipped while recovering. Reserved in every kind table.
+    /// Reserved in every kind table for text a parse skips while recovering, which no parse
+    /// makes yet.
     pub const SKIPPED: KindId = KindId(2);
     /// The number of reserved kinds at the start of every kind table.
     pub const RESERVED: u32 = 3;

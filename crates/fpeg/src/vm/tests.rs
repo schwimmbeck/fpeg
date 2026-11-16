@@ -594,7 +594,7 @@ fn a_class_matches_exactly_the_code_points_its_set_contains() {
     }
 }
 
-/// The first position of an instruction the predicate picks, in the routine of `start`.
+/// The first position of an instruction the predicate picks, anywhere in the program.
 fn find(program: &Program, pick: impl Fn(&Inst) -> bool) -> usize {
     program
         .code

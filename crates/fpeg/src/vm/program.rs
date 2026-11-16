@@ -5,8 +5,10 @@
 //!
 //! A program is one flat array of instructions with side tables for literals, character
 //! classes, repetition counts and the names of the tree. Every rule, every shared part of a
-//! rule and the skip expression is a routine that ends in `Ret`, and every rule that can start
-//! a parse has an entry routine that ends in `End`. Jump targets are positions in the array.
+//! rule, the skip expression, the recovery of each label, the test of each error alternative
+//! and the test that finds where ignored text ends is a routine that ends in `Ret` or, for a
+//! test, `TestEnd`, and every rule that can start a parse has an entry routine that ends in
+//! `End`. Jump targets are positions in the array.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -117,13 +119,14 @@ pub(crate) enum Inst {
     /// Call the rule whose routine starts at the target.
     Call(u32),
     /// Call the rule with this index, whose results are remembered: a result stored for this
-    /// position, flags and quiet state is given at once, and a call that runs stores its own.
+    /// position, flags, context (column, captures and floor), quiet state and lookahead state
+    /// is given at once, and a call that runs stores its own.
     MemoCall(u32),
     /// Call the rule with this index, which lies on a left cycle. While the rule is being
-    /// matched at this position with these flags, the call gives the match of the pass before,
-    /// or fails in the first pass. Otherwise it runs the rule, again and again for as long as
-    /// each pass that used such a call ends further, and remembers the result if the rule is
-    /// remembered.
+    /// matched at this position with these flags and context, the call gives the match of the
+    /// pass before, or fails in the first pass. Otherwise it runs the rule, again and again for
+    /// as long as each pass that used such a call ends further, and remembers the result if the
+    /// rule is remembered.
     LrCall(u32),
     /// Call the shared part whose routine starts at the target.
     Sub(u32),
