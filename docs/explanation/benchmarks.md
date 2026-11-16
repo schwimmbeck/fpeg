@@ -1,6 +1,6 @@
 # Benchmarks
 
-Times of fpeg and of other parsers on the same inputs, from the newest run that [`benchmarks/run.py`](https://github.com/schwimmbeck/fpeg/blob/main/benchmarks/run.py) `--record` wrote for each platform. A time is per call: the mean, its standard deviation and the fastest call. [Contributing](../contributing.md#benchmarks) says how to run the suites, and what each measures.
+Times of fpeg and of other parsers on the same inputs, from the newest run that [`benchmarks/run.py`](https://github.com/schwimmbeck/fpeg/blob/main/benchmarks/run.py) `--record` wrote for each platform. A time is per call, from samples that each average many calls: the mean, the standard deviation and the minimum, which is the fastest sample. [Contributing](../contributing.md#benchmarks) says how to run the suites, and what each measures.
 
 The chart of the README sums up three of the suites, drawn from the newest record by [`benchmarks/chart.py`](https://github.com/schwimmbeck/fpeg/blob/main/benchmarks/chart.py):
 
