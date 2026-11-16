@@ -73,6 +73,23 @@ fn version_flag_prints_the_core_version() {
 }
 
 #[test]
+fn help_flag_prints_the_usage() {
+    for flag in ["--help", "-h"] {
+        let out = run([flag]);
+        assert!(out.status.success(), "{flag}");
+        assert!(out.stderr.is_empty(), "{flag}: {}", text(&out.stderr));
+        let usage = text(&out.stdout);
+        assert!(
+            usage.starts_with("Usage: fpeg <command> [options]\n"),
+            "{usage}"
+        );
+        for command in ["check GRAMMAR", "parse GRAMMAR", "profile GRAMMAR"] {
+            assert!(usage.contains(command), "{usage}");
+        }
+    }
+}
+
+#[test]
 fn unaccepted_argument_is_a_usage_error_that_names_it() {
     for args in [
         &["--version", "--no-such-flag"][..],
@@ -131,6 +148,18 @@ fn parse_reads_standard_input_and_prints_json() {
             "{\"kind\":\"\\\"+\\\"\",\"start\":1,\"end\":2,\"text\":\"+\",\"hidden\":true},",
             "{\"kind\":\"N\",\"start\":2,\"end\":3,\"text\":\"2\"}]}]\n"
         )
+    );
+}
+
+#[test]
+fn parse_reads_standard_input_where_the_input_is_a_dash() {
+    let paths = files("dash", &[("sums.fpeg", SUMS)]);
+    let args = ["parse".as_ref(), paths[0].as_os_str(), "-".as_ref()];
+    let out = run_with_input(args, "1 + 23");
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "start\n  first=N\"1\"\n  ~\"+\"\n  N\"23\"\n"
     );
 }
 
