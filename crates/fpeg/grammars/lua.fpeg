@@ -3,9 +3,8 @@
 
 // Lua 5.4. Long brackets match their closing level through a capture, keywords are reserved,
 // and the operators follow the twelve precedence levels of the language. Assignment targets
-// and call statements accept any prefix expression, a superset that a later check narrows.
-// The checks Lua makes while compiling, of labels, goto, break, <const>, <close> and "...",
-// are left to later as well.
+// and call statements accept any prefix expression, a superset of Lua's, and the checks Lua
+// makes while compiling, of labels, goto, break, <const>, <close> and "...", are not made.
 
 %word [A-Za-z0-9_]
 %keywords soft "const" "close"

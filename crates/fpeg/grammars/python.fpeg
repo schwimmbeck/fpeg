@@ -3,10 +3,10 @@
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
 // a line, and f-strings and t-strings nest inside replacement fields, with any quotes inside
-// them. Hard keywords are reserved, soft keywords stay names. Two parts accept a
-// superset that a later check narrows: indentation may mix tabs and spaces where Python finds
-// it ambiguous, and the targets of assignments, deletions, loops and with items take primary
-// expressions.
+// them. Hard keywords are reserved, soft keywords stay names. Two parts accept a superset of
+// Python's: indentation may mix tabs and spaces where Python finds it ambiguous, and the
+// targets of assignments, deletions, loops and with items take primary expressions.
+//
 // Starred items and comprehension clauses call the levels of the expression block that Python
 // takes there.
 
@@ -18,9 +18,10 @@
 %keywords soft "match" "case" "_" "type" "lazy"
 %ignore [ \t\x0C]+ | COMMENT | "\\" _LINE_BREAK &. | %if(bracket) _LINE_BREAK
 
-start: _BLANK_LINES? statements=(%same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented)))*
-
-// Statements
+start: _BLANK_LINES? statements=_line*
+// A line of a block: a statement at the block's column, else an error, where a statement must
+// stand or where a line is indented with no block to open.
+_line: %same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented))
 
 ?statement: compound | simple_statements
 simple_statements: items=(simple ++ ";") ";"? ((_NEWLINE | !.) ^ newline)
@@ -77,7 +78,7 @@ import_as_name: name=NAME ("as" alias=NAME)?
          | decorated
 
 ?block: indented_block | simple_statements
-indented_block: _NEWLINE (%indent(statements=(%same statement | %same &. (!() ^ statement) | %indent(&. (!() ^ indented)))+) ^ indent)
+indented_block: _NEWLINE (%indent(statements=_line+) ^ indent)
 
 decorated: decorators=(decorator %same)+ definition=(function_def | class_def)
 decorator: "@" value=named_expression _NEWLINE
@@ -102,8 +103,6 @@ match: "match" subject=subject ":" _NEWLINE %indent(cases=(%same case)+)
 ?subject: items=star_named_expression "," (items=(star_named_expression ++ ",") ","?)? -> tuple_expression
         | named_expression
 case: "case" pattern=patterns ("if" guard=named_expression)? ":" body=block
-
-// Patterns
 
 ?patterns: items=maybe_star_pattern "," (items=(maybe_star_pattern ++ ",") ","?)? -> sequence_pattern
          | pattern
@@ -145,8 +144,6 @@ key_pattern: key=(literal_pattern | value_pattern) ":" pattern=pattern
 double_star_pattern: "**" !"_" target=NAME
 pattern_name: parts=(NAME ++ ".")
 
-// Parameters and arguments
-
 parameters: _parameters<parameter, default_parameter, star_parameter, double_star_parameter>
 lambda_parameters: _parameters<lambda_parameter, lambda_default, lambda_star, lambda_double_star>
 // Parameters without a default come before those with one, and "/" may follow any of them.
@@ -184,8 +181,6 @@ _keyword_arguments: items=(keyword_or_starred ++ ",") ("," items=(keyword_or_dou
 ?keyword_or_double_starred: keyword
                           | "**" value=expression -> double_starred
 keyword: name=NAME "=" !"=" value=expression
-
-// Expressions
 
 ?star_expressions: items=star_expression "," (items=(star_expression ++ ",") ","?)? -> tuple_expression
                  | star_expression
@@ -279,8 +274,6 @@ slices: items=(slice ++ ",") ","?
             | primary
 ?single_target: primary
 
-// Strings
-
 // Bytes, template strings and the other strings each concatenate only with their own kind.
 strings: parts=BYTES+
        | parts=fstring<T_RAW_PREFIX, T_PREFIX>+
@@ -338,8 +331,6 @@ ESCAPE: "\\" ESCAPED
 // point up to U+10FFFF.
 ESCAPED: "x" HEX{2} | "u" HEX{4} | "U" ("000" HEX{5} | "0010" HEX{4}) | "N{" [^}\r\n]+ "}" | ![xuUN] (_LINE_BREAK | .)
 HEX: [0-9a-fA-F]
-
-// Tokens
 
 @reserved
 NAME "name": [\p{XID_Start}_] \p{XID_Continue}*

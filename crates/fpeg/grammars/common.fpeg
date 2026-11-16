@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-// Terminals that many grammars need, to be taken with %import common (NAME, ...). It is no
+// Terminals that many grammars need, to be taken with %import common (CNAME, ...). It is no
 // grammar of its own and has no start rule.
 
 DIGIT "digit": [0-9]
