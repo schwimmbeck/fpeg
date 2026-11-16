@@ -20,6 +20,21 @@ fn string<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyString>> {
     PyString::from_bytes(py, text.as_bytes())
 }
 
+/// `version` as Python spells versions, which is how the package's metadata has it: Cargo's
+/// `0.1.0-rc.1` is `0.1.0rc1` there.
+fn python_version(version: &str) -> String {
+    let Some((release, pre)) = version.split_once('-') else {
+        return version.to_owned();
+    };
+    let (label, number) = pre.split_once('.').unwrap_or((pre, ""));
+    let label = match label {
+        "alpha" => "a",
+        "beta" => "b",
+        other => other,
+    };
+    format!("{release}{label}{number}")
+}
+
 /// The native part of the fpeg Python package.
 #[pymodule(gil_used = false)]
 mod _fpeg {
@@ -37,7 +52,7 @@ mod _fpeg {
     #[pymodule_init]
     fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
         let py = module.py();
-        module.add("__version__", fpeg::VERSION)?;
+        module.add("__version__", crate::python_version(fpeg::VERSION))?;
         module.add("Token", crate::token::create_type(py)?)?;
         module.add("ParseError", py.get_type::<crate::errors::ParseError>())?;
         module.add("LimitError", py.get_type::<crate::errors::LimitError>())?;

@@ -62,5 +62,6 @@ pub use render::{Source, error_title, visible};
 pub use tree::{FieldCount, FieldId, Kind, KindId, Names, NodeRef, Tree};
 pub use vm::{Memo, Options, Parser, Passes, Profile, ProfileRow};
 
-/// The version of this crate, which the command line and the Python package report.
+/// The version of this crate, which the command line and, in Python's spelling, the Python
+/// package report.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
