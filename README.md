@@ -63,11 +63,23 @@ print(ToDict().transform(tree))
 
 ## Install
 
+For Python 3.11 or newer:
+
 ```sh
 pip install fpeg
 ```
 
-fpeg needs Python 3.11 or newer. From Rust, the crate is [`fpeg`](https://docs.rs/fpeg), and `cargo install fpeg-cli` installs the `fpeg` command, which checks grammars, parses inputs and profiles a parse.
+For Rust 1.98 or newer, the library is the crate [`fpeg`](https://docs.rs/fpeg):
+
+```sh
+cargo add fpeg
+```
+
+The `fpeg` command checks grammars, parses inputs and profiles a parse. Each [release](https://github.com/schwimmbeck/fpeg/releases) comes with it built for Linux, macOS and Windows, and Cargo builds it from source:
+
+```sh
+cargo install fpeg-cli
+```
 
 > fpeg is not released yet. Until its first release, build it from a checkout as [Contributing](docs/contributing.md) describes.
 
