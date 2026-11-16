@@ -246,6 +246,7 @@ A program that only wants to run the input can walk the parse tree itself. An `I
 ```python
 class Run(fpeg.Interpreter):
     def __init__(self):
+        super().__init__()
         self.variables = {}
 
     def let(self, name, value):

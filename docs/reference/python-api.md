@@ -272,6 +272,7 @@ NUMBER: [0-9]+ => int
 
 class Run(fpeg.Interpreter):
     def __init__(self):
+        super().__init__()
         self.variables = {}
 
     def assign(self, target, value):
@@ -309,6 +310,7 @@ A `Visitor` calls a method for every node of a tree and gives the tree back as i
 ```python
 class Names(fpeg.Visitor):
     def __init__(self):
+        super().__init__()
         self.read = set()
         self.written = set()
 

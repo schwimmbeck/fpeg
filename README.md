@@ -6,7 +6,7 @@
 </h1>
 
 [![CI](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml/badge.svg)](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml)
-[![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue)](#license)
+[![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue)](#licence)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-blue)](Cargo.toml)
 
@@ -86,7 +86,7 @@ The [benchmarks page](docs/explanation/benchmarks.md) has the numbers of the new
 
 Editor support is planned for the next release: a language server, a formatter and highlighting for grammar files. The page of [planned features](docs/planned.md) lists what comes after.
 
-## License
+## Licence
 
 Licensed under either of the [MIT licence](LICENSE-MIT) or the [Apache License, Version 2.0](LICENSE-APACHE), at your option.
 

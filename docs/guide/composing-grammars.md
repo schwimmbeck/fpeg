@@ -42,7 +42,7 @@ for value in ("NAME | ...", "... | NAME"):
 
 With the new alternative first, `true` is a name. With the inherited ones first, it is JSON's `true` with its builder, and only `maybe` is a name.
 
-The labels of an inherited rule commit where they stand: after `{` JSON's `object` takes the text, and a `}` that does not come is an error, not a reason to try the next alternative. So an alternative for text that starts as an inherited one does goes before `...`.
+The labels of an inherited rule commit where they stand: after `{` JSON's `object` takes the text, and a `}` that does not come is an error, not a reason to try the next alternative. So where a new alternative starts as an inherited one does, as with `{`, it goes before `...`.
 
 ## Taking single rules
 
@@ -99,7 +99,7 @@ except fpeg.GrammarError as error:
 
 ## Extending Python
 
-The Python grammar comes with fpeg, and so does its transformer to Python's own `ast`, as `fpeg.python`. A language that adds to Python extends both. Here a statement `swap a, b` exchanges two names:
+The Python grammar comes with fpeg, and so does its transformer to Python's own `ast`, as `fpeg.python`, which builds the `ast` of Python 3.15 and needs that version. A language that adds to Python extends both. Here a statement `swap a, b` exchanges two names:
 
 ```python
 import ast

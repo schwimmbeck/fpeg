@@ -58,7 +58,7 @@ Put a label where the text can only be a mistake: after a comma a number must co
 
 ## Messages for common mistakes
 
-An error alternative, an alternative that ends in `%error("message")`, gives a mistake that people make a message of its own. It never matches, so it changes nothing the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, the error alternative tried first in the text whose parts before `%error` match where the parse tried it gives its message, over the text those parts matched:
+An error alternative, an alternative that ends in `%error("message")`, gives a mistake that people make a message of its own. It never matches, so it changes nothing the grammar accepts, and a parse that succeeds pays nothing for it. Where a parse fails, fpeg looks at the error alternatives the parse tried, in the order of the text. The first one whose parts before `%error` match where it was tried gives its message, over the text those parts matched:
 
 ```python
 lists = fpeg.Grammar(r"""
@@ -171,4 +171,4 @@ except fpeg.ParseError as error:
 line 1, column 8: trailing: expected end of input
 ```
 
-The grammars that come with fpeg do the same: `json` and `python` name their mistakes and recover from them, and a grammar that extends one takes its labels and recoveries along. A label commits where it stands, so an alternative of its own for text that starts as an inherited one does goes before `...`. `fpeg check` warns about a recovery whose label no expression raises ([W403](../reference/diagnostics/W403.md)), mostly a name written two ways.
+The grammars that come with fpeg do the same: `json` and `python` name their mistakes and recover from them, and a grammar that extends one takes its labels and recoveries along, which [decide where its own alternatives go](composing-grammars.md#keeping-what-a-rule-had). `fpeg check` warns about a recovery whose label no expression raises ([W403](../reference/diagnostics/W403.md)), mostly a name written two ways.
