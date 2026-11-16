@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use fpeg::{Grammar, Limits, ParseErrorKind, Profile, ProfileRow, RuleBody};
 
-use crate::{Failure, compile, push_json_string, read, report_failure};
+use crate::{Failure, compile, push_json_string, read, report_failure, start_rule};
 
 /// The share of all steps, in percent, that remembering a rule must be worth before the
 /// profile suggests it.
@@ -55,10 +55,7 @@ pub(crate) fn profile(args: &[OsString]) -> Result<(), Failure> {
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.to_str() {
-            Some("--start") => match args.next().and_then(|rule| rule.to_str()) {
-                Some(rule) => start = Some(rule.to_owned()),
-                None => return Err(Failure::Usage("--start needs a rule".into())),
-            },
+            Some("--start") => start = Some(start_rule(args.next())?),
             Some("--json") => json = true,
             Some(option) if option.starts_with('-') => {
                 return Err(Failure::Usage(format!("unexpected argument '{option}'")));

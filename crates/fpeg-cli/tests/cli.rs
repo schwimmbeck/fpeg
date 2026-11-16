@@ -296,21 +296,27 @@ fn an_unknown_start_rule_is_a_problem_of_the_grammar_file() {
         "start",
         &[("grammar.fpeg", "start: \"a\"\n"), ("input.txt", "a")],
     );
-    let out = run([
-        "parse".as_ref(),
-        "--start".as_ref(),
-        "nope".as_ref(),
-        paths[0].as_os_str(),
-        paths[1].as_os_str(),
-    ]);
-    assert_eq!(out.status.code(), Some(1));
-    assert_eq!(
-        text(&out.stderr),
-        format!(
-            "{}: error: no rule nope to start from\n",
-            paths[0].display()
-        )
-    );
+    // A rule that is not Unicode can name no rule either.
+    for (rule, shown) in [
+        (OsString::from("nope"), "nope"),
+        (not_unicode(), "\u{fffd}"),
+    ] {
+        let out = run([
+            "parse".as_ref(),
+            "--start".as_ref(),
+            rule.as_os_str(),
+            paths[0].as_os_str(),
+            paths[1].as_os_str(),
+        ]);
+        assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+        assert_eq!(
+            text(&out.stderr),
+            format!(
+                "{}: error: no rule {shown} to start from\n",
+                paths[0].display()
+            )
+        );
+    }
 }
 
 #[test]

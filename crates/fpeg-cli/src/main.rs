@@ -217,15 +217,21 @@ struct ParseOptions {
     paths: Vec<OsString>,
 }
 
+/// The rule that follows `--start`. One that is not Unicode can name no rule, which the parse
+/// then reports as for any rule the grammar lacks.
+fn start_rule(arg: Option<&OsString>) -> Result<String, Failure> {
+    match arg {
+        Some(rule) => Ok(rule.to_string_lossy().into_owned()),
+        None => Err(Failure::Usage("--start needs a rule".into())),
+    }
+}
+
 fn parse_options(args: &[OsString]) -> Result<ParseOptions, Failure> {
     let mut options = ParseOptions::default();
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         match arg.to_str() {
-            Some("--start") => match args.next().and_then(|rule| rule.to_str()) {
-                Some(rule) => options.start = Some(rule.to_owned()),
-                None => return Err(Failure::Usage("--start needs a rule".into())),
-            },
+            Some("--start") => options.start = Some(start_rule(args.next())?),
             Some("--spans") => options.spans = true,
             Some("--json") => options.json = true,
             Some("--recover") => options.recover = true,
