@@ -954,6 +954,9 @@ impl<'g> Resolver<'g> {
         if rule.transparent && kind == RuleKind::Terminal {
             let message = format!("the terminal {} cannot be transparent", rule.name.text);
             self.error(DiagnosticCode::RuleForm, message, rule.name.span);
+        } else if rule.transparent && rule.is_underscored() {
+            let message = format!("the inlined rule {} cannot be transparent", rule.name.text);
+            self.error(DiagnosticCode::RuleForm, message, rule.name.span);
         }
         let memo = match (rule.has_attribute("memo"), rule.has_attribute("nomemo")) {
             (true, true) => {
@@ -995,7 +998,7 @@ impl<'g> Resolver<'g> {
                 let unaliased_field = alternatives
                     .iter()
                     .any(|a| a.alias.is_none() && a.expr.contains_field());
-                if rule.transparent && unaliased_field {
+                if rule.transparent && !rule.is_underscored() && unaliased_field {
                     let message = format!(
                         "the transparent rule {} has a field outside an aliased alternative",
                         rule.name.text

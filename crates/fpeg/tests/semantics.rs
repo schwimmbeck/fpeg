@@ -215,3 +215,12 @@ fn a_precedence_block_with_parameters_reports_only_that() {
     let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
     assert_eq!(messages, ["the precedence block t cannot have parameters"]);
 }
+
+#[test]
+fn an_inlined_rule_marked_transparent_reports_only_that() {
+    let text = "start: _pair\n?_pair: key=\"a\" value=\"b\"\n";
+    let grammar = Grammar::from_text(text).expect("the grammar reads");
+    let errors = Reference::new(&grammar).expect_err("an inlined rule makes no node to give way");
+    let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(messages, ["the inlined rule _pair cannot be transparent"]);
+}
