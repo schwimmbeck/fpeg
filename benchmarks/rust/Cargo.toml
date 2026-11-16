@@ -54,3 +54,7 @@ codegen-units = 1
 [profile.bench]
 lto = "fat"
 codegen-units = 1
+
+# A workspace of its own, also in a checkout that lies inside another.
+[workspace]
+members = ["."]
