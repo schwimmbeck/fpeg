@@ -90,6 +90,44 @@ jobs:
       - run: uv run reuse lint
       - run: uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
 
+  coverage:
+    name: Coverage
+    # After a push alone, since a pull request from a fork gets no token to upload with.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: rustup component add llvm-tools
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv sync --group oracles --group coverage --no-install-project
+      # Release builds, since an instrumented debug build is too slow for the tests that bound
+      # time. The Python tests run against the module built so, which counts the binding too.
+      - run: |
+          source .venv/bin/activate
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov clean --workspace
+          cargo test --release
+          maturin develop --release --uv
+          coverage run -m pytest
+          cargo llvm-cov report --release --lcov --output-path rust.lcov
+          coverage xml -o python.xml
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: rust.lcov,python.xml
+          disable_search: true
+          use_oidc: true
+          fail_ci_if_error: true
+
   corpus:
     name: Corpus tests
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

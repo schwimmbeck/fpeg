@@ -24,7 +24,7 @@ This creates `.venv`, builds the native module with maturin, installs the packag
 
 ## Checks
 
-Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, and all other checks, with the Python tests on the development version, on Linux. Once a month Dependabot proposes updates of the pinned actions, the crates of the workspace and of the benchmarks, and the Python lock file, one pull request for each.
+Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, and all other checks, with the Python tests on the development version, on Linux. After each push to `main` it measures which lines the Rust and Python tests run and sends the result to [Codecov](https://codecov.io/gh/schwimmbeck/fpeg). The measurement uses release builds that [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) instruments, since an instrumented debug build is too slow for the tests that bound time, and runs the Python tests against such a module under [coverage.py](https://coverage.readthedocs.io/), so that the binding counts as well. Once a month Dependabot proposes updates of the pinned actions, the crates of the workspace and of the benchmarks, and the Python lock file, one pull request for each.
 
 | Check | Command |
 |---|---|
