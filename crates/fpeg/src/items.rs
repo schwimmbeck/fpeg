@@ -172,7 +172,7 @@ impl Items {
     }
 
     /// The items of a field's match: those without a field get this one.
-    fn labelled(mut self, field: FieldId) -> Items {
+    fn labeled(mut self, field: FieldId) -> Items {
         if self.unfielded > 0 {
             let held = self.fields.entry(field).or_insert(0);
             *held = sum(*held, self.unfielded);
@@ -246,14 +246,14 @@ impl<'r> Counter<'r> {
                 items.or(&alternative)
             }),
             E::Repeat { expr, min, max } => self.of(expr).repeated(*min, *max),
-            E::Field { field, expr } => self.of(expr).labelled(*field),
+            E::Field { field, expr } => self.of(expr).labeled(*field),
             // What a lookahead makes is dropped.
             E::And(_) | E::Not(_) => Items::nothing(),
             // Where the label recovers, an error item may stand in place of what failed, with
             // the field of a failed field.
             E::Label { label, expr, .. } if self.recovers.get(label.0 as usize) == Some(&true) => {
                 let error = match &**expr {
-                    E::Field { field, .. } => Items::one().labelled(*field),
+                    E::Field { field, .. } => Items::one().labeled(*field),
                     _ => Items::one(),
                 };
                 self.of(expr).or(&error)
