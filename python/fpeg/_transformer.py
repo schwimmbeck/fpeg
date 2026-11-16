@@ -84,7 +84,9 @@ class Positions:
             if isinstance(base, bool) or not isinstance(base, int):
                 raise TypeError(f"{name} of Positions is an int, not {base!r}")
             if abs(base) > MAX_POSITION_BASE:
-                raise ValueError(f"{name} of Positions is at most 2**31 either way, not {base}")
+                raise ValueError(
+                    f"{name} of Positions is at most {MAX_POSITION_BASE} either way, not {base}"
+                )
         if self.column_unit not in COLUMN_UNITS:
             units = ", ".join(repr(unit) for unit in COLUMN_UNITS)
             raise ValueError(f"column_unit of Positions is {units}, not {self.column_unit!r}")
@@ -280,7 +282,7 @@ class Transformer:
         return (Tree(name, children, tree.meta),)
 
 
-# What `_fpeg._token_value` gives for a token without a builder.
+# What `_fpeg.token_value` gives for a token without a builder.
 _NO_VALUE = _fpeg.NO_VALUE
 
 
@@ -591,6 +593,7 @@ def _make_plan(
 
 
 def check_strict(cls: type, names: Iterable[str]) -> None:
+    """Raise `TypeError` for a public method of the class that names no rule or terminal."""
     known = {method_name(name) for name in names}
     known |= {name + "_" for name in known if _taken(cls, name)}
     # An override of a method of the base class names no rule, and needs none.

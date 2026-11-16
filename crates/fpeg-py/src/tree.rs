@@ -197,6 +197,7 @@ impl Meta {
     }
 }
 
+/// What a tree is made of.
 enum Inner {
     /// A node of a parse, by its entry.
     View { parsed: Arc<Parsed>, index: u32 },
@@ -223,6 +224,7 @@ pub struct Tree {
 }
 
 impl Tree {
+    /// A view of the node at the entry `index` of a parse.
     pub fn view(parsed: Arc<Parsed>, index: u32) -> Tree {
         Tree {
             inner: Inner::View { parsed, index },
@@ -244,6 +246,7 @@ impl Tree {
         }
     }
 
+    /// The data: the kind name of a view's node, or what a tree built in Python holds.
     pub fn data_object(&self, py: Python<'_>) -> Py<PyAny> {
         match &self.inner {
             Inner::View { parsed, index } => {
@@ -914,7 +917,7 @@ fn tree_hash(root: &Bound<'_, PyAny>) -> PyResult<isize> {
             path.remove(&key);
             let mut hash = tree.get().data_object(py).bind(py).hash()? as u64;
             for child in hashes.drain(start..) {
-                // The combining step of CPython's tuple hash, order sensitive.
+                // Mixed in order, so that the same children in another order hash differently.
                 hash = (hash ^ child as u64)
                     .wrapping_mul(0x9E37_79B9_7F4A_7C15)
                     .rotate_left(31);

@@ -44,14 +44,20 @@ pub enum Builder {
     },
 }
 
+/// An argument that a builder passes to its function.
 pub struct Arg {
+    /// The keyword it is passed by, or `None` for a positional argument.
     keyword: Option<Py<PyString>>,
     value: ArgValue,
 }
 
+/// What an argument passes.
 enum ArgValue {
+    /// A field, as one item, `None` or a list by how many items it can hold.
     Field(FieldId, FieldCount),
+    /// A constant written in the builder, or `None` for a field that no node of the kind holds.
     Constant(Py<PyAny>),
+    /// The list of the children's values.
     Children,
 }
 

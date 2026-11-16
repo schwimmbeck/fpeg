@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import Any, NoReturn, SupportsIndex
 
 MESSAGE = (
-    "the children of a tree from a parse cannot change, since a transform reads the parse; "
+    "the children of a tree from a parse cannot change, since a transform reads the parse: "
     "build a fpeg.Tree with the children you want"
 )
 

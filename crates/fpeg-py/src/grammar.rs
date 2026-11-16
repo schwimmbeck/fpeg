@@ -23,10 +23,9 @@ use crate::transform::{Plan, Plans};
 use crate::tree::{Parsed, item};
 
 /// Inputs from this size on are parsed with the thread detached from the interpreter, so that
-/// other Python threads run meanwhile. Detaching costs 37 ns uncontended on 3.15 and 13 ns on
-/// the free-threaded build (measured), under 0.1 percent of a parse this long, which takes about
-/// 100 us. A shorter parse keeps the interpreter, since taking it back from a busy thread can
-/// wait far longer than the parse. hashlib likewise keeps it for data below 2 KiB.
+/// other Python threads run meanwhile. Detaching costs far less than a parse this long. A
+/// shorter parse keeps the interpreter, since taking it back from a busy thread can wait far
+/// longer than the parse. hashlib likewise keeps it for data below 2 KiB.
 const DETACH_MIN_BYTES: usize = 4096;
 
 /// The serial of the next grammar. Tokens carry the serial of the grammar that made them.

@@ -287,16 +287,19 @@ impl DiscardType {
     }
 }
 
-/// The one `Discard`, and the object that says a token has no builder.
+/// The one `Discard`.
 static DISCARD: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
+/// The object that says a token has no builder.
 static NO_VALUE: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
 
+/// The one `Discard`, made on first need.
 pub fn discard(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
     let discard =
         DISCARD.get_or_try_init(py, || Ok::<_, PyErr>(Py::new(py, DiscardType)?.into_any()))?;
     Ok(discard.bind(py))
 }
 
+/// The object that says a token has no builder, made on first need.
 pub fn no_value(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
     let value =
         NO_VALUE.get_or_try_init(py, || PyAny::type_object(py).call0().map(Bound::unbind))?;
@@ -311,6 +314,7 @@ struct Value {
     object: Option<Py<PyAny>>,
 }
 
+/// A transform of a view in one native scan of its entries, children before their parents.
 struct Scan<'py, 'p> {
     py: Python<'py>,
     transformer: &'p Bound<'py, PyAny>,
@@ -845,9 +849,9 @@ pub fn scan<'py>(
 }
 
 /// The plan of an Interpreter or Visitor class for the grammar of a view: what `make_plan`
-/// gave for the class and the kinds of the grammar when the two first met. The walk is in Python, so the
-/// plan is whatever its plan maker returns. `None` for a tree built in Python, which has no
-/// grammar.
+/// gave for the class and the kinds of the grammar when the two first met. The walk is in
+/// Python, so the plan is whatever its plan maker returns. `None` for a tree built in Python,
+/// which has no grammar.
 #[pyfunction]
 pub fn walk_plan<'py>(
     py: Python<'py>,

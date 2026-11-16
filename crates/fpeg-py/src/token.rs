@@ -6,8 +6,8 @@
 //! A PyO3 class cannot extend `str`, so the type comes from a spec through the C API. `str`'s own
 //! `tp_new` fills the string part of every instance, which leaves the layout of `str` to CPython,
 //! and the token's fields follow it: from Python 3.12 as type data (PEP 697), on 3.11 after
-//! `PyUnicodeObject`. A token made so costs 38 to 61 ns, a Python class 160 to 208 (O3). Its
-//! attributes are read-only, so a token is as immutable as the string it is, also across threads.
+//! `PyUnicodeObject`. Making a token so runs no Python code. Its attributes are read-only, so a
+//! token is as immutable as the string it is, also across threads.
 
 use std::ffi::{c_int, c_uint, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
