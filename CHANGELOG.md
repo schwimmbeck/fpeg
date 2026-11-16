@@ -2,7 +2,7 @@
 
 What each release changes for the people who use fpeg. Until version 1.0, a minor release may change the grammar language and the APIs, and its section here says what changed.
 
-## Unreleased
+## 0.1.0 (2026-11-16)
 
 The first release: the library for Rust and Python, the `fpeg` command and the documentation.
 

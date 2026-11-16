@@ -10,10 +10,6 @@ fpeg needs Python 3.11 or newer, and installs from PyPI:
 pip install fpeg
 ```
 
-```{note}
-fpeg is not released yet. Until its first release, build it from a checkout as [Contributing](contributing.md) describes.
-```
-
 Then check that it imports, which prints its version:
 
 ```sh

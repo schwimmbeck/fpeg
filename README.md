@@ -7,10 +7,11 @@
 
 [![CI](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml/badge.svg)](https://github.com/schwimmbeck/fpeg/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/schwimmbeck/fpeg/graph/badge.svg)](https://codecov.io/gh/schwimmbeck/fpeg)
+[![Docs](https://img.shields.io/website?url=https%3A%2F%2Fschwimmbeck.github.io%2Ffpeg%2F&label=docs&up_message=online&down_message=offline)](https://schwimmbeck.github.io/fpeg/)
 [![Licence: MIT OR Apache-2.0](https://img.shields.io/badge/licence-MIT%20OR%20Apache--2.0-blue)](#licence)
 [![REUSE status](https://api.reuse.software/badge/github.com/schwimmbeck/fpeg)](https://api.reuse.software/info/github.com/schwimmbeck/fpeg)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
-[![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-blue)](Cargo.toml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://github.com/schwimmbeck/fpeg/blob/main/pyproject.toml)
+[![Rust 1.98+](https://img.shields.io/badge/rust-1.98%2B-blue)](https://github.com/schwimmbeck/fpeg/blob/main/Cargo.toml)
 
 A parsing library for Parsing Expression Grammars (PEG), with a native engine written in Rust and a `Transformer` that turns parse trees into your own objects.
 
@@ -81,27 +82,25 @@ The `fpeg` command checks grammars, parses inputs and profiles a parse. Each [re
 cargo install fpeg-cli
 ```
 
-> fpeg is not released yet. Until its first release, build it from a checkout as [Contributing](docs/contributing.md) describes.
-
 ## Benchmarks
 
 ![fpeg and other parsers, time per input](https://github.com/schwimmbeck/fpeg/raw/main/docs/_static/benchmarks.svg)
 
-The [benchmarks page](docs/explanation/benchmarks.md) has the numbers of the newest recorded runs, and the `benchmarks` folder the scripts that take them.
+The [benchmarks page](https://schwimmbeck.github.io/fpeg/explanation/benchmarks.html) has the numbers of the newest recorded runs, and the `benchmarks` folder the scripts that take them.
 
 ## Documentation
 
-- [Getting started](docs/start.md): install fpeg, write a first grammar and turn its tree into values, in five minutes.
-- [Examples](docs/index.md#examples): a calculator, a configuration file, CSV, JSON and a filter language, each a grammar and a `Transformer`.
-- [Tutorials](docs/index.md#tutorials) and [guides](docs/index.md#guides) on operator precedence, syntax trees, indentation, modules, errors and performance.
-- The [reference](docs/index.md#reference) of the grammar language, the Python API and the command line.
+- [Getting started](https://schwimmbeck.github.io/fpeg/start.html): install fpeg, write a first grammar and turn its tree into values, in five minutes.
+- [Examples](https://schwimmbeck.github.io/fpeg/index.html#examples): a calculator, a configuration file, CSV, JSON and a filter language, each a grammar and a `Transformer`.
+- [Tutorials](https://schwimmbeck.github.io/fpeg/index.html#tutorials) and [guides](https://schwimmbeck.github.io/fpeg/index.html#guides) on operator precedence, syntax trees, indentation, modules, errors and performance.
+- The [reference](https://schwimmbeck.github.io/fpeg/index.html#reference) of the grammar language, the Python API and the command line.
 
 ## What comes next
 
-Editor support is planned for the next release: a language server, a formatter and highlighting for grammar files. The page of [planned features](docs/planned.md) lists what comes after.
+Editor support is planned for the next release: a language server, a formatter and highlighting for grammar files. The page of [planned features](https://schwimmbeck.github.io/fpeg/planned.html) lists what comes after.
 
 ## Licence
 
-Licensed under either of the [MIT licence](LICENSE-MIT) or the [Apache License, Version 2.0](LICENSE-APACHE), at your option.
+Licensed under either of the [MIT licence](https://github.com/schwimmbeck/fpeg/blob/main/LICENSE-MIT) or the [Apache License, Version 2.0](https://github.com/schwimmbeck/fpeg/blob/main/LICENSE-APACHE), at your option.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in fpeg by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
