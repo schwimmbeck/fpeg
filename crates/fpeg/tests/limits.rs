@@ -34,16 +34,6 @@ const MODULE_FAN_LEVELS: usize = 3;
 const MODULE_NAME_BYTES: usize = 3_000;
 const RENAMED_REFERENCES: usize = 25_000;
 
-/// Imports and flags of the larger join of a test, which a quadratic join takes seconds over,
-/// the times smaller the join it is compared with, how many times as long the larger may take,
-/// eight where joining takes linear time and sixty-four where quadratic, and the runs whose best
-/// time counts, so that neither the speed of a machine nor the tests beside it decide.
-const MANY_IMPORTS: usize = 40_000;
-const MANY_FLAGS: usize = 20_000;
-const SMALLER_JOIN: usize = 8;
-const MAX_JOIN_TIME_FACTOR: f64 = 20.0;
-const JOIN_RUNS: usize = 3;
-
 fn nesting() -> Reference {
     let grammar = Grammar::from_text("start: nest\nnest: \"(\" nest \")\" | \"x\"\n")
         .expect("the grammar reads");
@@ -376,42 +366,6 @@ fn modules_that_chain_too_deep_or_multiply_are_errors_not_stack_overflows() {
     let text = format!("%import {long} (x)\nstart: x");
     let modules = HashMap::from([(long, references)]);
     assert_eq!(codes(&text, modules), [DiagnosticCode::TooLarge]);
-}
-
-/// The best time of [`JOIN_RUNS`] joins of a grammar with `imports` imports of missing modules
-/// and of an extension and its base with `flags` flags each.
-fn join_seconds(imports: usize, flags: usize) -> f64 {
-    let imports: String = (0..imports)
-        .map(|i| format!("%import m{i} (x)\n"))
-        .collect();
-    let flags = |prefix: &str| -> String {
-        let names: Vec<String> = (0..flags).map(|i| format!("{prefix}{i}")).collect();
-        format!("%flag {}\n", names.join(" "))
-    };
-    let base = format!("{}start: \"a\"", flags("b"));
-    let extension = format!("%extends \"base\"\n{}", flags("e"));
-    let mut best = f64::INFINITY;
-    for _ in 0..JOIN_RUNS {
-        let started = std::time::Instant::now();
-        let grammar = Grammar::from_text(&imports).expect("the grammar reads");
-        assert!(grammar.link(&HashMap::new()).is_err());
-        let grammar = Grammar::from_text(&extension).expect("the grammar reads");
-        let joined = grammar.link(&HashMap::from([("base".to_owned(), base.clone())]));
-        assert!(joined.is_ok());
-        best = best.min(started.elapsed().as_secs_f64());
-    }
-    best
-}
-
-#[test]
-fn joining_takes_linear_time_in_imports_and_flags() {
-    let smaller = join_seconds(MANY_IMPORTS / SMALLER_JOIN, MANY_FLAGS / SMALLER_JOIN);
-    let larger = join_seconds(MANY_IMPORTS, MANY_FLAGS);
-    let factor = larger / smaller;
-    assert!(
-        factor < MAX_JOIN_TIME_FACTOR,
-        "{smaller:.3} s, then {larger:.3} s"
-    );
 }
 
 #[test]
@@ -875,23 +829,3 @@ fn brackets_nested_beyond_the_depth_limit_are_an_error_in_a_precedence_block() {
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
 }
-
-#[test]
-fn a_reference_finds_its_text_without_passing_every_capture_kept_since() {
-    // A walk down the captures for the newest text of a name passed every capture kept since,
-    // and counted no steps for it, so in a loop that captures each reference cost more.
-    let grammar = Grammar::from_text("start: S\nS: %def(b, ()) (%def(a, \"x\") %ref(b))*")
-        .expect("the grammar reads");
-    let parser = Parser::new(&grammar).expect("the grammar compiles");
-    let input = "x".repeat(REFERENCE_INPUT_BYTES);
-    let started = std::time::Instant::now();
-    parser.parse(&input, "start").expect("the input parses");
-    let seconds = started.elapsed().as_secs_f64();
-    assert!(seconds < REFERENCE_SECONDS, "{seconds:.1} s");
-}
-
-/// The input of the test above, and the time its parse may take in a debug build: a tenth of a
-/// second where a reference finds its text at once, half a minute where it walks down the
-/// captures.
-const REFERENCE_INPUT_BYTES: usize = 100_000;
-const REFERENCE_SECONDS: f64 = 2.0;

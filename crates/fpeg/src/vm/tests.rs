@@ -832,6 +832,25 @@ fn a_rule_that_a_choice_tries_twice_is_matched_once_at_a_position() {
     );
 }
 
+/// The input of the test of references below, a capture and a reference for each byte.
+const CAPTURED_INPUT_BYTES: usize = 100_000;
+
+/// Time the parse of that input may take in a debug build: a tenth of a second where a
+/// reference finds its text at once, half a minute where it walks down the captures.
+const CAPTURED_SECONDS: f64 = 2.0;
+
+#[test]
+fn a_reference_finds_its_text_without_passing_every_capture_kept_since() {
+    // A walk down the captures for the newest text of a name passed every capture kept since,
+    // and counted no steps for it, so in a loop that captures each reference cost more.
+    let parser = parser("start: S\nS: %def(b, ()) (%def(a, \"x\") %ref(b))*");
+    let input = "x".repeat(CAPTURED_INPUT_BYTES);
+    let started = std::time::Instant::now();
+    parser.parse(&input, "start").expect("the input parses");
+    let seconds = started.elapsed().as_secs_f64();
+    assert!(seconds < CAPTURED_SECONDS, "{seconds:.1} s");
+}
+
 #[test]
 fn the_memo_spreads_positions_at_any_power_of_two_apart_over_its_buckets() {
     // 100,000 random keys take about 95,400 of the values of 20 low bits.

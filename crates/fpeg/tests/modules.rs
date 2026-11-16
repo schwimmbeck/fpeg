@@ -395,6 +395,55 @@ fn placing_the_problems_of_a_module_takes_time_in_proportion_to_their_number() {
     );
 }
 
+/// Imports of missing modules in the larger join, which a quadratic join takes seconds over.
+const MANY_IMPORTS: usize = 40_000;
+/// Flags of an extension and of its base in the larger join.
+const MANY_FLAGS: usize = 20_000;
+/// How many times fewer imports and flags the smaller join has.
+const SMALLER_JOIN: usize = 8;
+/// The most that the larger join may take against the smaller: about the ratio of their sizes
+/// where joining takes linear time, its square where quadratic.
+const MAX_JOIN_TIME_FACTOR: f64 = 20.0;
+/// Runs of each join, the best of which counts, so that neither the speed of a machine nor the
+/// tests beside it decide.
+const JOIN_RUNS: usize = 3;
+
+/// The best time of [`JOIN_RUNS`] joins of a grammar with `imports` imports of missing modules
+/// and of an extension and its base with `flags` flags each.
+fn join_seconds(imports: usize, flags: usize) -> f64 {
+    let imports: String = (0..imports)
+        .map(|i| format!("%import m{i} (x)\n"))
+        .collect();
+    let flags = |prefix: &str| -> String {
+        let names: Vec<String> = (0..flags).map(|i| format!("{prefix}{i}")).collect();
+        format!("%flag {}\n", names.join(" "))
+    };
+    let base = format!("{}start: \"a\"", flags("b"));
+    let extension = format!("%extends \"base\"\n{}", flags("e"));
+    let mut best = f64::INFINITY;
+    for _ in 0..JOIN_RUNS {
+        let started = std::time::Instant::now();
+        let grammar = Grammar::from_text(&imports).expect("the grammar reads");
+        assert!(grammar.link(&HashMap::new()).is_err());
+        let grammar = Grammar::from_text(&extension).expect("the grammar reads");
+        let joined = grammar.link(&HashMap::from([("base".to_owned(), base.clone())]));
+        assert!(joined.is_ok());
+        best = best.min(started.elapsed().as_secs_f64());
+    }
+    best
+}
+
+#[test]
+fn joining_takes_linear_time_in_imports_and_flags() {
+    let smaller = join_seconds(MANY_IMPORTS / SMALLER_JOIN, MANY_FLAGS / SMALLER_JOIN);
+    let larger = join_seconds(MANY_IMPORTS, MANY_FLAGS);
+    let factor = larger / smaller;
+    assert!(
+        factor < MAX_JOIN_TIME_FACTOR,
+        "{smaller:.3} s, then {larger:.3} s"
+    );
+}
+
 #[test]
 fn common_s_escaped_string_stands_on_one_line() {
     let grammar = Grammar::from_text("%import common (ESCAPED_STRING)\nstart: ESCAPED_STRING")
