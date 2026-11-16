@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Any grammar text and any input: reading, compiling and parsing end without a panic. The text
-//! up to the first NUL is the grammar, the rest the input.
+//! Any grammar text and any input: reading, checking, compiling and parsing end without a panic.
+//! The text up to the first NUL is the grammar, the rest the input.
 
 #![no_main]
 
@@ -20,6 +20,7 @@ fuzz_target!(|data: &[u8]| {
     let Ok(grammar) = Grammar::from_text(grammar) else {
         return;
     };
+    let _ = fpeg::check(&grammar);
     let Ok(parser) = Parser::new(&grammar) else {
         return;
     };

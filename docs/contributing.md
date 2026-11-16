@@ -65,8 +65,8 @@ The fuzz targets in `fuzz/` run under [cargo-fuzz](https://github.com/rust-fuzz/
 
 | Target | What it checks |
 |---|---|
-| `grammar` | reading, compiling and parsing end without a panic, whatever the grammar and the input |
-| `differential` | the parsing machine gives the tree or error of the reference interpreter |
+| `grammar` | reading, checking, compiling and parsing end without a panic, whatever the grammar and the input |
+| `differential` | the parsing machine gives the tree or error of the reference interpreter, and rejects the grammars it rejects with the same errors |
 | `generated` | the same for generated grammars, in recovering mode too, at every setting of the machine |
 
 ```sh

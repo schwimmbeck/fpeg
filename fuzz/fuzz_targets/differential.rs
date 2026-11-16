@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Any grammar the parsing machine runs gives, on any input, the tree or the error the reference
-//! interpreter gives. The text up to the first NUL is the grammar, the rest the input. Parses
-//! where either engine hits a limit are skipped, since the two count steps differently.
+//! interpreter gives, and a grammar that one engine rejects the other rejects alike. The text up
+//! to the first NUL is the grammar, the rest the input. Parses where either engine hits a limit
+//! are skipped, since the two count steps differently.
 
 #![no_main]
 
-use fpeg::{Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, Tree};
+use fpeg::{DiagnosticCode, Grammar, Limits, ParseError, ParseErrorKind, Parser, Reference, Tree};
 use libfuzzer_sys::fuzz_target;
 
 /// Steps a parse may take on the reference interpreter, so that slow grammars end quickly.
@@ -33,8 +34,21 @@ fuzz_target!(|data: &[u8]| {
     let Ok(grammar) = Grammar::from_text(grammar) else {
         return;
     };
-    let (Ok(reference), Ok(parser)) = (Reference::new(&grammar), Parser::new(&grammar)) else {
-        return;
+    let (reference, parser) = match (Reference::new(&grammar), Parser::new(&grammar)) {
+        (Ok(reference), Ok(parser)) => (reference, parser),
+        // Only the machine bounds the size of what it compiles.
+        (Ok(_), Err(errors)) if errors.iter().all(|e| e.code == DiagnosticCode::TooLarge) => {
+            return;
+        }
+        (Err(expected), Err(errors)) => {
+            assert_eq!(expected, errors, "the engines reject it differently");
+            return;
+        }
+        (expected, errors) => panic!(
+            "one engine rejects it: {:?} {:?}",
+            expected.err(),
+            errors.err()
+        ),
     };
     for rule in grammar.rules.iter().filter(|r| r.params.is_empty()).take(3) {
         let start = &rule.name.text;
