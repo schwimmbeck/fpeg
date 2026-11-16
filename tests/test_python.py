@@ -286,14 +286,21 @@ def test_a_file_gives_the_tree_of_cpython(path: Path, line_break: str) -> None:
     compare(path.read_text(encoding="utf-8").replace("\n", line_break))
 
 
-# Broken files: small files of the library, each with single edits that CPython rejects, and
-# what the trees recovered from them keep, set from the first measurement on 2026-11-15, which
-# gave all 160 a tree that kept 97.7 percent of the visible tokens.
+# Files of the library that the test of broken files takes, the first by name.
 BROKEN_FILES = 40
+# The longest of those files that it edits.
 BROKEN_FILE_MAX_CHARS = 20_000
+# Single edits of each file, of which those that CPython rejects count.
 EDITS_PER_FILE = 20
+# What an edit inserts, or puts in place of a character.
 INSERTED = "()[]{}:,.=+-*/\"' \n#abc019"
+# The edits make more broken texts than this, so that the shares rest on enough of them.
+MIN_BROKEN_TEXTS = 100
+# The share of broken texts that get a tree, set from the first measurement on 2026-11-15,
+# which gave all 160 a tree.
 MIN_TREES_PERCENT = 99.0
+# The share of the visible tokens that the trees keep, set from the same measurement, which
+# kept 97.7 percent.
 MIN_KEPT_PERCENT = 97.0
 
 
@@ -350,7 +357,7 @@ def test_broken_files_of_the_library_keep_most_of_their_tokens() -> None:
                     got = visible_tokens(error.tree)
                     kept += sum(min(n, got[key]) for key, n in want.items()) / want.total()
     trees_percent, kept_percent = 100 * trees / broken, 100 * kept / broken
-    assert broken > 100, broken
+    assert broken > MIN_BROKEN_TEXTS, broken
     assert trees_percent >= MIN_TREES_PERCENT, f"{trees} of {broken} give a tree"
     assert kept_percent >= MIN_KEPT_PERCENT, f"{kept_percent:.1f} % of the tokens kept"
 

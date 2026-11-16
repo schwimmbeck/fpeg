@@ -253,10 +253,12 @@ def test_str_shows_the_controls_that_a_grammar_wrote_as_marks() -> None:
     assert str(diagnostic) == "<grammar>:1:1: error[E101]: bad\u241b[2J"
 
 
-# Errors of a long text shown one at a time, and a time that showing them stays well within
-# when the errors share the text's index, which indexing the text for each takes many times.
+# Errors of a parse shown one at a time.
 ERRORS_SHOWN = 1_000
+# Code points of the text after those errors, too many to index again for each.
 LONG_TEXT_CHARS = 4_000_000
+# Time that showing the errors stays well within where they share the index of the text, which
+# indexing the text for each takes many times.
 SHOW_SECONDS = 1.0
 
 

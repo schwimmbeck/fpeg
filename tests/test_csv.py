@@ -15,6 +15,9 @@ import pytest
 SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "csv"
 CSV = fpeg.Grammar.open(SAMPLES.parent.parent / "csv.fpeg")
 
+# Documents that `csv.writer` writes for the comparison.
+DOCUMENTS = 400
+
 
 class Rows(fpeg.Transformer, strict=True):
     """Records as lists of strings, as `csv.reader` gives them."""
@@ -47,7 +50,7 @@ def test_the_samples_read_as_csv_reads_them() -> None:
 def test_documents_written_by_csv_read_back_as_csv_reads_them() -> None:
     rng = random.Random(20261113)
     pieces = ["a", "b c", ",", '"', '""', "\n", "\r\n", "\r", " ", "é", "x,y", ""]
-    for _ in range(400):
+    for _ in range(DOCUMENTS):
         out = io.StringIO(newline="")
         writer = csv.writer(out, lineterminator=rng.choice(["\r\n", "\n"]))
         for _ in range(rng.randint(0, 5)):

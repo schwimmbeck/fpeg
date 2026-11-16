@@ -22,10 +22,15 @@ import pytest
 SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "samples" / "toml"
 TOML = fpeg.Grammar.open(SAMPLES.parent.parent / "toml.fpeg")
 
-# Documents compared in the default run, and documents with one edit. An edit seldom lands
-# where a rule of the grammar decides, so there are many.
+# Levels of arrays and inline tables inside each other at most in a generated value.
+MAX_VALUE_DEPTH = 3
+# Generated documents compared in the default run.
 DOCUMENTS = 500
+# Generated documents compared with one edit each, many, since an edit seldom lands where a
+# rule of the grammar decides.
 EDITED_DOCUMENTS = 8000
+# The edited documents of each verdict are more than this, so that the comparison sees both.
+MIN_VERDICTS = 100
 
 
 def reads_toml_1_1() -> bool:
@@ -215,7 +220,7 @@ class Writer:
 
     def value(self, depth: int) -> str:
         rng = self.rng
-        kind = rng.randrange(10) if depth < 3 else 0
+        kind = rng.randrange(10) if depth < MAX_VALUE_DEPTH else 0
         if kind < 7:
             return self.scalar()
         if kind < 9:
@@ -311,6 +316,5 @@ def test_single_edits_of_documents_get_the_verdict_of_tomllib() -> None:
         assert valid, text
         assert same(ours, value), text
         compared += 1
-    # Both kinds of verdict occur, so the comparison sees each.
-    assert compared > 100
-    assert rejected > 100
+    assert compared > MIN_VERDICTS
+    assert rejected > MIN_VERDICTS

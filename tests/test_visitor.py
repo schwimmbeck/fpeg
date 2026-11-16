@@ -130,13 +130,26 @@ def test_a_tree_built_in_python_is_visited_by_the_names_of_its_data() -> None:
     assert seen == [3, 2]
 
 
+# Calls in the tree that the next test walks.
+WALKED_CALLS = 2_000
+# Walks timed for each class, the fastest of which counts.
+WALK_RUNS = 5
+# Classes that meet the grammar before the last walk.
+OTHER_CLASSES = 2_000
+# How many times as long the last walk may take as the first, where a lookup that scanned the
+# other classes would take many times as long.
+MAX_WALK_TIME_FACTOR = 4
+# Time the last walk may take beyond that, for the noise of a short measurement.
+WALK_SLACK_SECONDS = 0.002
+
+
 def test_a_walk_takes_as_long_after_many_other_classes_met_the_grammar() -> None:
-    tree = parse(", ".join(["f(a, [b, c])"] * 2_000))
+    tree = parse(", ".join(["f(a, [b, c])"] * WALKED_CALLS))
 
     def best(walker: fpeg.Visitor) -> float:
         walker.visit(tree)
         times = []
-        for _ in range(5):
+        for _ in range(WALK_RUNS):
             started = time.perf_counter()
             walker.visit(tree)
             times.append(time.perf_counter() - started)
@@ -144,11 +157,18 @@ def test_a_walk_takes_as_long_after_many_other_classes_met_the_grammar() -> None
 
     alone = best(type("Alone", (fpeg.Visitor,), {})())
     # Each meets the grammar on a small tree of its own, and stays alive.
-    others = [type(f"Other{i}", (fpeg.Visitor,), {}) for i in range(2_000)]
+    others = [type(f"Other{i}", (fpeg.Visitor,), {}) for i in range(OTHER_CLASSES)]
     for other in others:
         other().visit(parse("f()"))
     crowded = best(type("Crowded", (fpeg.Visitor,), {})())
-    assert crowded < 4 * alone + 0.002, (alone, crowded, len(others))
+    limit = MAX_WALK_TIME_FACTOR * alone + WALK_SLACK_SECONDS
+    assert crowded < limit, (alone, crowded, len(others))
+
+
+# Levels of the deep tree, far more than Python's own recursion takes.
+DEEP_TREE_LEVELS = 5_000
+# The depth that the parse of that tree may reach.
+DEEP_TREE_MAX_DEPTH = 20_000
 
 
 def test_a_tree_of_any_depth_is_visited_without_recursion() -> None:
@@ -160,5 +180,6 @@ def test_a_tree_of_any_depth_is_visited_without_recursion() -> None:
             nonlocal count
             count += 1
 
-    Count().visit(deep.parse("(" * 5_000 + "a" + ")" * 5_000, max_depth=20_000))
-    assert count == 5_000
+    text = "(" * DEEP_TREE_LEVELS + "a" + ")" * DEEP_TREE_LEVELS
+    Count().visit(deep.parse(text, max_depth=DEEP_TREE_MAX_DEPTH))
+    assert count == DEEP_TREE_LEVELS

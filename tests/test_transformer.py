@@ -855,10 +855,11 @@ def test_a_subclass_keeps_the_positions_of_its_base() -> None:
     assert Again().transform(SUMS.parse("b")).end_col_offset == 1
 
 
-# A line of names long enough that counting each column from the line's start takes seconds,
-# and the time its transform may take, about ten times what it needs.
+# Names on the long line, enough that counting each column from the line's start takes seconds.
 LONG_LINE_NAMES = 20_000
+# Letters of each name on that line.
 LONG_NAME_CHARS = 40
+# Time the transform of that line may take, about ten times what it needs.
 LONG_LINE_SECONDS = 0.5
 
 

@@ -31,15 +31,25 @@ UNDERSCORED: [0-9]+ ("_" [0-9]+)+ "u" => int
         values(grammar, "1_000u")
 
 
+# Numbers that the next test reads.
+FLOAT_TEXTS = 20_000
+# Digits of a number at most, more than a double holds, so that many round.
+MAX_FLOAT_DIGITS = 25
+# The least exponent of a number, low enough that some round to zero.
+MIN_FLOAT_EXPONENT = -330
+# The greatest exponent of a number, high enough that some overflow to infinity.
+MAX_FLOAT_EXPONENT = 310
+
+
 def test_the_fast_float_path_agrees_with_python_on_many_numbers() -> None:
     rng = random.Random(20261113)
     texts = []
-    for _ in range(20_000):
-        digits = "".join(rng.choice("0123456789") for _ in range(rng.randint(1, 25)))
+    for _ in range(FLOAT_TEXTS):
+        digits = "".join(rng.choice("0123456789") for _ in range(rng.randint(1, MAX_FLOAT_DIGITS)))
         point = rng.randint(0, len(digits))
         text = f"{digits[:point]}.{digits[point:]}" if point < len(digits) else digits + ".0"
         if rng.random() < 0.5:
-            text += f"e{rng.randint(-330, 310)}"
+            text += f"e{rng.randint(MIN_FLOAT_EXPONENT, MAX_FLOAT_EXPONENT)}"
         texts.append(text)
     grammar = fpeg.Grammar(r"""
 start: (NUMBER ** ",") => list

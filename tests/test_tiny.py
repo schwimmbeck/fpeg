@@ -366,9 +366,12 @@ each_program = pytest.mark.parametrize(
     ids=[name for name, _, _ in PROGRAMS],
 )
 
+# Samples that state their result at least, so that one that goes missing shows.
+MIN_PROGRAMS = 7
+
 
 def test_the_samples_hold_programs_that_state_their_results() -> None:
-    assert len(PROGRAMS) >= 7, [name for name, _, _ in PROGRAMS]
+    assert len(PROGRAMS) >= MIN_PROGRAMS, [name for name, _, _ in PROGRAMS]
 
 
 @each_program

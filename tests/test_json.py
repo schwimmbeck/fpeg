@@ -15,6 +15,17 @@ SAMPLES = Path(__file__).parent.parent / "crates" / "fpeg" / "grammars" / "sampl
 JSON = fpeg.Grammar.open(SAMPLES.parent.parent / "json.fpeg")
 TO_PYTHON = fpeg.Transformer()
 
+# Levels of arrays and objects inside each other at most in a generated value.
+MAX_VALUE_DEPTH = 4
+# Generated documents compared in the default run.
+GENERATED_DOCUMENTS = 300
+# Generated documents compared with one edit each.
+EDITED_DOCUMENTS = 600
+# The edited documents of each verdict are more than this, so that the comparison sees both.
+MIN_VERDICTS = 50
+# Values in the large document.
+LARGE_DOCUMENT_VALUES = 2_000
+
 
 def load(text: str) -> Any:
     return TO_PYTHON.transform(JSON.parse(text))
@@ -66,7 +77,7 @@ def random_text(rng: random.Random, surrogates: bool) -> str:
 
 
 def random_value(rng: random.Random, depth: int, surrogates: bool) -> Any:
-    kind = rng.randrange(8 if depth < 4 else 6)
+    kind = rng.randrange(8 if depth < MAX_VALUE_DEPTH else 6)
     if kind == 0:
         return rng.choice([True, False, None])
     if kind == 1:
@@ -111,7 +122,7 @@ def test_the_samples_load_as_json_loads_them_and_the_invalid_ones_fail() -> None
 
 def test_generated_documents_load_as_json_loads_them() -> None:
     rng = random.Random(20261113)
-    for _ in range(300):
+    for _ in range(GENERATED_DOCUMENTS):
         text = random_document(rng)
         assert same(load(text), reference(text)), text
 
@@ -120,7 +131,7 @@ def test_single_edits_of_documents_get_the_verdict_of_json_loads() -> None:
     rng = random.Random(7)
     alphabet = ',:[]{}"\\0123456789.eE+-tfnrul \n\x01'
     compared = rejected = 0
-    for _ in range(600):
+    for _ in range(EDITED_DOCUMENTS):
         text = random_document(rng)
         at = rng.randrange(len(text) + 1)
         edit = rng.randrange(3)
@@ -140,13 +151,12 @@ def test_single_edits_of_documents_get_the_verdict_of_json_loads() -> None:
         assert valid, text
         assert same(ours, value), text
         compared += 1
-    # Both kinds of verdict occur, so the comparison sees each.
-    assert compared > 50
-    assert rejected > 50
+    assert compared > MIN_VERDICTS
+    assert rejected > MIN_VERDICTS
 
 
 def test_a_large_document_loads_as_json_loads_it() -> None:
     rng = random.Random(11)
-    records = [random_value(rng, 1, surrogates=True) for _ in range(2000)]
+    records = [random_value(rng, 1, surrogates=True) for _ in range(LARGE_DOCUMENT_VALUES)]
     text = json.dumps(records)
     assert same(load(text), reference(text))
