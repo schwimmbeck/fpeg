@@ -143,15 +143,20 @@ fn reached(profile: &Profile) -> Vec<&ProfileRow> {
 fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
     let rows = reached(profile);
     let mut lines: Vec<Vec<String>> = Vec::new();
+    // The share of all steps stands right after the steps, past the column of the rule.
+    let share_at = 2 + COUNTS
+        .iter()
+        .take_while(|count| count.member != "steps")
+        .count();
     let mut headings = vec!["rule".to_owned()];
     headings.extend(COUNTS.iter().map(|count| count.heading.to_owned()));
-    headings.insert(4, "share".to_owned());
+    headings.insert(share_at, "share".to_owned());
     lines.push(headings);
     for row in &rows {
         let mut cells = vec![row.name.clone()];
         cells.extend(COUNTS.iter().map(|count| (count.of)(row).to_string()));
         let share = 100.0 * row.steps as f64 / profile.steps.max(1) as f64;
-        cells.insert(4, format!("{share:.1}%"));
+        cells.insert(share_at, format!("{share:.1}%"));
         lines.push(cells);
     }
     let width = |column: usize| {
