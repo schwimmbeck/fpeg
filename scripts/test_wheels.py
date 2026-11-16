@@ -14,6 +14,7 @@ Usage: python scripts/test_wheels.py DIST INTERPRETER...
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +34,13 @@ def run(*command: str | Path, cwd: Path | None = None) -> str:
     return result.stdout
 
 
+def pytest_requirement() -> str:
+    """Return the pytest of the lock file, so the job that uploads the wheels runs a known one."""
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    (version,) = [package["version"] for package in lock["package"] if package["name"] == "pytest"]
+    return f"pytest=={version}"
+
+
 def test_wheel(dist: Path, interpreter: str, scratch: Path) -> None:
     """Install the wheel that fits an interpreter into a new environment and run the tests."""
     tag = run(interpreter, "-c", WHEEL_TAG).strip()
@@ -43,7 +51,7 @@ def test_wheel(dist: Path, interpreter: str, scratch: Path) -> None:
     run(interpreter, "-m", "venv", environment)
     bin_folder = "Scripts" if sys.platform == "win32" else "bin"
     python = environment / bin_folder / "python"
-    run(python, "-m", "pip", "install", "--quiet", "pytest")
+    run(python, "-m", "pip", "install", "--quiet", pytest_requirement())
     run(python, "-m", "pip", "install", "--quiet", "--no-deps", wheels[0])
     summary = run(python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests", cwd=ROOT)
     print(f"{wheels[0].name}: {summary.strip().splitlines()[-1]}")
