@@ -170,6 +170,17 @@ pub enum RuleBody {
     Precedence(Vec<Level>),
 }
 
+impl RuleBody {
+    /// The alternatives, for a precedence block those of every level in order.
+    pub(crate) fn alternatives(&self) -> impl Iterator<Item = &Alternative> {
+        let (alternatives, levels) = match self {
+            RuleBody::Alternatives(alternatives) => (alternatives.as_slice(), &[][..]),
+            RuleBody::Precedence(levels) => (&[][..], levels.as_slice()),
+        };
+        (alternatives.iter()).chain(levels.iter().flat_map(|level| &level.alternatives))
+    }
+}
+
 /// One level of a precedence block.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Level {

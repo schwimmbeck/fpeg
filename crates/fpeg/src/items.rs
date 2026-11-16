@@ -26,7 +26,7 @@ use crate::ir;
 use crate::tree::{FieldCount, FieldId, KindId};
 
 /// The count that stands for several items.
-const SEVERAL: u8 = 2;
+pub(crate) const SEVERAL: u8 = 2;
 
 /// The most fields that a rule without a node of its own may pass on to the node around it.
 /// A chain of such rules passes on the fields of all below, so counting them takes time and

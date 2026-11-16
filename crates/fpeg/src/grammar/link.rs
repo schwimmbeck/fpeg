@@ -563,12 +563,7 @@ struct Uses<'r> {
 
 fn uses(rule: &Rule) -> Uses<'_> {
     let params: HashSet<&str> = rule.params.iter().map(|p| p.text.as_str()).collect();
-    let mut pending: Vec<&Expr> = match &rule.body {
-        RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
-        RuleBody::Precedence(levels) => (levels.iter())
-            .flat_map(|level| level.alternatives.iter().map(|a| &a.expr))
-            .collect(),
-    };
+    let mut pending: Vec<&Expr> = rule.body.alternatives().map(|a| &a.expr).collect();
     let mut used = Uses {
         names: Vec::new(),
         flags: Vec::new(),

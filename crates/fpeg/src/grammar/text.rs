@@ -127,14 +127,7 @@ pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<
         }
     }
     for rule in &grammar.rules {
-        let exprs: Vec<&Expr> = match &rule.body {
-            RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
-            RuleBody::Precedence(levels) => levels
-                .iter()
-                .flat_map(|l| l.alternatives.iter().map(|a| &a.expr))
-                .collect(),
-        };
-        if exprs.iter().any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH) {
+        if (rule.body.alternatives()).any(|a| a.expr.measure().1 > MAX_EXPRESSION_DEPTH) {
             converter.too_deep(rule.span);
         }
     }

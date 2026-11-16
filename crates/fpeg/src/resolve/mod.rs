@@ -14,7 +14,7 @@ use crate::grammar::{
     Level, MAX_EXPRESSION_DEPTH, Name, Rule, RuleBody, RuleKind, Span, ValueBuilder,
 };
 use crate::ir::{self, CaptureId, CharSet, FlagId, LabelId, RuleId};
-use crate::items::TooLarge;
+use crate::items::{SEVERAL, TooLarge};
 use crate::tree::{FieldId, KindId, Names};
 
 /// Template instances resolving may create before it gives up. Growing arguments meet the depth
@@ -224,7 +224,8 @@ pub(crate) fn resolve_counted(
         // Every rule, also a template that nothing uses and nothing lowers, which `check`
         // walks all the same.
         let what = format!("the rule {}", rule.name.text);
-        r.too_deep(&expressions(rule), &what, rule.name.span);
+        let exprs: Vec<&Expr> = rule.body.alternatives().map(|a| &a.expr).collect();
+        r.too_deep(&exprs, &what, rule.name.span);
     }
     // Level names belong to the whole grammar, so their rules exist before any rule calls one.
     // A block with parameters is an error, reported here so that an unused one is reported too,
@@ -392,16 +393,6 @@ fn in_order(mut errors: Vec<Diagnostic>) -> Vec<Diagnostic> {
     errors
 }
 
-/// The alternatives of a rule, those of its levels for a precedence block.
-fn expressions(rule: &Rule) -> Vec<&Expr> {
-    match &rule.body {
-        RuleBody::Alternatives(alternatives) => alternatives.iter().map(|a| &a.expr).collect(),
-        RuleBody::Precedence(levels) => (levels.iter())
-            .flat_map(|level| level.alternatives.iter().map(|a| &a.expr))
-            .collect(),
-    }
-}
-
 /// The rank of each error alternative in the order of the text, given where each `%error`
 /// starts, and among those of one place, the instances of a rule, in the order they were made.
 fn ranks(starts: &[u32]) -> Vec<u32> {
@@ -425,7 +416,7 @@ fn choice(mut items: Vec<ir::Expr>) -> ir::Expr {
 }
 
 /// Counts how many visible items without a field one match of an expression adds, at most,
-/// where 2 stands for several.
+/// where [`SEVERAL`] stands for several.
 struct ItemCount<'r> {
     /// The same count for each rule.
     rules: &'r [u8],
@@ -454,13 +445,15 @@ impl ItemCount<'_> {
                 self.calls.push(id.0 as usize);
                 self.rules[id.0 as usize]
             }
-            E::Seq(items) => items.iter().fold(0, |sum, e| (sum + self.of(e)).min(2)),
+            E::Seq(items) => items
+                .iter()
+                .fold(0, |sum, e| (sum + self.of(e)).min(SEVERAL)),
             E::Choice(items) => items.iter().map(|e| self.of(e)).max().unwrap_or(0),
             E::Repeat { max: Some(0), .. } => 0,
             E::Repeat { expr, max, .. } => match (self.of(expr), max) {
                 (0, _) => 0,
                 (n, Some(1)) => n,
-                _ => 2,
+                _ => SEVERAL,
             },
             E::Unreserved(expr)
             | E::FlagOn { expr, .. }
@@ -484,14 +477,14 @@ impl ItemCount<'_> {
 }
 
 /// For each rule, how many visible items without a field one match of it adds, at most, where
-/// 2 stands for several. A rule reaches a count through its own body or through a rule it calls
-/// where that rule's count adds to its own, so two rounds of reachability, for one item and then
-/// for several, take linear time. Repeating passes until nothing changes would take a pass per
-/// rule of a chain.
+/// [`SEVERAL`] stands for several. A rule reaches a count through its own body or through a rule
+/// it calls where that rule's count adds to its own, so two rounds of reachability, for one item
+/// and then for several, take linear time. Repeating passes until nothing changes would take a
+/// pass per rule of a chain.
 fn unfielded_counts(rules: &[Option<ir::Rule>]) -> Vec<u8> {
     let mut counts = vec![0; rules.len()];
     let mut callers = vec![Vec::new(); rules.len()];
-    for level in 1..=2 {
+    for level in 1..=SEVERAL {
         let mut reached = Vec::new();
         for (id, rule) in rules.iter().enumerate() {
             let Some(rule) = rule else { continue };
@@ -669,13 +662,7 @@ impl<'g> Resolver<'g> {
                 .zip(args.iter().map(|a| a.measure().0))
                 .collect();
             // A precedence block with parameters is an error, but each instance lowers it all.
-            let alternatives: Vec<&Alternative> = match &rule.body {
-                RuleBody::Alternatives(alternatives) => alternatives.iter().collect(),
-                RuleBody::Precedence(levels) => {
-                    levels.iter().flat_map(|l| &l.alternatives).collect()
-                }
-            };
-            let expanded = (alternatives.iter())
+            let expanded = (rule.body.alternatives())
                 .map(|a| substituted_size(&a.expr, &sizes))
                 .fold(0, usize::saturating_add);
             self.instance_expressions = self.instance_expressions.saturating_add(expanded);
@@ -925,7 +912,7 @@ impl<'g> Resolver<'g> {
     fn lower_rule(&mut self, pending: Pending<'g>) {
         let Pending { id, rule, args } = pending;
         // A rule too deep to lower is reported where the rules are first read.
-        let deep = (expressions(rule).iter()).any(|e| e.measure().1 > MAX_EXPRESSION_DEPTH);
+        let deep = (rule.body.alternatives()).any(|a| a.expr.measure().1 > MAX_EXPRESSION_DEPTH);
         if deep {
             self.rules[id.0 as usize] = Some(ir::Rule {
                 name: rule.name.text.clone(),
