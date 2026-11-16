@@ -1,0 +1,9 @@
+# Integers in other bases, special floats and escapes of code points.
+octal = 0o755
+binary = 0b1010_0101
+hexadecimal = 0xDEAD_beef
+infinity = inf
+negative_infinity = -inf
+not_a_number = nan
+snowman = "☃"
+grinning = "\U0001F600"
