@@ -61,15 +61,29 @@ fn recovered_error(recovery: &Recovery, base: u32) -> Diagnostic {
     syntax_error(recovery.position, &recovery.expected, base)
 }
 
+/// Add an error of reading, unless the last one stands at the same place: a recovery that
+/// stepped over a mistake can meet the text after it there, which says nothing new.
+fn push_once(found: &mut Vec<Diagnostic>, error: Diagnostic) {
+    if found
+        .last()
+        .is_none_or(|last| last.span.start != error.span.start)
+    {
+        found.push(error);
+    }
+}
+
 /// Read a grammar from its text with `meta`, a parser of the grammar of grammars, its spans
 /// counted from `base`, where a module's text lies among the spans of a grammar that uses it.
 /// The parse recovers at the next rule or directive, so that each mistake is reported, up to the
 /// number of errors that resolving reports too.
 pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<Diagnostic>> {
     let recovered = |recoveries: &[Recovery]| -> Vec<Diagnostic> {
-        (recoveries.iter().take(MAX_ERRORS))
-            .map(|recovery| recovered_error(recovery, base))
-            .collect()
+        let mut found: Vec<Diagnostic> = Vec::new();
+        for error in recoveries.iter().map(|r| recovered_error(r, base)) {
+            push_once(&mut found, error);
+        }
+        found.truncate(MAX_ERRORS);
+        found
     };
     let tree = match meta.parse_recovering(text, "start") {
         Ok(tree) if tree.recoveries().is_empty() => tree,
@@ -78,19 +92,10 @@ pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<
             let mut found = recovered(&error.recoveries);
             let at = error.position as u32 + base;
             let (code, message) = match error.kind {
-                ParseErrorKind::NoMatch { expected }
-                | ParseErrorKind::Label {
-                    named: true,
-                    expected,
-                    ..
-                } => (
+                ParseErrorKind::NoMatch { expected } | ParseErrorKind::Label { expected, .. } => (
                     DiagnosticCode::Syntax,
                     format!("expected {}", expected.join(", ")),
                 ),
-                // The grammar of grammars says in words what must follow, such as a separator.
-                ParseErrorKind::Label { label, .. } => {
-                    (DiagnosticCode::Syntax, format!("expected {label}"))
-                }
                 ParseErrorKind::Limit(Limit::Depth) => (
                     DiagnosticCode::TooDeep,
                     "the grammar text nests too deeply to read".to_owned(),
@@ -106,11 +111,12 @@ pub(super) fn read(meta: &Parser, text: &str, base: u32) -> Result<Grammar, Vec<
                 }
                 other => (DiagnosticCode::Internal, format!("{other:?}")),
             };
-            found.push(Diagnostic {
+            let error = Diagnostic {
                 code,
                 message,
                 span: Span { start: at, end: at },
-            });
+            };
+            push_once(&mut found, error);
             return Err(found);
         }
     };

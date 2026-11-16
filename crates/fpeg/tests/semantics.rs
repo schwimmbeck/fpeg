@@ -208,6 +208,14 @@ fn a_grammar_text_with_three_syntax_errors_gives_three() {
 }
 
 #[test]
+fn a_mistake_that_reading_steps_over_gives_one_error_at_its_place() {
+    // The separator's recovery takes nothing, and the parse meets the stray token there.
+    let errors = Grammar::from_text("start: \"a\" ** )\n").expect_err("no separator");
+    let messages: Vec<&str> = errors.iter().map(|e| e.message.as_str()).collect();
+    assert_eq!(messages, ["expected a separator after ** or ++"]);
+}
+
+#[test]
 fn a_precedence_block_with_parameters_reports_only_that() {
     let text = "start: t<\"x\">\nt<p>: %precedence {\n    b: p\n}\n";
     let grammar = Grammar::from_text(text).expect("the grammar reads");
