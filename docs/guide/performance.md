@@ -63,8 +63,7 @@ dot          5       5     25  13.7%           164          25        0     0   
 
 The same input takes 183 steps. Ten of the fifteen calls of `item` are answered from the five results that were remembered.
 
-- A rule that a choice tries twice at one position is remembered without a mark: one that two of its alternatives start with, as in `start: item "." | item "!" | item`, or a part that can end after a failed try and the part after it, as in `item? item`. Only the rules that a choice starts with itself count, not those they call in turn, as `item` above through `dot` and `bang`, and terminals do not, which take about as long to match again as to look up.
-- A left-recursive rule is remembered without a mark where each pass over it tries its other alternatives again. One whose alternatives start with the rule itself before the others, as the levels of a precedence block do, runs as a loop that tries them once and is not.
+- A rule that a choice tries twice at one position, as `item` in `start: item "." | item "!" | item`, and a left-recursive rule that tries its other alternatives again at each pass, are remembered without a mark. The [grammar language](../reference/grammar.md#remembered-results) says exactly which.
 - `@memo` adds a rule to those, and `@nomemo` takes one out.
 - A remembered result takes memory until the parse ends. Remember the rules that repeat, not every rule: a rule that is never called twice at a position only pays for storing.
 

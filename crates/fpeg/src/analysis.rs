@@ -353,9 +353,10 @@ impl Facts {
     /// two of its alternatives, or of a part that can end after a failed try, as `e?` and
     /// `e+` can, and what follows it. Only the calls an expression makes itself count, not
     /// those of the rules it calls, since remembering a rule saves the calls it makes in
-    /// turn. Calls inside a token, of terminals, take about what remembering them would, a
-    /// rule's calls of itself at its start are its left recursion, which its seed answers,
-    /// and a lookahead calls quietly, which the memo keeps apart from other calls.
+    /// turn. A token counts no call inside it, which takes about what remembering would, so
+    /// a terminal counts only where the body of another terminal calls it. A rule's calls of
+    /// itself at its start are its left recursion, which its seed answers, and a lookahead
+    /// calls quietly, which the memo keeps apart from other calls.
     pub fn tried_twice(&self, grammar: &ir::Grammar) -> Vec<bool> {
         let mut walk = Twice {
             facts: self,
