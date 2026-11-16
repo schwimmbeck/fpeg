@@ -9,6 +9,9 @@
 //! with the lines they stand in. Behind the `reference` feature, the reference interpreter
 //! defines what a grammar means, and the tests compare the machine with it.
 //!
+//! The [documentation](https://schwimmbeck.github.io/fpeg/) describes the grammar language, its
+//! diagnostics and the command line, which are the same from Rust and from Python.
+//!
 //! ```
 //! use fpeg::{Grammar, Parser};
 //!

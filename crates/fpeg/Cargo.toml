@@ -22,6 +22,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [features]
 # The reference interpreter, for tests and fuzzing only.
