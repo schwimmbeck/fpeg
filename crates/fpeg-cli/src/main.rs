@@ -115,23 +115,20 @@ fn read(path: &Path) -> Result<String, Failure> {
         );
         Failure::Problem
     })?;
-    String::from_utf8(bytes).map_err(|_| {
-        say(
-            true,
-            format_args!("{}: error: it is not UTF-8 text", path.display()),
-        );
-        Failure::Problem
-    })
+    utf8(bytes, &path.display().to_string())
 }
 
-/// Read a grammar file. Editors on Windows may begin a file with a byte order mark, which is
-/// no part of the text.
-fn read_grammar(path: &Path) -> Result<String, Failure> {
-    let file = read(path)?;
-    Ok(match file.strip_prefix('\u{feff}') {
-        Some(text) => text.to_owned(),
-        None => file,
-    })
+/// The text of what was read from `name`, or a report that it is no UTF-8. Editors on Windows
+/// may begin a file with a byte order mark, which is no part of the text.
+fn utf8(bytes: Vec<u8>, name: &str) -> Result<String, Failure> {
+    let Ok(mut text) = String::from_utf8(bytes) else {
+        say(true, format_args!("{name}: error: it is not UTF-8 text"));
+        return Err(Failure::Problem);
+    };
+    if text.starts_with('\u{feff}') {
+        text.drain(..'\u{feff}'.len_utf8());
+    }
+    Ok(text)
 }
 
 /// Print the errors and warnings of a grammar, each with its place in the grammar text.
@@ -164,7 +161,7 @@ fn joined(path: &Path, text: &str) -> Result<Grammar, Vec<Diagnostic>> {
 
 /// Read and compile a grammar, or report its errors.
 fn compile(path: &Path) -> Result<(Grammar, Parser), Failure> {
-    let text = read_grammar(path)?;
+    let text = read(path)?;
     let grammar = joined(path, &text).map_err(|errors| {
         report(path, &text, &errors);
         Failure::Problem
@@ -193,7 +190,7 @@ fn check(args: &[OsString]) -> Result<(), Failure> {
     }
     let mut failed = false;
     for path in &paths {
-        let Ok(text) = read_grammar(path) else {
+        let Ok(text) = read(path) else {
             failed = true;
             continue;
         };
@@ -262,13 +259,8 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
                 say(true, format_args!("{name}: error: cannot read it: {error}"));
                 return Err(Failure::Problem);
             }
-            match String::from_utf8(bytes) {
-                Ok(input) => (name, input),
-                Err(_) => {
-                    say(true, format_args!("{name}: error: it is not UTF-8 text"));
-                    return Err(Failure::Problem);
-                }
-            }
+            let input = utf8(bytes, &name)?;
+            (name, input)
         }
     };
     let start = options.start.as_deref().unwrap_or("start");

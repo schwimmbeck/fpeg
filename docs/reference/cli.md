@@ -1,6 +1,6 @@
 # Command line
 
-The `fpeg` command checks grammars, parses inputs with them and shows where a parse spends its work. It reads grammars and inputs as UTF-8 text. A grammar that extends or imports a module `m` takes it from the file `m.fpeg` beside the grammar's file where there is one, otherwise from the grammars that come with fpeg ([modules](grammar.md#modules)). Such a file that cannot be read, as one that is no UTF-8, is an error.
+The `fpeg` command checks grammars, parses inputs with them and shows where a parse spends its work. It reads grammars and inputs as UTF-8 text, and a byte order mark at the start of one is no part of its text, so spans and columns count from after it. A grammar that extends or imports a module `m` takes it from the file `m.fpeg` beside the grammar's file where there is one, otherwise from the grammars that come with fpeg ([modules](grammar.md#modules)). Such a file that cannot be read, as one that is no UTF-8, is an error.
 
 `fpeg --help`, or `--help` after a command, lists the commands and their options, and `fpeg --version` prints the version.
 

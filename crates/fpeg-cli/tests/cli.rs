@@ -271,10 +271,23 @@ fn a_closed_output_is_no_failure_of_the_command() {
 }
 
 #[test]
-fn a_grammar_file_may_start_with_a_byte_order_mark() {
-    let paths = files("marked", &[("marked.fpeg", "\u{feff}start: \"a\"\n")]);
-    let out = run(["check".as_ref(), paths[0].as_os_str()]);
+fn a_grammar_or_an_input_may_start_with_a_byte_order_mark() {
+    let paths = files(
+        "marked",
+        &[
+            ("marked.fpeg", "\u{feff}start: \"a\"\n"),
+            ("input.txt", "\u{feff}a"),
+        ],
+    );
+    let (grammar, input) = (paths[0].as_os_str(), paths[1].as_os_str());
+    let out = run(["check".as_ref(), grammar]);
     assert!(out.status.success(), "{}", text(&out.stdout));
+    for command in ["parse", "profile"] {
+        let out = run([command.as_ref(), grammar, input]);
+        assert!(out.status.success(), "{command}: {}", text(&out.stderr));
+    }
+    let out = run_with_input(["parse".as_ref(), grammar], "\u{feff}a");
+    assert!(out.status.success(), "{}", text(&out.stderr));
 }
 
 #[test]
