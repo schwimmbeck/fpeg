@@ -320,6 +320,31 @@ fn an_unknown_start_rule_is_a_problem_of_the_grammar_file() {
 }
 
 #[test]
+fn names_from_the_command_line_print_without_the_characters_a_terminal_acts_on() {
+    let paths = files(
+        "shown",
+        &[("grammar.fpeg", "start: \"a\"\n"), ("input.txt", "a")],
+    );
+    let missing = paths[0].with_file_name("\u{1b}[2Jmissing.fpeg");
+    let unread = run(["check".as_ref(), missing.as_os_str()]);
+    let unknown = run([
+        "parse".as_ref(),
+        "--start".as_ref(),
+        "\u{1b}[2J".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    for out in [unread, unknown] {
+        let stderr = text(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{stderr}");
+        assert!(
+            stderr.contains("[2J") && !stderr.contains('\u{1b}'),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
 fn check_and_parse_report_each_problem_with_its_place_and_code() {
     let paths = files(
         "check",

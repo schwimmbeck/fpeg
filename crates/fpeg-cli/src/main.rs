@@ -106,16 +106,19 @@ fn main() -> ExitCode {
     }
 }
 
+/// A path as the console may show it, since a file name may hold characters it acts on.
+fn shown(path: &Path) -> String {
+    visible(&path.to_string_lossy())
+}
+
 /// Read a file as UTF-8 text, reporting why it cannot be.
 fn read(path: &Path) -> Result<String, Failure> {
     let bytes = std::fs::read(path).map_err(|error| {
-        say(
-            true,
-            format_args!("{}: error: cannot read it: {error}", path.display()),
-        );
+        let name = shown(path);
+        say(true, format_args!("{name}: error: cannot read it: {error}"));
         Failure::Problem
     })?;
-    utf8(bytes, &path.display().to_string())
+    utf8(bytes, &shown(path))
 }
 
 /// The text of what was read from `name`, or a report that it is no UTF-8. Editors on Windows
@@ -134,6 +137,7 @@ fn utf8(bytes: Vec<u8>, name: &str) -> Result<String, Failure> {
 /// Print the errors and warnings of a grammar, each with its place in the grammar text.
 fn report(path: &Path, text: &str, found: &[Diagnostic]) {
     let lines = LineIndex::new(text);
+    let name = shown(path);
     for diagnostic in found {
         let (line, column) = lines.line_column(text, diagnostic.span.start as usize);
         // A message may quote the grammar, which the console must not act on.
@@ -144,10 +148,7 @@ fn report(path: &Path, text: &str, found: &[Diagnostic]) {
         );
         say(
             false,
-            format_args!(
-                "{}:{line}:{column}: {severity}[{code}]: {message}",
-                path.display()
-            ),
+            format_args!("{name}:{line}:{column}: {severity}[{code}]: {message}"),
         );
     }
 }
@@ -277,7 +278,7 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
     match parsed {
         Ok(tree) => {
             if !options.json && indentation_bytes(&tree) > MAX_INDENTATION_BYTES {
-                let mib = MAX_INDENTATION_BYTES >> 20;
+                let (name, mib) = (visible(&name), MAX_INDENTATION_BYTES >> 20);
                 say(
                     true,
                     format_args!(
@@ -313,11 +314,9 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
 /// after it. A start rule the grammar lacks is a problem of the grammar, not of the input.
 fn report_failure(grammar: &Path, name: &str, input: &str, error: &ParseError) {
     if matches!(error.kind, ParseErrorKind::UnknownStart(_)) {
-        let message = error.message();
-        say(
-            true,
-            format_args!("{}: error: {message}", grammar.display()),
-        );
+        // The message names the rule given with --start.
+        let (name, message) = (shown(grammar), visible(&error.message()));
+        say(true, format_args!("{name}: error: {message}"));
         return;
     }
     let source = Source::new(input, Some(name));
