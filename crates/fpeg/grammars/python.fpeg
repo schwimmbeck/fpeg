@@ -3,9 +3,10 @@
 
 // Python 3.15, scannerless. Blocks follow columns, brackets join lines, a backslash continues
 // a line, and f-strings and t-strings nest inside replacement fields, with any quotes inside
-// them. Hard keywords are reserved, soft keywords stay names. Two parts accept a superset of
-// Python's: indentation may mix tabs and spaces where Python finds it ambiguous, and the
-// targets of assignments, deletions, loops and with items take primary expressions.
+// them. Hard keywords are reserved, soft keywords stay names. Some texts that CPython refuses
+// parse, which the page of known limits lists: indentation that mixes tabs and spaces where
+// Python finds it ambiguous, targets of assignments, deletions, loops and with items that are
+// any primary expression, and a few forms CPython refuses with a message of its own.
 //
 // Starred items and comprehension clauses call the levels of the expression block that Python
 // takes there.

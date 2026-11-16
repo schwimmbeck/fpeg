@@ -5,7 +5,7 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 ## Sizes
 
 - A text holds at most 4 GiB less one byte, since positions are 32-bit. A longer text raises `LimitError` with the limit `"input size"`.
-- A parse takes at most 4,294,967,295 steps, however high `max_steps` is set, since every item the parser keeps took a step and its indices are 32-bit too.
+- A run of the parser takes at most 4,294,967,295 steps, however high `max_steps` is set, since every item the parser keeps took a step and its indices are 32-bit too. A parse that fails runs a second time with the same limit, to find what was expected.
 - A grammar declares at most 64 [flags](grammar.md#flags), and its other sizes are bounded as [E402](diagnostics/E402.md) lists them.
 
 ## Parsing
@@ -34,8 +34,8 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 - A tree that a transform builds anew has no fields, as a tree built in Python has none: its children may change, and the fields would no longer match them. A transform builds a node anew where the value of one of its children changed, and for a method that takes the tree through `v_args(tree=True)`.
 - A token transformed on its own, as `parse` returns one where the start rule leaves a single token, gets no position from `positions`, since it holds no text of its line to count its columns in.
 - Views of a text beyond ASCII take longer to make than views of an ASCII text, since their positions count code points.
-- A tree built in Python that shares subtrees many times over takes the time and memory of the tree it would be without sharing: `pretty()`, `repr()`, comparing, hashing and pickling walk every path to a subtree, and `scan_values` collects its results before it yields them.
-- A subclass of `Tree` or `Token` gets the base class back from `copy()`, pickling and `update()`, since they cannot know the constructor of a subclass.
+- A tree built in Python that shares subtrees many times over takes the time and memory of the tree it would be without sharing: `pretty()`, `repr()`, comparing, hashing, pickling and transforming walk every path to a subtree, and `scan_values` collects its results before it yields them.
+- A subclass of `Tree` gets `Tree` back from `copy()` and pickling, and a subclass of `Token` gets `Token` back from `update()`, since they cannot know the constructor of a subclass. Copying and pickling a subclass of `Token` call it with the arguments of `Token(...)`, which a subclass that changes them must still take.
 - A transparent rule whose alternative always leaves two items or more keeps its node, yet the fields that rules without nodes of their own pass on to it count for its parent too, where `field()` gives `None` for them and `transformer_template()` offers them.
 - A text too large for memory raises `MemoryError`. When the process runs out of memory as a whole, there is no such promise: memory that fpeg's native code cannot get ends the process, and a small string the Python package makes, such as an attribute of an error, can raise `PanicException`.
 - [`fpeg.python`](python-api.md) builds the `ast` of Python 3.15 and needs that version.
@@ -52,5 +52,6 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 ## The Python grammar
 
 - The Python grammar, which comes with fpeg, accepts a few forms that CPython refuses with an error message of its own, such as an assignment to a call, `del *a` and `lazy from __future__ import x`, and indentation that mixes tabs and spaces where CPython finds it ambiguous. It nests as deep as the depth limit allows, where CPython takes at most 200 nested brackets and 149 nested f-strings.
-- A statement after a line that holds only spaces and a backslash takes its indentation from its own line, where CPython takes it from the backslash's line. So such a statement can stand in another block than CPython puts it in, or fail to parse.
+- A statement after a line that holds only spaces and a backslash takes its indentation from its own line, where CPython takes it from the backslash's line. So such a statement can stand in another block than CPython puts it in, or fail to parse, and a text that CPython refuses for its indentation there can parse.
+- A format spec that starts with a `\N{...}` escape and goes on, as in `f"{x:\N{DIGIT ONE}a}"`, gives a `JoinedStr` where CPython 3.15 gives a bare `Constant`.
 - A recovering parse with the Python grammar reports an error for most lines after a mistake in the quotes of a triple-quoted string, as `""` for `"""`: the strings that follow read as code and the code as strings. CPython stops at the first error.
