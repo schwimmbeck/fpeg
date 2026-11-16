@@ -8,6 +8,17 @@
 //! for the machine and parses inputs into a [`Tree`]. A [`Source`] shows the errors of a parse
 //! with the lines they stand in. Behind the `reference` feature, the reference interpreter
 //! defines what a grammar means, and the tests compare the machine with it.
+//!
+//! ```
+//! use fpeg::{Grammar, Parser};
+//!
+//! let text = "start: first=N (\"+\" N)*\nN: [0-9]+\n%ignore \" \"+";
+//! let grammar = Grammar::from_text(text).expect("the grammar reads");
+//! let parser = Parser::new(&grammar).expect("the grammar compiles");
+//! let input = "1 + 23";
+//! let tree = parser.parse(input, "start").expect("the input parses");
+//! assert_eq!(tree.to_text(input, false), "(start first=N\"1\" ~\"+\" N\"23\")");
+//! ```
 
 // The core returns errors as values and never panics on any grammar or input.
 #![cfg_attr(
