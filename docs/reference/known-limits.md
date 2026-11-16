@@ -34,7 +34,8 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 - A node that a transform rebuilt, since the value of one of its children changed, has no fields, as a tree built in Python has none: its children may change, and the fields would no longer match them.
 - A token transformed on its own, as `parse` returns one where the start rule leaves a single token, gets no position from `positions`, since it holds no text of its line to count its columns in.
 - Views of a text beyond ASCII take longer to make than views of an ASCII text, since their positions count code points.
-- `scan_values` collects its results before it yields them, so on a tree built in Python that shares subtrees many times over it can outgrow memory.
+- A tree built in Python that shares subtrees many times over takes the time and memory of the tree it would be without sharing: `pretty()`, `repr()`, comparing, hashing and pickling walk every path to a subtree, and `scan_values` collects its results before it yields them.
+- A subclass of `Tree` or `Token` gets the base class back from `copy()`, pickling and `update()`, since they cannot know the constructor of a subclass.
 - A transparent rule whose alternative always leaves two items or more keeps its node, yet the fields that rules without nodes of their own pass on to it count for its parent too, where `field()` gives `None` for them and `transformer_template()` offers them.
 - A text too large for memory raises `MemoryError`. When the process runs out of memory as a whole, there is no such promise: memory that fpeg's native code cannot get ends the process, and a small string the Python package makes, such as an attribute of an error, can raise `PanicException`.
 - [`fpeg.python`](python-api.md) builds the `ast` of Python 3.15 and needs that version.
