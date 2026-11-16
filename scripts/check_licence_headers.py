@@ -5,10 +5,9 @@
 
 A file of the project starts with the project's two lines. A file that holds outside code keeps
 its own copyright lines beside the project's and needs a licence compatible with both MIT and
-Apache-2.0. Reads the
-files git tracks or would track, so ignored build output is skipped. A file type the check does
-not know is an error, so that a new kind of source file cannot go unchecked. The copies of the
-licence texts in the published crates must equal the texts at the root.
+Apache-2.0. Reads the files git tracks or would track, so ignored build output is skipped. A file
+type the check does not know is an error, so that a new kind of source file cannot go unchecked.
+The copies of the licence texts in the published crates must equal the texts at the root.
 """
 
 import subprocess
