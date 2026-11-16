@@ -1250,14 +1250,19 @@ impl<'g> Resolver<'g> {
                     in_field: scope.in_field && items.len() == 1,
                     ..scope
                 };
-                // An error alternative tests the parts before it, and what follows it never
-                // matches, since it fails. Those parts are dropped unlowered, so that they
-                // reserve no word and make no kind, instance or error alternative.
+                // An error alternative tests the parts before it and ends its alternative, since
+                // it fails. A part after it is an error, which is not lowered, so that it
+                // reserves no word and makes no kind, instance or error alternative.
                 let error = (items.iter().enumerate()).find_map(|(at, item)| match &item.kind {
                     ExprKind::Error { message } => Some((at, message, item.span)),
                     _ => None,
                 });
                 let kept = error.map_or(items.len(), |(at, ..)| at);
+                if let Some(after) = items.get(kept + 1) {
+                    let message =
+                        "%error ends its alternative, so nothing can follow it".to_owned();
+                    self.error(DiagnosticCode::RuleForm, message, after.span);
+                }
                 let parts: Vec<ir::Expr> = (items[..kept].iter())
                     .map(|e| self.lower(e, scope))
                     .collect();
