@@ -21,6 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::graph;
 use crate::ir;
 use crate::tree::{FieldCount, FieldId, KindId};
 
@@ -502,10 +503,11 @@ fn summarize(rules: &[Option<ir::Rule>], recovers: &[bool]) -> Result<Vec<Items>
         .collect();
     let mut summaries = vec![Items::never(); rules.len()];
     let mut steps = 0;
-    for component in components(&calls) {
+    let components = graph::components(calls.len(), |rule, i| calls[rule].get(i).copied());
+    for component in components.iter() {
         let recursive = component.len() > 1 || calls[component[0]].contains(&component[0]);
         count_until_stable(
-            &component,
+            component,
             rules,
             recovers,
             &mut summaries,
@@ -516,14 +518,14 @@ fn summarize(rules: &[Option<ir::Rule>], recovers: &[bool]) -> Result<Vec<Items>
         if recursive {
             // The fields every match fills, from all a match can fill down, while the most items
             // stay as they are and with them the alternatives that can match.
-            for &rule in &component {
+            for &rule in component {
                 let summary = &mut summaries[rule];
                 let filled = summary.fields.iter().filter(|&(_, &count)| count > 0);
                 summary.present = filled.map(|(&field, _)| field).collect();
                 summary.unfielded_present = summary.unfielded > 0;
             }
             count_until_stable(
-                &component,
+                component,
                 rules,
                 recovers,
                 &mut summaries,
@@ -595,65 +597,6 @@ fn item_calls(
             }
         }
     }
-}
-
-/// The strongly connected components of a call graph, each after every component it calls,
-/// found with Tarjan's algorithm on an explicit stack, since chains of calls can be as long as
-/// the grammar.
-fn components(calls: &[Vec<usize>]) -> Vec<Vec<usize>> {
-    const UNSEEN: usize = usize::MAX;
-    let count = calls.len();
-    let mut index = vec![UNSEEN; count];
-    let mut low = vec![0; count];
-    let mut on_stack = vec![false; count];
-    let mut stack = Vec::new();
-    let mut found = Vec::new();
-    let mut next_index = 0;
-    // Each rule being visited with the position of its next callee.
-    let mut visiting: Vec<(usize, usize)> = Vec::new();
-    for root in 0..count {
-        if index[root] != UNSEEN {
-            continue;
-        }
-        index[root] = next_index;
-        low[root] = next_index;
-        next_index += 1;
-        stack.push(root);
-        on_stack[root] = true;
-        visiting.push((root, 0));
-        while let Some(&mut (rule, ref mut next)) = visiting.last_mut() {
-            if let Some(&callee) = calls[rule].get(*next) {
-                *next += 1;
-                if index[callee] == UNSEEN {
-                    index[callee] = next_index;
-                    low[callee] = next_index;
-                    next_index += 1;
-                    stack.push(callee);
-                    on_stack[callee] = true;
-                    visiting.push((callee, 0));
-                } else if on_stack[callee] {
-                    low[rule] = low[rule].min(index[callee]);
-                }
-                continue;
-            }
-            visiting.pop();
-            if let Some(&(caller, _)) = visiting.last() {
-                low[caller] = low[caller].min(low[rule]);
-            }
-            if low[rule] == index[rule] {
-                let mut members = Vec::new();
-                while let Some(member) = stack.pop() {
-                    on_stack[member] = false;
-                    members.push(member);
-                    if member == rule {
-                        break;
-                    }
-                }
-                found.push(members);
-            }
-        }
-    }
-    found
 }
 
 #[cfg(test)]

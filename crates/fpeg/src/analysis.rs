@@ -9,6 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::grammar::ClassItem;
+use crate::graph;
 use crate::ir::{self, RuleId};
 use crate::tree::KindId;
 
@@ -1042,71 +1043,21 @@ impl Graph {
 
     /// Which nodes lie on a cycle through the first `counts` children of each node, the
     /// strongly connected part of each, and the nodes in the order their parts are complete,
-    /// each part after those it reaches, found with Tarjan's algorithm on an explicit stack,
-    /// since chains of rules can be as long as the grammar.
+    /// each part after those it reaches.
     fn cyclic(&self, counts: &[u32]) -> (Vec<bool>, Vec<u32>, Vec<u32>) {
-        const UNSEEN: u32 = u32::MAX;
-        let count = self.nodes.len();
-        let mut index = vec![UNSEEN; count];
-        let mut low = vec![0; count];
-        let mut on_stack = vec![false; count];
-        let mut stack: Vec<u32> = Vec::new();
-        let mut cyclic = vec![false; count];
-        let mut component = vec![0; count];
-        let mut order = Vec::with_capacity(count);
-        let mut next_index = 0;
-        // Each node being visited with the position of its next child.
-        let mut visiting: Vec<(u32, usize)> = Vec::new();
-        for root in 0..count as u32 {
-            if index[root as usize] != UNSEEN {
-                continue;
-            }
-            index[root as usize] = next_index;
-            low[root as usize] = next_index;
-            next_index += 1;
-            stack.push(root);
-            on_stack[root as usize] = true;
-            visiting.push((root, 0));
-            while let Some(&mut (node, ref mut next)) = visiting.last_mut() {
-                let left = &self.children(node)[..counts[node as usize] as usize];
-                if let Some(&child) = left.get(*next) {
-                    *next += 1;
-                    if child == node {
-                        cyclic[node as usize] = true;
-                    } else if index[child as usize] == UNSEEN {
-                        index[child as usize] = next_index;
-                        low[child as usize] = next_index;
-                        next_index += 1;
-                        stack.push(child);
-                        on_stack[child as usize] = true;
-                        visiting.push((child, 0));
-                    } else if on_stack[child as usize] {
-                        low[node as usize] = low[node as usize].min(index[child as usize]);
-                    }
-                    continue;
-                }
-                visiting.pop();
-                if let Some(&(parent, _)) = visiting.last() {
-                    low[parent as usize] = low[parent as usize].min(low[node as usize]);
-                }
-                if low[node as usize] == index[node as usize] {
-                    let first = order.len();
-                    while let Some(member) = stack.pop() {
-                        on_stack[member as usize] = false;
-                        component[member as usize] = index[node as usize];
-                        order.push(member);
-                        if member == node {
-                            break;
-                        }
-                    }
-                    if order.len() - first > 1 {
-                        for &member in &order[first..] {
-                            cyclic[member as usize] = true;
-                        }
-                    }
-                }
+        let left = |node: usize| &self.children(node as u32)[..counts[node] as usize];
+        let parts = graph::components(self.nodes.len(), |node, i| {
+            left(node).get(i).map(|&child| child as usize)
+        });
+        let mut cyclic = vec![false; self.nodes.len()];
+        let mut part = vec![0; self.nodes.len()];
+        for (id, members) in parts.iter().enumerate() {
+            for &member in members {
+                cyclic[member] = members.len() > 1 || left(member).contains(&(member as u32));
+                part[member] = id as u32;
             }
         }
-        (cyclic, component, order)
+        let order = parts.order.iter().map(|&node| node as u32).collect();
+        (cyclic, part, order)
     }
 }

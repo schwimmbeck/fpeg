@@ -19,6 +19,7 @@ mod analysis;
 mod check;
 mod diag;
 mod grammar;
+mod graph;
 mod ir;
 mod items;
 mod lines;
