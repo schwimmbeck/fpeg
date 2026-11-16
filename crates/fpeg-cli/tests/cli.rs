@@ -351,7 +351,11 @@ fn profile_prints_a_row_for_each_rule_and_the_ignored_text() {
     assert_eq!(profile_row(&table, "N ")[..3], ["N", "2", "0"]);
     assert_eq!(profile_row(&table, "start")[1], "1");
     assert!(table.contains("\n%ignore ") && table.contains("\n(parse) "));
-    assert!(table.contains(" steps, at most "), "{table}");
+    // A count of one takes the singular.
+    assert!(
+        table.contains(" steps, at most 3 entries on the stack and 1 node, "),
+        "{table}"
+    );
     // Two inputs add up.
     let out = run([
         "profile".as_ref(),

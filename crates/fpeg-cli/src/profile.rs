@@ -171,8 +171,11 @@ fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
     }
     let _ = writeln!(
         out,
-        "\n{} steps, at most {} entries on the stack and {} nodes, {} results remembered",
-        profile.steps, profile.peak_stack, profile.peak_nodes, profile.memo_entries
+        "\n{}, at most {} on the stack and {}, {} remembered",
+        counted(profile.steps, "step", "steps"),
+        counted(profile.peak_stack, "entry", "entries"),
+        counted(profile.peak_nodes, "node", "nodes"),
+        counted(profile.memo_entries, "result", "results"),
     );
     if profile.restarts > 0 {
         let _ = writeln!(
@@ -201,6 +204,14 @@ fn table(profile: &Profile, unmarkable: &HashSet<&str>) -> String {
         }
     }
     out
+}
+
+/// A count with its noun, which takes the singular for one.
+fn counted(count: u64, one: &str, many: &str) -> String {
+    match count {
+        1 => format!("1 {one}"),
+        _ => format!("{count} {many}"),
+    }
 }
 
 /// The profile as JSON: the totals, and a member `rows` with the counts of each rule reached.
