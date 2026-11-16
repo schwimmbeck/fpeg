@@ -1062,3 +1062,77 @@ impl Graph {
         (cyclic, part, order)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::analyze;
+    use crate::builder::{GrammarBuilder, lit, opt, r};
+    use crate::grammar::{Expr, ExprKind};
+    use crate::resolve::resolve;
+
+    /// The parts of the sequence and the alternatives of the choice in the test of calls tried
+    /// twice, each a call of a rule of its own.
+    const TWICE_CALLS: usize = 50_000;
+
+    /// Time the search for calls tried twice may take in a debug build. Linear, it takes a few
+    /// hundredths of a second, quadratic several seconds.
+    const TWICE_SECONDS: f64 = 1.0;
+
+    /// The rules of the chain in the test of starts.
+    const CHAIN_RULES: usize = 10_000;
+
+    /// The kinds of tokens of the choice at the bottom of that chain, as many as are kept.
+    const CHAIN_KINDS: usize = 64;
+
+    /// Time finding the starts may take in a debug build: about a tenth of a second children
+    /// first, several seconds parents first.
+    const CHAIN_SECONDS: f64 = 1.0;
+
+    #[test]
+    fn the_rules_a_choice_point_can_call_twice_are_found_in_linear_time() {
+        // Gathering the rules that a part or alternative calls afresh after each one took time
+        // quadratic in their number.
+        let calls = || (0..TWICE_CALLS).map(|i| r(&format!("r{i}")));
+        let sequence = Expr::new(ExprKind::Sequence(calls().map(opt).collect()));
+        let choice = Expr::new(ExprKind::Choice(calls().collect()));
+        for start in [sequence, choice] {
+            let mut g = GrammarBuilder::new();
+            g.rule("start", start);
+            for i in 0..TWICE_CALLS {
+                g.rule(&format!("r{i}"), lit("a"));
+            }
+            let grammar = resolve(&g.build()).expect("it resolves");
+            let facts = analyze(&grammar);
+            let started = std::time::Instant::now();
+            let twice = facts.tried_twice(&grammar);
+            let seconds = started.elapsed().as_secs_f64();
+            assert!(seconds < TWICE_SECONDS, "{seconds:.1} s");
+            assert!(!twice.contains(&true));
+        }
+    }
+
+    #[test]
+    fn the_starts_of_a_chain_of_rules_are_found_with_each_rule_after_those_it_calls() {
+        // Each rule is defined after the one it calls. Taken before them, a rule passed on
+        // every kind of token that the choice at the bottom added, up the whole chain again.
+        let mut g = GrammarBuilder::new();
+        for i in 0..CHAIN_KINDS {
+            g.rule(&format!("K{i}"), lit(&format!("k{i}")));
+        }
+        let tokens = (0..CHAIN_KINDS).map(|i| r(&format!("K{i}")));
+        g.rule("c0", Expr::new(ExprKind::Choice(tokens.collect())));
+        for i in 1..=CHAIN_RULES {
+            g.rule(&format!("c{i}"), r(&format!("c{}", i - 1)));
+        }
+        g.rule("start", r(&format!("c{CHAIN_RULES}")));
+        let grammar = resolve(&g.build()).expect("it resolves");
+        let facts = analyze(&grammar);
+        let started = std::time::Instant::now();
+        let starts = facts.starts(&grammar, &vec![false; grammar.rules.len()]);
+        let seconds = started.elapsed().as_secs_f64();
+        assert!(seconds < CHAIN_SECONDS, "{seconds:.1} s");
+        let start = grammar.rules.iter().find(|rule| rule.name == "start");
+        let heads = start.and_then(|rule| starts.heads(&rule.body));
+        assert_eq!(heads.map(<[_]>::len), Some(CHAIN_KINDS));
+    }
+}
