@@ -190,4 +190,4 @@ With the default width the tab reaches column 8 and the four spaces column 4, wh
 
 ## Complete languages
 
-The grammars folder of the repository holds three languages built this way: `python.fpeg`, Python 3.15 with its blocks, brackets and continued lines, `outline.fpeg`, the outline above with comments, and `offside.fpeg`, a small functional language whose blocks follow the column of their first item, with braces that turn the layout off.
+The [grammars folder](https://github.com/schwimmbeck/fpeg/tree/main/crates/fpeg/grammars) of the repository holds three languages built this way: `python.fpeg`, Python 3.15 with its blocks, brackets and continued lines, `outline.fpeg`, the outline above with comments, CR LF line breaks, keys with capitals, underscores and hyphens, and spaces alone for indentation, and `offside.fpeg`, a small functional language whose blocks follow the column of their first item, with braces that turn the layout off.

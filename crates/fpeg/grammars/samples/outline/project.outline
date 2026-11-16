@@ -1,14 +1,14 @@
 # A project outline.
 project: fpeg
-milestones:
-  m0: foundations
-  m1: language
-    spec: drafts
-    reference: interpreter
+parts:
+  core: rust
+  binding: python
+    module: native
+    package: typed
 
     # blank and comment lines do not count
     grammars:
-      json: done
-      python: hard
-  m2: engine
-license: MIT
+      json: shipped
+      python: shipped
+  docs: sphinx
+licence: MIT OR Apache-2.0
