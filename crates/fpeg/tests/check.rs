@@ -437,3 +437,35 @@ fn a_rule_uses_each_of_its_parameters() {
         assert_eq!(codes(text), expected, "{text}");
     }
 }
+
+#[test]
+fn a_recovery_is_for_a_label_that_an_expression_raises() {
+    for (text, expected) in [
+        ("start: \"a\" ^ close\n%recover clsoe: ()\n", vec!["W403"]),
+        ("start: \"a\" ^ close\n%recover close: ()\n", vec![]),
+        // A message is no label.
+        (
+            "start: \"a\" ^ \"close\"\n%recover close: ()\n",
+            vec!["W403"],
+        ),
+        // Raised in a template, in the ignored text or in another recovery.
+        ("start: t<\"a\">\nt<x>: x ^ l\n%recover l: ()\n", vec![]),
+        (
+            "start: \"a\"+\n%ignore \"#\" (\"x\" ^ l)\n%recover l: ()\n",
+            vec![],
+        ),
+        (
+            "start: \"a\" ^ l\n%recover l: \"b\" ^ m\n%recover m: ()\n",
+            vec![],
+        ),
+        // The recoveries of a module may be for rules that the extension replaces, and the
+        // extension's own may not.
+        ("%extends \"json\"\nobject: \"{\" \"}\" => dict\n", vec![]),
+        (
+            "%extends \"json\"\nobject: \"{\" \"}\" => dict\n%recover member: ()\n",
+            vec!["W403"],
+        ),
+    ] {
+        assert_eq!(codes(text), expected, "{text}");
+    }
+}
