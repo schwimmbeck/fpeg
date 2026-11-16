@@ -156,8 +156,10 @@ def scrub_pyperf_file(path: Path) -> None:
 def cargo_env(target: Path) -> dict[str, str]:
     """Return the environment of cargo, building into `target`."""
     # Pin where criterion writes, and run in the package so rustup picks its pinned toolchain.
-    # Flags from the shell would change the build that is measured, and --pgo sets its own.
-    env = {k: v for k, v in os.environ.items() if k not in ("CRITERION_HOME", "RUSTFLAGS")}
+    # Flags from the shell would change the build that is measured. --pgo passes its own encoded,
+    # since cargo splits RUSTFLAGS at spaces, which a path may hold.
+    dropped = ("CRITERION_HOME", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")
+    env = {k: v for k, v in os.environ.items() if k not in dropped}
     env["CARGO_TARGET_DIR"] = str(target)
     return env
 
@@ -180,7 +182,7 @@ def train_profile() -> Path:
     shutil.rmtree(data, ignore_errors=True)
     data.mkdir(parents=True)
     env = cargo_env(RUST_TARGET / "pgo-train")
-    env["RUSTFLAGS"] = f"-Cprofile-generate={data}"
+    env["CARGO_ENCODED_RUSTFLAGS"] = f"-Cprofile-generate={data}"
     command = ["cargo", "bench", "--bench", "passes", "--", "--quick"]
     subprocess.run(command, cwd=RUST, env=env, check=True, stdout=subprocess.DEVNULL)
     merged = data / "merged.profdata"
@@ -198,7 +200,7 @@ def run_rust_suite(mode: str, pgo: bool = False) -> list[Row]:
     shutil.rmtree(criterion, ignore_errors=True)
     env = cargo_env(target)
     if pgo:
-        env["RUSTFLAGS"] = f"-Cprofile-use={train_profile()}"
+        env["CARGO_ENCODED_RUSTFLAGS"] = f"-Cprofile-use={train_profile()}"
     benches = [arg for name in RUST_BENCHES for arg in ("--bench", name)]
     command = ["cargo", "bench", *benches, "--", *CRITERION_MODE_ARGS[mode]]
     subprocess.run(command, cwd=RUST, env=env, check=True)
