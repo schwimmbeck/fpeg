@@ -950,6 +950,9 @@ impl<'g> Resolver<'g> {
                 rule.name.text
             );
             self.error(DiagnosticCode::RuleForm, message, rule.name.span);
+        } else if let Some(display) = rule.display.as_ref().filter(|d| d.value.is_empty()) {
+            let message = format!("the display name of {} cannot be empty", rule.name.text);
+            self.error(DiagnosticCode::RuleForm, message, display.span);
         }
         if rule.transparent && kind == RuleKind::Terminal {
             let message = format!("the terminal {} cannot be transparent", rule.name.text);

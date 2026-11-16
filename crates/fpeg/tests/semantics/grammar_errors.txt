@@ -293,6 +293,12 @@ item "an item": "a"
 only terminals can have a display name, not start
 only terminals can have a display name, not item
 
+=== a display name cannot be empty, since an error shows it
+start: T
+T "": "a"
+--- grammar
+the display name of T cannot be empty
+
 === a terminal or the skip expression cannot use a level
 start: T
 T: sum
