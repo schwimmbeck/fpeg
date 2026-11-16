@@ -311,9 +311,12 @@ fn a_grammar_reports_at_most_a_hundred_errors() {
         .collect();
     let errors = grammar_errors(&format!("start: {}\n", names.join(" ")));
     assert_eq!(errors.len(), MAX_GRAMMAR_ERRORS);
-    // Reading stops at as many, though it recovers at every broken line.
+    // Reading stops at as many, though it recovers at every broken line, and so does what it
+    // finds in the forms it read.
     let broken = grammar_errors(&"start: )\n".repeat(GRAMMAR_MISTAKES));
     assert_eq!(broken.len(), MAX_GRAMMAR_ERRORS);
+    let escapes = grammar_errors(&"r: \"\\q\"\n".repeat(GRAMMAR_MISTAKES));
+    assert_eq!(escapes.len(), MAX_GRAMMAR_ERRORS);
 }
 
 /// Terms of the sum in the next test, whose growing result is copied for each.

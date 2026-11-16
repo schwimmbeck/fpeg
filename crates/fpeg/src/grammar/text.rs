@@ -180,12 +180,15 @@ impl<'t> Converter<'t> {
         }
     }
 
+    /// Record a problem, up to as many as reading and resolving report.
     fn error(&mut self, code: DiagnosticCode, message: String, span: Span) {
-        self.errors.push(Diagnostic {
-            code,
-            message,
-            span,
-        });
+        if self.errors.len() < MAX_ERRORS {
+            self.errors.push(Diagnostic {
+                code,
+                message,
+                span,
+            });
+        }
     }
 
     fn too_deep(&mut self, span: Span) {
