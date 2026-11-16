@@ -90,15 +90,14 @@ impl Modules for ModuleFiles {
             return Ok(None);
         }
         let path = self.folder.join(format!("{name}.fpeg"));
-        let file = match std::fs::File::open(&path) {
-            Ok(file) => file,
+        // A device, a pipe or a folder could block or never end, a pipe already when opened.
+        match std::fs::metadata(&path) {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(_) => return Err(io::Error::other("it is not a file")),
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error),
-        };
-        // A device, a pipe or a folder could block or never end.
-        if !file.metadata()?.is_file() {
-            return Err(io::Error::other("it is not a file"));
         }
+        let file = std::fs::File::open(&path)?;
         let mut text = String::new();
         let limit = u64::from(MAX_MODULE_TEXT_BYTES);
         file.take(limit + 1).read_to_string(&mut text)?;

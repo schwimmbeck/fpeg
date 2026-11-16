@@ -296,6 +296,31 @@ fn module_files_are_the_grammar_files_of_a_folder_by_plain_names() {
     std::fs::remove_dir_all(&folder).expect("the folder goes");
 }
 
+/// How long a read of a module may take before the test takes it as waiting for a writer.
+#[cfg(unix)]
+const PIPE_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[cfg(unix)]
+#[test]
+fn a_pipe_named_like_a_module_is_an_error_at_once() {
+    let folder = std::env::temp_dir().join(format!("fpeg-pipe-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("a folder");
+    let made = std::process::Command::new("mkfifo")
+        .arg(folder.join("base.fpeg"))
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success());
+    let files = ModuleFiles::new(&folder);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    // Opening a pipe for reading waits for a writer, so the read runs on a thread of its own.
+    std::thread::spawn(move || sender.send(files.text("base").is_err()));
+    let refused = receiver
+        .recv_timeout(PIPE_WAIT)
+        .expect("the read waits for no writer");
+    assert!(refused);
+    std::fs::remove_dir_all(&folder).expect("the folder goes");
+}
+
 #[test]
 fn an_imported_rule_keeps_to_its_own_module() {
     // A name the module lacks is its error, and takes no rule of the grammar that imports it.
