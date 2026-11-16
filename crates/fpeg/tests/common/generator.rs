@@ -45,6 +45,9 @@ const PASSES_SALT: u64 = 0x7061_7373_6573;
 /// the grammars and some grammars get every pass.
 const PASS_OFF_PERCENT: u64 = 25;
 
+/// Failures that a run over many seeds reports at most.
+const REPORTED_FAILURES: usize = 5;
+
 /// The characters inputs are made of: the letters the grammars use, layout with the tab and the
 /// carriage return that columns count apart, a two-byte one, and those of the skip expressions.
 const INPUT_CHARS: [char; 10] = ['a', 'b', 'c', ' ', '\n', '\t', '\r', 'é', '#', 'x'];
@@ -798,6 +801,6 @@ pub fn check_seeds(check: fn(u64) -> Option<String>) {
         .into_inner()
         .expect("no thread panicked holding it");
     failures.sort();
-    failures.truncate(5);
+    failures.truncate(REPORTED_FAILURES);
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }

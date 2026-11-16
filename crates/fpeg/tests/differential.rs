@@ -42,6 +42,14 @@ const MIN_SAMPLE_FILES: usize = 110;
 /// would leave the comparison of parses with nothing to compare.
 const REJECTED_ONE_IN: u64 = 3;
 
+/// Parses of generated grammars compared at least, one in this many, the others skipped where
+/// an engine hits a limit.
+const COMPARED_ONE_IN: u64 = 2;
+
+/// Parses of generated grammars where only the machine hits a limit, at most one in this many
+/// of those compared.
+const MACHINE_LIMITS_ONE_IN: u64 = 200;
+
 /// What the machine remembers in each of the parsers a grammar is compared with.
 const MEMO: [Memo; 3] = [Memo::Grammar, Memo::Off, Memo::All];
 
@@ -406,13 +414,13 @@ fn generated_grammars_give_the_same_results_on_both_engines() {
     );
     let all = tally.compared + tally.machine_limits + tally.reference_limits;
     assert!(
-        tally.compared * 2 >= all,
+        tally.compared * COMPARED_ONE_IN >= all,
         "only {} of {all} parses compared",
         tally.compared
     );
     // Without a memo the machine backtracks more, which a few grammars need beyond its limit.
     assert!(
-        tally.machine_limits * 200 <= tally.compared,
+        tally.machine_limits * MACHINE_LIMITS_ONE_IN <= tally.compared,
         "the machine alone hits a limit in {} parses",
         tally.machine_limits
     );

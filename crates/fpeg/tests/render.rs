@@ -8,13 +8,6 @@ use std::time::Instant;
 
 use fpeg::{Diagnostic, DiagnosticCode, Grammar, LineIndex, ParseError, Parser, Source, Span};
 
-/// A line of two million code points beyond ASCII, errors shown near its end, and a time that
-/// showing them stays well within when each costs what it shows, also in a build without
-/// optimizations, where a walk over the line in fpeg's own code for each takes half a minute.
-const LONG_LINE_CHARS: usize = 2_000_000;
-const ERRORS_SHOWN: usize = 1_000;
-const SHOW_SECONDS: f64 = 2.0;
-
 /// A list whose items and closing bracket are named errors, with or without the recovery of
 /// the bracket.
 fn list(close_recovers: bool) -> Parser {
@@ -152,6 +145,17 @@ fn a_long_line_is_cut_around_the_error() {
         )
     );
 }
+
+/// A line of code points beyond ASCII, too long to walk over for each error shown.
+const LONG_LINE_CHARS: usize = 2_000_000;
+
+/// Errors shown near the end of that line, one at a time.
+const ERRORS_SHOWN: usize = 1_000;
+
+/// Time that showing them stays well within where each costs what it shows, also in a build
+/// without optimizations, where a walk over the line in fpeg's own code for each takes half a
+/// minute.
+const SHOW_SECONDS: f64 = 2.0;
 
 #[test]
 fn showing_an_error_costs_what_it_shows_however_long_its_line() {

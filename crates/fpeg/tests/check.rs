@@ -22,6 +22,9 @@ fn codes(text: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// Grammars in `grammars/` at least, so that a folder that goes missing shows.
+const MIN_ACCEPTANCE_GRAMMARS: usize = 10;
+
 #[test]
 fn the_acceptance_grammars_give_no_error_and_no_warning() {
     let paths = grammar_files();
@@ -31,7 +34,11 @@ fn the_acceptance_grammars_give_no_error_and_no_warning() {
         let found = fpeg::check(&grammar);
         assert!(found.is_empty(), "{}: {found:?}", path.display());
     }
-    assert!(paths.len() >= 10, "{} grammars", paths.len());
+    assert!(
+        paths.len() >= MIN_ACCEPTANCE_GRAMMARS,
+        "{} grammars",
+        paths.len()
+    );
 }
 
 #[test]
@@ -162,6 +169,15 @@ fn an_alternative_is_shadowed_by_an_earlier_one_it_starts_with() {
     }
 }
 
+/// Alternatives of the longest choice, each starting with a literal of its own.
+const LONG_CHOICE_ALTERNATIVES: usize = 30_000;
+
+/// Alternatives of the choices whose alternatives start with a deep first part.
+const DEEP_CHOICE_ALTERNATIVES: u32 = 4_000;
+
+/// Levels of the first part that the alternatives of those choices share.
+const SHARED_PART_LEVELS: usize = 90;
+
 /// Time the check of a choice between thousands of alternatives may take in a debug build.
 /// Each is compared with the 256 before it, by a hash of each part first, which takes a second
 /// or two. All pairs take a minute, and pairs compared down to the bottom of a deep first part
@@ -170,13 +186,15 @@ const LONG_CHOICE_SECONDS: f64 = 10.0;
 
 #[test]
 fn a_choice_between_thousands_of_alternatives_is_checked_in_time() {
-    let distinct = (0..30_000).map(|i| seq([lit(&format!("k{i:05}")), r("X")]));
-    // A first part ninety levels deep that all alternatives share, then one of their own.
-    let deep = |bottom: Expr| (0..90).fold(bottom, |part, _| opt(part));
-    let shared = (0..4_000).map(|i| seq([deep(r("X")), lit(&format!("k{i:05}"))]));
+    let distinct = (0..LONG_CHOICE_ALTERNATIVES).map(|i| seq([lit(&format!("k{i:05}")), r("X")]));
+    // A deep first part that all alternatives share, then one of their own.
+    let deep = |bottom: Expr| (0..SHARED_PART_LEVELS).fold(bottom, |part, _| opt(part));
+    let shared =
+        (0..DEEP_CHOICE_ALTERNATIVES).map(|i| seq([deep(r("X")), lit(&format!("k{i:05}"))]));
     // A first part as deep, whose class at the bottom is the only difference.
     let symbol = |i: u32| char::from_u32(0x4E00 + i).expect("a code point");
-    let classes = (0..4_000).map(|i| seq([deep(class([ch(symbol(i))])), r("X")]));
+    let classes =
+        (0..DEEP_CHOICE_ALTERNATIVES).map(|i| seq([deep(class([ch(symbol(i))])), r("X")]));
     for alternatives in [
         distinct.collect::<Vec<_>>(),
         shared.collect(),
@@ -193,21 +211,24 @@ fn a_choice_between_thousands_of_alternatives_is_checked_in_time() {
     }
 }
 
-/// Time the check of 30,000 rules may take in a debug build, each of which can match nothing
-/// only by way of the one before it. Working a rule out once takes well under a second. Working
-/// it out again for every rule it calls takes minutes.
+/// Rules in the chain of the next test, each of which can match nothing only by way of the one
+/// before it.
+const CHAIN_RULES: usize = 30_000;
+
+/// Time the check of [`CHAIN_RULES`] rules may take in a debug build. Working a rule out once
+/// takes well under a second. Working it out again for every rule it calls takes minutes.
 const LONG_CHAIN_SECONDS: f64 = 20.0;
 
 #[test]
 fn a_chain_of_thousands_of_rules_that_match_nothing_is_checked_in_time() {
-    let calls = (0..30_000).map(|i| r(&format!("r{i}")));
+    let calls = (0..CHAIN_RULES).map(|i| r(&format!("r{i}")));
     let mut g = GrammarBuilder::new();
     g.rule(
         "start",
         many(Expr::new(ExprKind::Sequence(calls.collect()))),
     );
     g.rule("r0", opt(lit("a")));
-    for i in 1..30_000 {
+    for i in 1..CHAIN_RULES {
         g.rule(&format!("r{i}"), r(&format!("r{}", i - 1)));
     }
     let grammar = g.build();

@@ -13,9 +13,14 @@ use common::generator::Rng;
 use common::grammars;
 use fpeg::{Grammar, Parser, Tree};
 
-/// JSON records made the way the benchmark's are, and the edits of each.
+/// JSON records made the way the benchmark's are.
 const RECORDS: u64 = 30;
+
+/// Edits of each record, each on the record as it was.
 const EDITS_PER_RECORD: usize = 20;
+
+/// The edits make more broken texts than this, so that the shares rest on enough of them.
+const MIN_BROKEN_TEXTS: usize = 200;
 
 /// What an edit inserts, or puts in place of a character: JSON's punctuation, other punctuation,
 /// layout, letters and digits.
@@ -24,9 +29,12 @@ const INSERTED: [char; 25] = [
     '#', 'a', 'b', 'c', '0', '1', '9',
 ];
 
-/// The shares that the JSON grammar keeps, set from its first measurement on 2026-11-15, 294 of
-/// 297 broken texts with a tree and 93.2 percent of the visible tokens kept.
+/// The share of broken texts that the JSON grammar gives a tree, set from its first
+/// measurement on 2026-11-15, 294 of 297.
 const JSON_MIN_TREES_PERCENT: f64 = 98.0;
+
+/// The share of the visible tokens of the valid texts that the JSON grammar keeps, set from
+/// the same measurement, 93.2 percent.
 const JSON_MIN_KEPT_PERCENT: f64 = 93.0;
 
 /// The parser of the bundled JSON grammar.
@@ -119,7 +127,7 @@ fn the_json_grammar_recovers_most_of_a_broken_text() {
     let trees_percent = 100.0 * trees as f64 / broken as f64;
     let kept_percent = 100.0 * kept / broken as f64;
     println!("{trees} of {broken} broken texts give a tree, {kept_percent:.1} % of tokens kept");
-    assert!(broken > 200, "{broken} broken texts");
+    assert!(broken > MIN_BROKEN_TEXTS, "{broken} broken texts");
     assert!(
         trees_percent >= JSON_MIN_TREES_PERCENT,
         "{trees_percent:.1} % give a tree"
