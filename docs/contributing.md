@@ -163,6 +163,7 @@ A tag starts the workflow, which builds and tests every package. A pre-release e
 2. The tag is the version with a `v` before it, as `v0.1.0`. A pre-release, as `v0.2.0-rc.1` with the version `0.2.0-rc.1`, rehearses a release.
 3. The workflow checks the tag against the version and the changelog, builds the wheels for every platform and interpreter and tests each one installed, builds and tests the source distribution, packages and builds the crates, builds the command line for every platform and checks the metadata of the packages.
 4. A rehearsal then publishes to TestPyPI and stops. A release waits for the maintainer's approval in the environment `release`, publishes the crates to crates.io, the core first, and the wheels and the source distribution to PyPI, both by trusted publishing, so that no token lives in CI. Then it makes the GitHub release with the section of the changelog, the packages and the binaries, and deploys this documentation to GitHub Pages.
+5. Once the release is out, the maintainer deletes the tags of its rehearsals, locally and on GitHub, so that the tags name releases alone. A new rehearsal never takes the number of a deleted one, since TestPyPI keeps what that one published and the upload skips the files it has.
 
 A version is never replaced. A publishing job that failed, as on a network error, can be run again on its own and skips what is out already, and a fault in a release is fixed by the next patch version. Before a release, each fuzz target runs a round on Linux.
 
