@@ -4,9 +4,11 @@
 //! The warnings of `check`: each is given where it holds and left out where it does not. The
 //! pages of the codes show one grammar for each, which `tests/diagnostics.rs` holds true.
 
-use std::path::Path;
+mod common;
+
 use std::time::Instant;
 
+use common::grammar_files;
 use fpeg::builder::{GrammarBuilder, ch, class, lit, many, opt, r, seq};
 use fpeg::{Expr, ExprKind, Grammar};
 
@@ -22,20 +24,14 @@ fn codes(text: &str) -> Vec<&'static str> {
 
 #[test]
 fn the_acceptance_grammars_give_no_error_and_no_warning() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
-    let mut checked = 0;
-    for entry in std::fs::read_dir(&root).expect("the grammars directory exists") {
-        let path = entry.expect("a directory entry").path();
-        if path.extension().is_none_or(|extension| extension != "fpeg") {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).expect("the grammar is readable");
+    let paths = grammar_files();
+    for path in &paths {
+        let text = std::fs::read_to_string(path).expect("the grammar is readable");
         let grammar = Grammar::from_text(&text).expect("the grammar reads");
         let found = fpeg::check(&grammar);
         assert!(found.is_empty(), "{}: {found:?}", path.display());
-        checked += 1;
     }
-    assert!(checked >= 10, "{checked} grammars");
+    assert!(paths.len() >= 10, "{} grammars", paths.len());
 }
 
 #[test]

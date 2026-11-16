@@ -15,7 +15,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use common::check_printing;
+use common::generator::{Rng, env_number};
+use common::{check_printing, grammar_files};
 use fpeg::{Grammar, Limits, Reference};
 
 /// Edits each grammar gets in a normal test run.
@@ -33,47 +34,30 @@ const INSERTS: [&str; 24] = [
     "<", ">", "=", " ", "\n", "a",
 ];
 
-/// SplitMix64, as in the generated tests.
-struct Rng(u64);
-
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        z ^ (z >> 31)
-    }
-
-    fn below(&mut self, n: usize) -> usize {
-        (self.next() % n.max(1) as u64) as usize
-    }
-}
-
 /// The text with one edit: a character deleted or inserted, a line deleted or doubled, or two
 /// neighbouring characters swapped.
 fn mutate(text: &str, rng: &mut Rng) -> String {
     let chars: Vec<char> = text.chars().collect();
     let lines: Vec<&str> = text.lines().collect();
-    let at = rng.below(chars.len());
+    let at = rng.below(chars.len() as u64) as usize;
     match rng.below(5) {
         0 => chars[..at]
             .iter()
             .chain(&chars[(at + 1).min(chars.len())..])
             .collect(),
         1 => {
-            let insert = INSERTS[rng.below(INSERTS.len())];
+            let insert = *rng.pick(&INSERTS);
             let (before, after): (String, String) =
                 (chars[..at].iter().collect(), chars[at..].iter().collect());
             before + insert + &after
         }
         2 => {
-            let line = rng.below(lines.len());
+            let line = rng.below(lines.len() as u64) as usize;
             let kept = lines.iter().enumerate().filter(|&(i, _)| i != line);
             kept.map(|(_, l)| *l).collect::<Vec<_>>().join("\n")
         }
         3 => {
-            let line = rng.below(lines.len());
+            let line = rng.below(lines.len() as u64) as usize;
             let mut doubled = lines.clone();
             doubled.insert(line, lines[line]);
             doubled.join("\n")
@@ -88,29 +72,20 @@ fn mutate(text: &str, rng: &mut Rng) -> String {
     }
 }
 
-fn files(dir: &Path, extension: Option<&str>) -> Vec<PathBuf> {
+fn files(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut files: Vec<PathBuf> = entries
         .map(|entry| entry.expect("a directory entry").path())
         .filter(|p| p.is_file())
-        .filter(|p| extension.is_none_or(|e| p.extension().is_some_and(|x| x == e)))
         .collect();
     files.sort();
     files
 }
 
-fn env_number(name: &str, default: u64) -> u64 {
-    std::env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
 #[test]
 fn grammar_texts_with_one_edit_never_panic() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
     let mutants = env_number("FPEG_MUTANTS", DEFAULT_MUTANTS);
     let first = env_number("FPEG_MUTANT_SEED", 0);
     let limits = Limits {
@@ -118,7 +93,7 @@ fn grammar_texts_with_one_edit_never_panic() {
         ..Limits::default()
     };
     // Each grammar with its name, its text and the samples it parses.
-    let grammars: Vec<(String, String, Vec<String>)> = files(&root, Some("fpeg"))
+    let grammars: Vec<(String, String, Vec<String>)> = grammar_files()
         .iter()
         .map(|path| {
             let name = path
@@ -126,7 +101,7 @@ fn grammar_texts_with_one_edit_never_panic() {
                 .and_then(|s| s.to_str())
                 .unwrap_or_default();
             // A `.tree` file beside a sample holds its expected tree, no input of the grammar.
-            let samples = files(&root.join("samples").join(name), None)
+            let samples = files(&common::grammars().join("samples").join(name))
                 .iter()
                 .filter(|sample| sample.extension().is_none_or(|e| e != "tree"))
                 .filter_map(|sample| std::fs::read_to_string(sample).ok())
@@ -147,7 +122,7 @@ fn grammar_texts_with_one_edit_never_panic() {
             scope.spawn(|| {
                 while let Some(&(g, seed)) = jobs.get(next.fetch_add(1, Ordering::Relaxed)) {
                     let (name, text, samples) = &grammars[g];
-                    let mutant = mutate(text, &mut Rng(seed));
+                    let mutant = mutate(text, &mut Rng::seeded(seed));
                     let outcome = catch_unwind(|| {
                         let grammar = Grammar::from_text(&mutant).ok()?;
                         if let Some(problem) = check_printing(&grammar) {

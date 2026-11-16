@@ -17,7 +17,7 @@ mod common;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use common::check_printing;
+use common::{check_printing, grammar_files, grammars};
 use fpeg::{Expr, ExprKind, Grammar, Reference, RuleBody, RuleKind};
 
 fn files_in(dir: &Path) -> Vec<PathBuf> {
@@ -34,17 +34,11 @@ fn files_in(dir: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn acceptance_grammars_parse_their_samples() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
+    let root = grammars();
     let bless = std::env::var_os("FPEG_BLESS").is_some();
-    let mut grammars: Vec<PathBuf> = std::fs::read_dir(&root)
-        .expect("the grammars directory exists")
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| path.extension().is_some_and(|e| e == "fpeg"))
-        .collect();
-    grammars.sort();
     let mut failures = Vec::new();
     let mut parsed = 0;
-    for path in &grammars {
+    for path in &grammar_files() {
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -124,9 +118,9 @@ fn acceptance_grammars_parse_their_samples() {
 
 #[test]
 fn line_comments_end_at_a_carriage_return() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
     let read = |name: &str| {
-        std::fs::read_to_string(root.join(format!("{name}.fpeg"))).expect("the grammar is readable")
+        let path = grammars().join(format!("{name}.fpeg"));
+        std::fs::read_to_string(path).expect("the grammar is readable")
     };
     let common = "%import common (CPP_COMMENT, SH_COMMENT, SQL_COMMENT, INT, WS)\nstart: INT+\n\
                   %ignore WS | CPP_COMMENT | SH_COMMENT | SQL_COMMENT\n";
@@ -164,12 +158,8 @@ fn referenced<'g>(expr: &'g Expr, names: &mut HashSet<&'g str>) {
 
 #[test]
 fn errors_name_terminals_by_their_display_names() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
     let mut missing = Vec::new();
-    for path in files_in(&root) {
-        if path.extension().is_none_or(|e| e != "fpeg") {
-            continue;
-        }
+    for path in grammar_files() {
         let text = std::fs::read_to_string(&path).expect("the grammar is readable");
         let grammar = Grammar::from_text(&text).expect("the grammar reads");
         // Any grammar may import any terminal of a module.

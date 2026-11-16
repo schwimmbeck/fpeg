@@ -4,8 +4,9 @@
 //! The profile of a parse: what it counts for each rule, and that its rows account for every
 //! step.
 
-use std::path::Path;
+mod common;
 
+use common::grammars;
 use fpeg::{Grammar, Limits, Options, Parser, Passes, Profile, ProfileRow};
 
 fn profile(grammar: &str, input: &str) -> Profile {
@@ -21,7 +22,7 @@ fn row<'p>(profile: &'p Profile, name: &str) -> &'p ProfileRow {
 
 #[test]
 fn the_rows_of_a_profile_sum_to_the_steps_of_the_parse() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
+    let root = grammars();
     // Ignored text, left recursion with the memo, a keyword policy, and an input that fails.
     for (name, sample) in [
         ("json", "nested.json"),
@@ -162,7 +163,7 @@ fn a_profile_runs_the_levels_of_a_precedence_block_as_the_parse_does() {
     // Kept as the growing loop with nothing remembered, each level would grow again in every
     // pass of the level above, until the parse started again with every rule remembered. So
     // the levels run as loops where the parse runs them so, and are remembered where not.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
+    let root = grammars();
     let grammar = std::fs::read_to_string(root.join("expressions.fpeg"));
     let input = std::fs::read_to_string(root.join("samples").join("expressions").join("mixed.c"));
     let grammar = Grammar::from_text(&grammar.expect("the grammar")).expect("it reads");

@@ -3,8 +3,11 @@
 
 //! Limits stop the reading of a grammar or a parse with an error value, never with a crash.
 
+mod common;
+
 use std::collections::HashMap;
 
+use common::grammars;
 use fpeg::builder::{
     GrammarBuilder, any, choice, def, empty, field, lit, many, on, opt, r, r_args,
 };
@@ -857,7 +860,7 @@ fn the_machine_grows_a_left_recursion_as_long_as_the_input_on_a_small_stack() {
 
 #[test]
 fn brackets_nested_beyond_the_depth_limit_are_an_error_in_a_precedence_block() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/grammars/expressions.fpeg");
+    let path = grammars().join("expressions.fpeg");
     let text = std::fs::read_to_string(path).expect("the grammar is readable");
     let grammar = Grammar::from_text(&text).expect("the grammar reads");
     let parser = Parser::new(&grammar).expect("the grammar compiles");

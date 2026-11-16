@@ -56,17 +56,19 @@ const MAX_TAB_WIDTH: u64 = 8;
 /// skip, line breaks with and without indentation, and the start of what one form labels.
 const LAYOUT: [&str; 7] = [" ", " ", "\n", "\n  ", "\t\t", "\n\t", "#x"];
 
-/// SplitMix64, enough to spread seeds over the choices below. Given bytes, as a fuzzer gives
-/// them, each choice takes the next byte instead, every choice being below 256, so that a
-/// change to one byte changes one choice, and SplitMix goes on where the bytes end.
-struct Rng {
+/// SplitMix64, enough to spread seeds over the choices below and over the edits of the tests
+/// that break texts. Given bytes, as a fuzzer gives them, each choice takes the next byte
+/// instead, every choice being below 256, so that a change to one byte changes one choice, and
+/// SplitMix goes on where the bytes end.
+pub struct Rng {
     state: u64,
     /// The bytes still to take, the next one last.
     bytes: Vec<u8>,
 }
 
 impl Rng {
-    fn seeded(seed: u64) -> Rng {
+    /// The numbers that follow from `seed`.
+    pub fn seeded(seed: u64) -> Rng {
         Rng {
             state: seed,
             bytes: Vec::new(),
@@ -84,15 +86,17 @@ impl Rng {
         z ^ (z >> 31)
     }
 
-    fn below(&mut self, n: u64) -> u64 {
-        self.next() % n
+    /// A number below `n`, or 0 where `n` is 0.
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.next() % n.max(1)
     }
 
     fn chance(&mut self, percent: u64) -> bool {
         self.below(100) < percent
     }
 
-    fn pick<'a>(&mut self, items: &'a [String]) -> &'a str {
+    /// One of the items, of which there must be some.
+    pub fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
         &items[self.below(items.len() as u64) as usize]
     }
 }
@@ -687,7 +691,8 @@ fn contains(item: &ClassItem, c: char) -> bool {
     }
 }
 
-fn env_number(name: &str, default: u64) -> u64 {
+/// The number that the environment variable `name` holds, or `default` without one.
+pub fn env_number(name: &str, default: u64) -> u64 {
     std::env::var(name)
         .ok()
         .and_then(|v| v.parse().ok())

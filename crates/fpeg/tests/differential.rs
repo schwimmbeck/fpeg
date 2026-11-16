@@ -16,11 +16,11 @@
 
 mod common;
 
-use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use common::cases::{CheckKind, case_files, parse_cases};
 use common::generator::{check_seeds, generate, reference_limits, sampled_passes};
+use common::{grammar_files, grammars};
 use fpeg::{
     Grammar, Limit, Limits, Memo, Options, ParseError, ParseErrorKind, Parser, Passes, Reference,
     RuleKind, Tree,
@@ -249,13 +249,7 @@ fn case_files_give_the_same_results_on_both_engines() {
 
 #[test]
 fn acceptance_grammars_give_the_same_results_on_both_engines() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars");
-    let mut paths: Vec<_> = std::fs::read_dir(&root)
-        .expect("the grammars directory exists")
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| path.extension().is_some_and(|e| e == "fpeg"))
-        .collect();
-    paths.sort();
+    let paths = grammar_files();
     let mut tally = Tally::default();
     let mut failures = Vec::new();
     let mut run = Vec::new();
@@ -272,7 +266,7 @@ fn acceptance_grammars_give_the_same_results_on_both_engines() {
                 continue;
             }
         };
-        let samples = root.join("samples").join(name);
+        let samples = grammars().join("samples").join(name);
         let files: Vec<_> = [samples.clone(), samples.join("invalid")]
             .iter()
             .filter_map(|dir| std::fs::read_dir(dir).ok())

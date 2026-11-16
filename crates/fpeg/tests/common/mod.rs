@@ -12,7 +12,26 @@
 pub mod cases;
 pub mod generator;
 
+use std::path::{Path, PathBuf};
+
 use fpeg::Grammar;
+
+/// The folder of the grammars that come with the library, which holds their samples in
+/// `samples/<name>/`.
+pub fn grammars() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("grammars")
+}
+
+/// The grammar files of [`grammars`], sorted.
+pub fn grammar_files() -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(grammars())
+        .expect("the grammars directory exists")
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "fpeg"))
+        .collect();
+    paths.sort();
+    paths
+}
 
 /// The grammar's debug form without source spans, so that two readings of different texts
 /// compare equal when they mean the same grammar.
