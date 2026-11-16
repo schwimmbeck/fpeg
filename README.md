@@ -20,7 +20,7 @@ A parsing library for Parsing Expression Grammars (PEG), with a native engine wr
 import fpeg
 
 grammar = fpeg.Grammar(r"""
-start: (pair ** ",")
+start: pair ** ","
 pair: key=NAME "=" value=NUMBER
 NAME: [a-z]+
 NUMBER: [0-9]+

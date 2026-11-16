@@ -28,7 +28,7 @@ A grammar is a string of rules, loaded at runtime. This one reads pairs such as 
 import fpeg
 
 grammar = fpeg.Grammar(r"""
-start: (pair ** ",")
+start: pair ** ","
 pair: key=NAME "=" value=NUMBER
 NAME: [a-z]+
 NUMBER: [0-9]+
@@ -38,7 +38,7 @@ NUMBER: [0-9]+
 
 - Lowercase names are rules, which give the tree its nodes. Uppercase names are terminals, which match the tokens.
 - `"="` is a literal, `[a-z]` a class of characters, and `+` means one or more.
-- `(pair ** ",")` matches pairs separated by commas, none or many.
+- `pair ** ","` matches pairs separated by commas, none or many.
 - `key=` and `value=` name the parts of a pair as fields.
 - `%ignore` names the text skipped between tokens, here spaces.
 
@@ -108,7 +108,7 @@ A grammar can also say what its nodes and tokens are worth, with value builders 
 
 ```python
 grammar = fpeg.Grammar(r"""
-start: (pair ** ",") => dict
+start: pair ** "," => dict
 pair: key=NAME "=" value=NUMBER => tuple
 NAME: [a-z]+ => text
 NUMBER: [0-9]+ => int
