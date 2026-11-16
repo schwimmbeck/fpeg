@@ -6,7 +6,7 @@
 
 mod common;
 
-use common::grammars;
+use common::{RESTART_MIN_STEPS, grammars, pathological_input};
 use fpeg::{Grammar, Limits, Options, Parser, Passes, Profile, ProfileRow};
 
 fn profile(grammar: &str, input: &str) -> Profile {
@@ -71,10 +71,9 @@ fn a_profile_counts_both_runs_of_a_parse_that_started_again() {
     // `b` is matched twice at every level, which nothing remembered by default saves, until
     // the parse runs out of its budget and starts again with every rule remembered.
     let grammar = "start: a\na: c | d\nc: b \"x\"\nd: b \"y\"\nb: \"(\" a \")\" | \"w\"\n";
-    let input = (0..24).fold("wy".to_owned(), |inner, _| format!("({inner})y"));
-    let profile = profile(grammar, &input);
+    let profile = profile(grammar, &pathological_input());
     assert_eq!(profile.restarts, 1);
-    assert!(profile.steps > 1_000_000, "{}", profile.steps);
+    assert!(profile.steps > RESTART_MIN_STEPS, "{}", profile.steps);
     let rows: u64 = profile.rows.iter().map(|row| row.steps).sum();
     assert_eq!(rows, profile.steps);
     // The call of start that the first run left open counts to where that run ended.

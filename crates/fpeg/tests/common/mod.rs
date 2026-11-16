@@ -33,6 +33,19 @@ pub fn grammar_files() -> Vec<PathBuf> {
     paths
 }
 
+/// Steps a parse takes at least before it starts again with every rule remembered, the budget
+/// of the machine for an input shorter than a thousand bytes.
+pub const RESTART_MIN_STEPS: u64 = 1_000_000;
+
+/// Levels of nesting in the pathological input, each of which doubles the work of a grammar
+/// that matches a rule twice at every level.
+pub const PATHOLOGICAL_LEVELS: usize = 24;
+
+/// Brackets around brackets, [`PATHOLOGICAL_LEVELS`] deep, each pair followed by a `y`.
+pub fn pathological_input() -> String {
+    (0..PATHOLOGICAL_LEVELS).fold("wy".to_owned(), |inner, _| format!("({inner})y"))
+}
+
 /// The grammar's debug form without source spans, so that two readings of different texts
 /// compare equal when they mean the same grammar.
 fn shape(grammar: &Grammar) -> String {

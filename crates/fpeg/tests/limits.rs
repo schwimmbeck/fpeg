@@ -7,7 +7,7 @@ mod common;
 
 use std::collections::HashMap;
 
-use common::grammars;
+use common::{grammars, pathological_input};
 use fpeg::builder::{
     GrammarBuilder, any, choice, def, empty, field, lit, many, on, opt, r, r_args,
 };
@@ -30,8 +30,10 @@ const MODULE_FAN: usize = 10;
 /// Levels of that fan: 10, 100 and 1,000 reads, beyond the modules that joining allows.
 const MODULE_FAN_LEVELS: usize = 3;
 
-/// A module name and the references to its rule, whose private names together pass 64 MiB.
+/// A long module name, which joining writes into every reference of the rules it brings in.
 const MODULE_NAME_BYTES: usize = 3_000;
+
+/// References to the rule of that module, whose private names together pass 64 MiB.
 const RENAMED_REFERENCES: usize = 25_000;
 
 fn nesting() -> Reference {
@@ -53,17 +55,10 @@ fn grammar_errors(text: &str) -> Vec<String> {
     errors.into_iter().map(|e| e.message).collect()
 }
 
-/// Steps that a pathological parse may take with the restart: its budget of a million steps
-/// and a parse with every rule remembered, which takes a few thousand.
+/// Steps that a pathological parse may take with the restart: the budget of
+/// `common::RESTART_MIN_STEPS` and a parse with every rule remembered, which takes a few
+/// thousand.
 const PATHOLOGICAL_MAX_STEPS: u64 = 1_100_000;
-
-/// Brackets that the reference interpreter parses within its own caps on nesting, deep enough
-/// to show that its recursion fits its stack.
-const DEEP_NESTING: usize = 1_900;
-
-/// Levels of nesting in the pathological inputs, each of which doubles the work of the parse
-/// without the restart.
-const PATHOLOGICAL_LEVELS: usize = 24;
 
 #[test]
 fn a_parse_that_repeats_work_starts_again_with_every_rule_remembered() {
@@ -76,7 +71,7 @@ fn a_parse_that_repeats_work_starts_again_with_every_rule_remembered() {
          t: \"(\" s \")\" | \"w\"\n",
         "start: s\ns: &c c | d\nc: a \"x\"\nd: a \"y\"\na: \"(\" s \")\" | \"w\"\n",
     ];
-    let input = (0..PATHOLOGICAL_LEVELS).fold("wy".to_owned(), |inner, _| format!("({inner})y"));
+    let input = pathological_input();
     let limits = Limits {
         max_steps: PATHOLOGICAL_MAX_STEPS,
         ..Limits::default()
@@ -103,9 +98,13 @@ fn a_parse_that_repeats_work_starts_again_with_every_rule_remembered() {
 /// byte than a parse may take before it starts again.
 const RESTART_RULES: usize = 300;
 
-/// The input of the next test, in bytes, and the memory and the depth its parses may have.
+/// The input of the next test.
 const RESTART_INPUT_BYTES: usize = 1_000;
+
+/// Memory that one parse of the next test may hold, too little to remember every rule.
 const RESTART_MEMORY_BYTES: u64 = 8 << 20;
+
+/// Depth that another parse of the next test may reach, too shallow for its chain as calls.
 const RESTART_DEPTH: u32 = 4;
 
 #[test]
@@ -136,17 +135,23 @@ fn a_parse_that_starts_again_goes_on_as_it_started_where_remembering_takes_too_m
     }
 }
 
+/// Rules in the chain of the next test, each calling the next.
+const CHAIN_RULES: usize = 8;
+
+/// Depth that the parses of the next test may reach, too shallow for its chain as calls.
+const CHAIN_MAX_DEPTH: u32 = 2;
+
 #[test]
 fn a_rule_compiled_into_its_callers_makes_no_activation() {
-    // A chain of eight rules. Compiled into each other they make no activation under that of
-    // the start rule, and as calls they nest eight deep under it.
-    let mut text = "start: r1\nr8: \"x\"\n".to_owned();
-    for i in 1..8 {
+    // Compiled into each other the rules of the chain make no activation under that of the
+    // start rule, and as calls they nest as deep under it as the chain is long.
+    let mut text = format!("start: r1\nr{CHAIN_RULES}: \"x\"\n");
+    for i in 1..CHAIN_RULES {
         text += &format!("r{i}: r{}\n", i + 1);
     }
     let grammar = Grammar::from_text(&text).expect("the grammar reads");
     let limits = Limits {
-        max_depth: 2,
+        max_depth: CHAIN_MAX_DEPTH,
         ..Limits::default()
     };
     let inlined = Parser::new(&grammar).expect("it compiles");
@@ -160,12 +165,19 @@ fn a_rule_compiled_into_its_callers_makes_no_activation() {
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
 }
 
+/// Brackets that the reference interpreter parses within its own caps on nesting, deep enough
+/// to show that its recursion fits its stack.
+const DEEP_NESTING: usize = 1_900;
+
+/// Brackets far deeper than the default depth limit allows.
+const TOO_DEEP_NESTING: usize = 100_000;
+
 #[test]
 fn nesting_deeper_than_the_depth_limit_is_an_error_not_a_stack_overflow() {
     let reference = nesting();
     assert!(reference.parse(&nested(DEEP_NESTING), "start").is_ok());
     let error = reference
-        .parse(&nested(100_000), "start")
+        .parse(&nested(TOO_DEEP_NESTING), "start")
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
     assert_eq!(
@@ -174,14 +186,20 @@ fn nesting_deeper_than_the_depth_limit_is_an_error_not_a_stack_overflow() {
     );
 }
 
+/// Steps that the parses of the next test may take.
+const LOOKAHEAD_MAX_STEPS: u64 = 1_000;
+
+/// Brackets in the input of the next test, which take more than [`LOOKAHEAD_MAX_STEPS`].
+const LOOKAHEAD_NESTING: usize = 500;
+
 #[test]
 fn the_step_limit_stops_a_parse_also_inside_a_lookahead() {
     let limits = Limits {
-        max_steps: 1_000,
+        max_steps: LOOKAHEAD_MAX_STEPS,
         ..Limits::default()
     };
     let error = nesting()
-        .parse_with(&nested(500), "start", limits)
+        .parse_with(&nested(LOOKAHEAD_NESTING), "start", limits)
         .expect_err("too many steps");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
     // A limit is no failure that a lookahead turns into success or failure.
@@ -189,15 +207,18 @@ fn the_step_limit_stops_a_parse_also_inside_a_lookahead() {
         .expect("the grammar reads");
     let error = Reference::new(&looking)
         .expect("the grammar resolves")
-        .parse_with(&nested(500), "start", limits)
+        .parse_with(&nested(LOOKAHEAD_NESTING), "start", limits)
         .expect_err("too many steps");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
 }
 
+/// Steps that the parses of the tests of scanning may take, far fewer than their scans.
+const SCANNING_MAX_STEPS: u64 = 2_000_000;
+
 #[test]
 fn scanning_text_counts_against_the_step_limit() {
     let limits = Limits {
-        max_steps: 2_000_000,
+        max_steps: SCANNING_MAX_STEPS,
         ..Limits::default()
     };
     let compared = format!(
@@ -229,11 +250,15 @@ fn scanning_text_counts_against_the_step_limit() {
     }
 }
 
+/// Separators that fail inside each other, which a second reading at every level would read
+/// two to the power of this many times.
+const FAILING_SEPARATORS: usize = 40;
+
 #[test]
 fn grammar_text_with_failing_separators_reads_in_linear_time() {
     // A separator after ** is required, so one that fails is an error at once, instead of a
     // second reading of the same text at every level of nesting.
-    let text = format!("start: {}", "a**(".repeat(40));
+    let text = format!("start: {}", "a**(".repeat(FAILING_SEPARATORS));
     let errors = Grammar::from_text(&text).expect_err("the text does not read");
     assert_eq!(errors[0].code, DiagnosticCode::Syntax, "{errors:?}");
 }
@@ -241,7 +266,7 @@ fn grammar_text_with_failing_separators_reads_in_linear_time() {
 #[test]
 fn long_literals_and_large_classes_count_against_the_machine_s_step_limit() {
     let limits = Limits {
-        max_steps: 2_000_000,
+        max_steps: SCANNING_MAX_STEPS,
         ..Limits::default()
     };
     // A literal that fails only at its last byte, tried at every position.
@@ -273,24 +298,38 @@ fn long_literals_and_large_classes_count_against_the_machine_s_step_limit() {
     }
 }
 
+/// Errors that reading and resolving a grammar report at most.
+const MAX_GRAMMAR_ERRORS: usize = 100;
+
+/// Mistakes in the grammars of the next test, many more than are reported.
+const GRAMMAR_MISTAKES: usize = 1_000;
+
 #[test]
 fn a_grammar_reports_at_most_a_hundred_errors() {
-    let names: Vec<String> = (0..1_000).map(|i| format!("missing{i}")).collect();
+    let names: Vec<String> = (0..GRAMMAR_MISTAKES)
+        .map(|i| format!("missing{i}"))
+        .collect();
     let errors = grammar_errors(&format!("start: {}\n", names.join(" ")));
-    assert_eq!(errors.len(), 100);
+    assert_eq!(errors.len(), MAX_GRAMMAR_ERRORS);
     // Reading stops at as many, though it recovers at every broken line.
-    let broken = grammar_errors(&"start: )\n".repeat(1_000));
-    assert_eq!(broken.len(), 100);
+    let broken = grammar_errors(&"start: )\n".repeat(GRAMMAR_MISTAKES));
+    assert_eq!(broken.len(), MAX_GRAMMAR_ERRORS);
 }
+
+/// Terms of the sum in the next test, whose growing result is copied for each.
+const COPIED_TERMS: usize = 3_000;
+
+/// Steps that the parse of the next test may take, fewer than its copies.
+const COPYING_MAX_STEPS: u64 = 1_000_000;
 
 #[test]
 fn copying_results_counts_against_the_step_limit() {
     // Left recursion copies its growing result in every step, quadratic in the input length.
     let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
         .expect("the grammar reads");
-    let input = format!("1{}", "+1".repeat(3_000));
+    let input = format!("1{}", "+1".repeat(COPIED_TERMS));
     let limits = Limits {
-        max_steps: 1_000_000,
+        max_steps: COPYING_MAX_STEPS,
         ..Limits::default()
     };
     let error = Reference::new(&grammar)
@@ -300,9 +339,18 @@ fn copying_results_counts_against_the_step_limit() {
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
 }
 
+/// Groups inside each other, deeper than an expression may be, which the converter checks.
+const DEEP_GROUPS: usize = 150;
+
+/// Groups or suffixes inside each other, deeper than the text front end reads.
+const DEEPEST_NESTING: usize = 5_000;
+
+/// How much of a grammar text a failure of the next test shows.
+const SHOWN_BYTES: usize = 60;
+
 #[test]
 fn grammars_that_nest_too_deeply_are_errors_not_stack_overflows() {
-    let suffixes = format!("start: \"a\"{}\n", "?".repeat(5_000));
+    let suffixes = format!("start: \"a\"{}\n", "?".repeat(DEEPEST_NESTING));
     let groups = |depth| {
         format!(
             "start: {}\"a\"{}\n",
@@ -311,10 +359,14 @@ fn grammars_that_nest_too_deeply_are_errors_not_stack_overflows() {
         )
     };
     let growing = "start: t<\"b\">\nt<x>: \"a\" t<\"c\" x> | x\n";
-    // Deep enough for the converter's check, and deep enough for the front end's own limit.
-    for text in [&suffixes, &groups(150), &groups(5_000), growing] {
+    for text in [
+        &suffixes,
+        &groups(DEEP_GROUPS),
+        &groups(DEEPEST_NESTING),
+        growing,
+    ] {
         let errors = grammar_errors(text);
-        let shown = text.get(..60).unwrap_or(text);
+        let shown = text.get(..SHOWN_BYTES).unwrap_or(text);
         assert!(
             errors.iter().any(|e| e.contains("nest")),
             "{shown}: {errors:?}"
@@ -377,11 +429,14 @@ fn a_grammar_built_with_a_span_at_the_end_of_the_range_joins_without_a_panic() {
     assert!(!fpeg::check(&grammar).is_empty());
 }
 
+/// Levels of the template body of the next test, far deeper than an expression may be.
+const DEEP_TEMPLATE_LEVELS: usize = 100_000;
+
 #[test]
 fn a_template_that_nothing_uses_is_measured_as_every_rule_is() {
     // Built in code, where no front end bounds the nesting. `check` walks every rule.
     let mut body = lit("a");
-    for _ in 0..100_000 {
+    for _ in 0..DEEP_TEMPLATE_LEVELS {
         body = opt(body);
     }
     let mut builder = GrammarBuilder::new();
@@ -434,11 +489,14 @@ fn templates_that_expand_too_far_are_errors_before_they_take_the_memory() {
     }
 }
 
+/// Rules in the chain of the next test, each with a field, more than a node may hold.
+const FIELD_CHAIN_RULES: usize = 2_000;
+
 #[test]
 fn a_chain_of_rules_that_passes_on_too_many_fields_is_an_error() {
     // Each rule without a node of its own passes its field and all below on to the one above.
-    let mut text = String::from("start: _r0\nA: \"a\"\n_r2000: A\n");
-    for i in 0..2_000 {
+    let mut text = format!("start: _r0\nA: \"a\"\n_r{FIELD_CHAIN_RULES}: A\n");
+    for i in 0..FIELD_CHAIN_RULES {
         text.push_str(&format!("_r{i}: f{i}=A _r{} | A\n", i + 1));
     }
     let errors = grammar_errors(&text);
@@ -448,12 +506,15 @@ fn a_chain_of_rules_that_passes_on_too_many_fields_is_an_error() {
     );
 }
 
+/// Rules on the cycle of the next test, each with a field.
+const FIELD_CYCLE_RULES: usize = 250;
+
 #[test]
 fn rules_that_pass_fields_around_a_long_cycle_are_an_error() {
     // Each rule calls the next and the one before, so a field moves back one rule per pass and
     // counting takes a pass per rule over all fields. Without the limit, the time grows with the
-    // cube of the cycle: 1.7 s for these 250 rules, two minutes for 1000.
-    let k = 250;
+    // cube of the cycle: 1.7 s for this one, two minutes for one four times as long.
+    let k = FIELD_CYCLE_RULES;
     let mut text = String::from("start: _x0\nA: \"a\"\n_x0: f0=A _x1 | A\n");
     for j in 1..k {
         text.push_str(&format!("_x{j}: f{j}=A _x{} | _x{}\n", j + 1, j - 1));
@@ -466,6 +527,9 @@ fn rules_that_pass_fields_around_a_long_cycle_are_an_error() {
     );
 }
 
+/// Brackets in the input of the next test, each of which nests a deep rule body.
+const NESTED_BODY_BRACKETS: usize = 1_500;
+
 #[test]
 fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
     // Each activation nests almost as deeply as a rule body may, so matches nest much deeper
@@ -475,10 +539,19 @@ fn deeply_nested_rule_bodies_stop_at_the_depth_limit_instead_of_overflowing() {
     let grammar = Grammar::from_text(&text).expect("the grammar reads");
     let reference = Reference::new(&grammar).expect("the grammar resolves");
     let error = reference
-        .parse(&nested(1_500), "start")
+        .parse(&nested(NESTED_BODY_BRACKETS), "start")
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
 }
+
+/// Flags that a grammar may declare.
+const MAX_FLAGS: usize = 64;
+
+/// Flags of a grammar several beyond [`MAX_FLAGS`].
+const TOO_MANY_FLAGS: usize = 70;
+
+/// Template instances that a grammar may have.
+const MAX_TEMPLATE_INSTANCES: usize = 1_000;
 
 #[test]
 fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
@@ -492,11 +565,11 @@ fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
         builder.rule("start", on(&format!("f{}", flags - 1), lit("a")));
         builder
     };
-    Reference::new(&flag_grammar(64).build()).expect("64 flags are allowed");
+    Reference::new(&flag_grammar(MAX_FLAGS).build()).expect("64 flags are allowed");
     // A flag beyond the limit is declared all the same, so its use adds no error.
-    let errors = Reference::new(&flag_grammar(70).build()).expect_err("too many flags");
+    let errors = Reference::new(&flag_grammar(TOO_MANY_FLAGS).build()).expect_err("too many flags");
     assert_eq!(errors.len(), 1, "{errors:?}");
-    let flags = flag_grammar(65);
+    let flags = flag_grammar(MAX_FLAGS + 1);
     let mut fields = GrammarBuilder::new();
     let named = (0..count)
         .map(|i| field(&format!("x{i}"), lit("a")))
@@ -507,7 +580,7 @@ fn more_flags_fields_capture_names_or_instances_than_allowed_are_errors() {
     captures.rule("start", Expr::new(ExprKind::Sequence(defs)));
     // Small instances, so that their number and not their size is too large.
     let mut instances = GrammarBuilder::new();
-    let uses = (0..1_001)
+    let uses = (0..=MAX_TEMPLATE_INSTANCES)
         .map(|i| r_args("t", [lit(&format!("a{i}"))]))
         .collect();
     instances.rule("start", Expr::new(ExprKind::Choice(uses)));
@@ -540,13 +613,23 @@ fn doubling(levels: usize) -> Grammar {
     Grammar::from_text(&doubling_text(levels, "()")).expect("the grammar reads")
 }
 
+/// Levels of a doubling tree that fits the default memory limit.
+const DOUBLING_LEVELS: usize = 16;
+
+/// Memory that a parse of the next test may hold, too little for a tree of
+/// [`DOUBLING_LEVELS`].
+const SMALL_MEMORY_BYTES: u64 = 1 << 20;
+
+/// Levels of a doubling tree that would take gigabytes.
+const HUGE_DOUBLING_LEVELS: usize = 24;
+
 #[test]
 fn a_parse_holds_no_more_memory_than_its_limit() {
     // Remembering nothing, the machine builds every node of the tree. Remembering what each
     // rule tries twice, it shares them, and the tree that repeats them is refused before it
     // is laid out.
     let small = Limits {
-        max_memory_bytes: Some(1 << 20),
+        max_memory_bytes: Some(SMALL_MEMORY_BYTES),
         ..Limits::default()
     };
     for memo in [Memo::Off, Memo::Grammar] {
@@ -556,21 +639,27 @@ fn a_parse_holds_no_more_memory_than_its_limit() {
         };
         let parser =
             |levels| Parser::with_options(&doubling(levels), &options).expect("it compiles");
-        assert!(parser(16).parse("", "start").is_ok(), "{memo:?}");
-        let error = parser(16)
+        assert!(
+            parser(DOUBLING_LEVELS).parse("", "start").is_ok(),
+            "{memo:?}"
+        );
+        let error = parser(DOUBLING_LEVELS)
             .parse_with("", "start", small)
             .expect_err("too large");
         assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Memory), "{memo:?}");
         // The default for a short input stops at 64 MiB what would take gigabytes.
-        let error = parser(24).parse("", "start").expect_err("too large");
+        let error = (parser(HUGE_DOUBLING_LEVELS).parse("", "start")).expect_err("too large");
         assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Memory), "{memo:?}");
     }
 }
 
-/// Rules that each call of `item` tries in the grammar of the next test, the length of its
-/// input in bytes, and the memory its parses may hold.
+/// Rules that each call of `item` tries in the grammar of the next test.
 const PROFILE_RULES: usize = 50;
+
+/// The input of the next test.
 const PROFILE_INPUT_BYTES: usize = 2_000;
+
+/// Memory that the parse and the profile of the next test may hold, enough for the parse.
 const PROFILE_MEMORY_BYTES: u64 = 1 << 20;
 
 #[test]
@@ -614,6 +703,22 @@ fn the_default_memory_grows_with_the_input_between_its_bounds() {
     assert_eq!(given.memory_bytes(megabyte), 5);
 }
 
+/// Levels of a doubling tree that the next test builds in full.
+const BUILT_LEVELS: usize = 10;
+
+/// Levels of a doubling tree whose entries weigh more steps than [`WEIGHED_MAX_STEPS`].
+const WEIGHED_LEVELS: usize = 12;
+
+/// Steps that a parse of the next test may take, many more than the parse itself takes.
+const WEIGHED_MAX_STEPS: u64 = 20_000;
+
+/// Levels of a doubling tree of two million entries, which a few hundred steps parse.
+const SHARED_TREE_LEVELS: usize = 20;
+
+/// Steps that the parses of trees that repeat shared nodes may take: many more than the parses
+/// take, far fewer than the entries of their trees.
+const SHARED_TREE_MAX_STEPS: u64 = 100_000;
+
 #[test]
 fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
     // The second match of each rule is the remembered first, so each level takes a few steps
@@ -623,23 +728,26 @@ fn a_tree_that_repeats_remembered_nodes_is_built_in_full_or_refused() {
         ..Options::default()
     };
     let doubling = |levels| Parser::with_options(&doubling(levels), &options).expect("it compiles");
-    let tree = doubling(10).parse("", "start").expect("the input parses");
-    assert_eq!(tree.len(), 1 << 11);
+    let tree = doubling(BUILT_LEVELS)
+        .parse("", "start")
+        .expect("the input parses");
+    assert_eq!(tree.len(), 1 << (BUILT_LEVELS + 1));
     // An entry that repeats a shared node counts as the steps it would have taken to make it
     // unshared, so 8,192 entries need over 30,000 steps, though the parse takes a few hundred.
     let limits = Limits {
-        max_steps: 20_000,
+        max_steps: WEIGHED_MAX_STEPS,
         ..Limits::default()
     };
-    let error = (doubling(12).parse_with("", "start", limits)).expect_err("the entries weigh more");
+    let error = (doubling(WEIGHED_LEVELS).parse_with("", "start", limits))
+        .expect_err("the entries weigh more");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
-    // Twenty levels are two million nodes, from a parse of a few hundred steps. Few enough to
-    // build, should the limit ever fail to stop it.
+    // Two million nodes from a parse of a few hundred steps are few enough to build, should
+    // the limit ever fail to stop them.
     let limits = Limits {
-        max_steps: 100_000,
+        max_steps: SHARED_TREE_MAX_STEPS,
         ..Limits::default()
     };
-    let error = doubling(20)
+    let error = doubling(SHARED_TREE_LEVELS)
         .parse_with("", "start", limits)
         .expect_err("a larger tree than the steps allow");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Steps));
@@ -654,11 +762,11 @@ fn a_failed_recovering_parse_lists_the_error_items_its_shared_nodes_repeat_withi
         ..Options::default()
     };
     let limits = Limits {
-        max_steps: 100_000,
+        max_steps: SHARED_TREE_MAX_STEPS,
         ..Limits::default()
     };
     let parse = |bottom: &str| {
-        let text = doubling_text(20, bottom) + "%recover lost: ()\n";
+        let text = doubling_text(SHARED_TREE_LEVELS, bottom) + "%recover lost: ()\n";
         let grammar = Grammar::from_text(&text).expect("the grammar reads");
         let parser = Parser::with_options(&grammar, &options).expect("it compiles");
         parser.parse_recovering_with("x", "start", limits)
@@ -677,6 +785,10 @@ fn a_failed_recovering_parse_lists_the_error_items_its_shared_nodes_repeat_withi
 /// The steps limits the next test tries, from 1.
 const EXPLAINED_MAX_STEPS: u64 = 1_000;
 
+/// Spaces at the start of the input of the next test, which the run that explains it skips
+/// again.
+const EXPLAINED_SPACES: usize = 1_000;
+
 #[test]
 fn a_failed_parse_is_explained_in_full_or_ends_at_a_limit() {
     // While attempts are recorded, a skip inside a lookahead is kept apart from one outside,
@@ -686,16 +798,11 @@ fn a_failed_parse_is_explained_in_full_or_ends_at_a_limit() {
         "start: !\"b\" \"a\" z\nz: \"b\" | \"c\" %error(\"no b\")\n%ignore \" \"+ | \"#\"\n",
     );
     let parser = Parser::new(&grammar.expect("the grammar reads")).expect("it compiles");
-    let input = " ".repeat(1_000) + "ac";
+    let input = " ".repeat(EXPLAINED_SPACES) + "ac";
     let full = parser.parse(&input, "start").expect_err("there is no b");
     let message = "no b".to_owned();
-    assert_eq!(
-        full.kind,
-        ParseErrorKind::ErrorAlternative {
-            message,
-            end: 1_002
-        }
-    );
+    let end = input.len();
+    assert_eq!(full.kind, ParseErrorKind::ErrorAlternative { message, end });
     for max_steps in 1..EXPLAINED_MAX_STEPS {
         let limits = Limits {
             max_steps,
@@ -709,6 +816,9 @@ fn a_failed_parse_is_explained_in_full_or_ends_at_a_limit() {
     }
 }
 
+/// Items in each input of the next test.
+const UNSHARED_ITEMS: usize = 2_000;
+
 #[test]
 fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
     // An empty seed, and a remembered match given once, mark a tree as one that may repeat
@@ -717,12 +827,12 @@ fn a_tree_that_repeats_no_node_takes_no_more_steps_than_its_parse() {
     for (text, input, memo) in [
         (
             "start: list\nlist: list \",\" \"a\" | ()\n",
-            ",a".repeat(2_000),
+            ",a".repeat(UNSHARED_ITEMS),
             Memo::Grammar,
         ),
         (
             "start: (w \"x\" | w \"y\")*\n@memo\nw: \"a\"\n",
-            "ay".repeat(2_000),
+            "ay".repeat(UNSHARED_ITEMS),
             Memo::Grammar,
         ),
     ] {
@@ -756,7 +866,7 @@ fn an_empty_seed_of_left_recursion_given_at_every_call_counts_its_tree() {
                 e2: e1 e1 e1 e1 e1 e1 e1 e1 e1 e1\ne3: e2 e2 e2 e2 e2 e2 e2 e2 e2 e2\nn: ()\n";
     let grammar = Grammar::from_text(text).expect("the grammar reads");
     let limits = Limits {
-        max_steps: 100_000,
+        max_steps: SHARED_TREE_MAX_STEPS,
         ..Limits::default()
     };
     for memo in [Memo::Grammar, Memo::Off, Memo::All] {
@@ -771,11 +881,14 @@ fn an_empty_seed_of_left_recursion_given_at_every_call_counts_its_tree() {
     }
 }
 
+/// Terms of the sum in the next test after the first, a level of its tree each.
+const PRINTED_TERMS: usize = 500;
+
 #[test]
 fn a_tree_as_deep_as_its_input_prints_without_recursion() {
     let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
         .expect("the grammar reads");
-    let input = format!("1{}", "+1".repeat(500));
+    let input = format!("1{}", "+1".repeat(PRINTED_TERMS));
     let tree = Reference::new(&grammar)
         .expect("the grammar resolves")
         .parse(&input, "start")
@@ -786,18 +899,22 @@ fn a_tree_as_deep_as_its_input_prints_without_recursion() {
         .expect("the thread starts")
         .join()
         .expect("printing finishes");
-    assert!(printed.starts_with(&format!("(start {}", "(sum ".repeat(500))));
+    let sums = "(sum ".repeat(PRINTED_TERMS);
+    assert!(printed.starts_with(&format!("(start {sums}")));
     assert!(lines.ends_with(&format!("\n{}~\"+\"\n{}~\"1\"\n", "    ", "    ")));
 }
+
+/// Terms of the sum that the machine grows in the next test, a level of its tree each.
+const GROWN_TERMS: usize = 100_000;
 
 #[test]
 fn the_machine_grows_a_left_recursion_as_long_as_the_input_on_a_small_stack() {
     let grammar = Grammar::from_text("start: sum\nsum: sum \"+\" \"1\" | \"1\"\n")
         .expect("the grammar reads");
     let parser = Parser::new(&grammar).expect("the grammar compiles");
-    let terms = 100_000;
+    let terms = GROWN_TERMS;
     let input = format!("1{}", "+1".repeat(terms - 1));
-    // Parsing, laying out and printing a tree 100,000 nodes deep, none of it by recursion.
+    // Parsing, laying out and printing a tree as deep, none of it by recursion.
     let (entries, printed) = std::thread::Builder::new()
         .stack_size(PRINT_STACK_BYTES)
         .spawn(move || {
@@ -812,6 +929,12 @@ fn the_machine_grows_a_left_recursion_as_long_as_the_input_on_a_small_stack() {
     assert!(printed > entries);
 }
 
+/// Brackets that a precedence block takes within the default depth limit.
+const BLOCK_NESTING: usize = 100;
+
+/// Brackets beyond the default depth limit in a precedence block.
+const TOO_DEEP_BLOCK_NESTING: usize = 1_000;
+
 #[test]
 fn brackets_nested_beyond_the_depth_limit_are_an_error_in_a_precedence_block() {
     let path = grammars().join("expressions.fpeg");
@@ -819,13 +942,10 @@ fn brackets_nested_beyond_the_depth_limit_are_an_error_in_a_precedence_block() {
     let grammar = Grammar::from_text(&text).expect("the grammar reads");
     let parser = Parser::new(&grammar).expect("the grammar compiles");
     // Every level of the block is a rule activation, sixteen for each pair of brackets.
-    assert!(
-        parser
-            .parse(&nested(100).replace('x', "1"), "start")
-            .is_ok()
-    );
+    let numbers = |depth| nested(depth).replace('x', "1");
+    assert!(parser.parse(&numbers(BLOCK_NESTING), "start").is_ok());
     let error = parser
-        .parse(&nested(1_000).replace('x', "1"), "start")
+        .parse(&numbers(TOO_DEEP_BLOCK_NESTING), "start")
         .expect_err("too deep");
     assert_eq!(error.kind, ParseErrorKind::Limit(Limit::Depth));
 }
