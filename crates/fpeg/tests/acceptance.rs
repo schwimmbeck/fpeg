@@ -76,7 +76,11 @@ fn acceptance_grammars_parse_their_samples() {
             continue;
         }
         let samples = root.join("samples").join(name);
-        let valid = files_in(&samples);
+        let mut valid = files_in(&samples);
+        // The grammar of grammars reads itself.
+        if name == "fpeg" {
+            valid.push(path.clone());
+        }
         if valid.is_empty() {
             failures.push(format!("{name}: no samples in {}", samples.display()));
         }
