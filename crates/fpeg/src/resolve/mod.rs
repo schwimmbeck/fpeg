@@ -692,7 +692,8 @@ impl<'g> Resolver<'g> {
         builder: Option<&ValueBuilder>,
         token: bool,
     ) -> KindId {
-        // Names hold no NUL, so no key can be another's.
+        // Names and builders read from text hold no NUL, so no key can be another's. Only a
+        // grammar built in code with a NUL in a name could merge two kinds.
         let made = if token { "token" } else { "node" };
         let key = match builder {
             None => format!("{name}\0{made}"),
