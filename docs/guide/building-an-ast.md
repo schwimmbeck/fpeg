@@ -55,7 +55,7 @@ Three choices in the grammar prepare the tree for what follows:
 - **Aliases name the constructs.** The three operator levels all make `binary` nodes, since a program treats them alike. `-> load` makes a node for a name that is read, which tells it from the name that `let` writes.
 - **`?statement` and the levels make no nodes.** A statement is a `let`, an `if` or a `show`, with nothing around it.
 
-The method for the rule `if` is called `if_`. Python reserves `if`, so fpeg looks for a rule named like a keyword under the name with an underscore added.
+The method for the rule `if` is called `if_`. Python reserves `if`, so the method of a rule named like a keyword takes the name with an underscore added.
 
 ## Classes for the constructs
 

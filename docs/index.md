@@ -21,7 +21,7 @@ Complete programs for common tasks, each a grammar and a `Transformer`, to copy 
 
 ## Tutorials
 
-- [Your first grammar](tutorial/first-grammar.md): JSON from nothing to Python objects.
+- [A grammar for JSON](tutorial/first-grammar.md): from nothing to Python objects.
 - [From a tree to your own objects](tutorial/transformer.md): a `Transformer` that builds a syntax tree and computes values.
 
 ## Guides

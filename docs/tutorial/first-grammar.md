@@ -1,4 +1,4 @@
-# Your first grammar
+# A grammar for JSON
 
 This tutorial writes a grammar for JSON, one step at a time: it parses documents with it, reads the tree, and at the end turns documents into Python objects. It goes on from [Getting started](../start.md), which installs fpeg and parses with a first grammar.
 

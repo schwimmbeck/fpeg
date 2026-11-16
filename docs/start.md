@@ -121,6 +121,6 @@ assert fpeg.Transformer().transform(grammar.parse("x = 1, y = 22")) == {"x": 1, 
 ## Where next
 
 - The [examples](index.md#examples) are complete programs for common tasks, to copy and change.
-- The tutorials go step by step: [your first grammar](tutorial/first-grammar.md) writes a grammar for JSON, and [from a tree to your own objects](tutorial/transformer.md) builds a syntax tree and computes with it.
+- The tutorials go step by step: [a grammar for JSON](tutorial/first-grammar.md) goes from nothing to Python objects, and [from a tree to your own objects](tutorial/transformer.md) builds a syntax tree and computes with it.
 - The [grammar language](reference/grammar.md) describes every form a grammar can use, and the [Python API](reference/python-api.md) everything the package offers.
 - From Rust, the crate [`fpeg`](https://docs.rs/fpeg) reads, compiles and parses the same grammars, and `cargo install fpeg-cli` installs the [command line](reference/cli.md).

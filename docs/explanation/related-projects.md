@@ -34,7 +34,7 @@ A grammar for Lark reads much the same in fpeg:
 
 The main difference is the choice: Lark's `|` lets the parser find the alternative that fits, and fpeg's tries the alternatives in order and takes the first that matches, so a longer alternative goes before a shorter one that starts it. `fpeg check` warns about an alternative that an earlier one hides.
 
-Code written for Lark's `Transformer` mostly runs: a method named after a rule gets the list of the children, and `fpeg.v_args` reads Lark's decorator. `Tree(data, children, meta)`, `pretty()` and the token attributes `type`, `start_pos`, `end_pos`, `line`, `column` and `end_column` follow Lark's.
+Code written for Lark's `Transformer` mostly runs: a method named after a rule gets the list of the children, and `fpeg.v_args` takes the options `inline`, `meta` and `tree` of Lark's decorator of that name. `Tree(data, children, meta)`, `pretty()` and the token attributes `type`, `start_pos`, `end_pos`, `line`, `column` and `end_column` follow Lark's.
 
 ```python
 import fpeg
