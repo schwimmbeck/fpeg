@@ -122,14 +122,14 @@ fn shapes(grammar: &Grammar, resolved: &ir::Grammar, counts: &Counts, found: &mu
             let shape = counts.shape(expr);
             let (code, message) = if shape.stays && shape.gives_way {
                 let message = format!(
-                    "this alternative makes a node {name} for some inputs and gives way to its \
+                    "this alternative makes a {name} node for some inputs and gives way to its \
                      one child for others"
                 );
                 (DiagnosticCode::UnsteadyShape, message)
             } else if shape.gives_way && alternative.builder.is_some() {
                 let message = format!(
                     "the builder of this alternative is never used, since it always gives way to \
-                     its one child and makes no node {name}"
+                     its one child and makes no {name} node"
                 );
                 (DiagnosticCode::UnusedBuilder, message)
             } else {
