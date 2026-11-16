@@ -375,11 +375,13 @@ impl Grammar {
     /// The Python source of a starting transformer for the grammar: a method for every rule that
     /// makes nodes and every terminal, the parameters of a node's method named after its fields,
     /// with type hints from how many items each field holds, and `strict=True`, so that a
-    /// misspelled method fails. A rule named like a Python keyword or `transform` gets its
-    /// method under the name with an underscore added.
+    /// misspelled method fails. A rule named like a Python keyword or a method the class needs,
+    /// such as `transform`, gets its method under the name with an underscore added.
     #[pyo3(signature = (name = "Transformer"))]
     fn transformer_template(&self, py: Python<'_>, name: &str) -> PyResult<String> {
         let keywords: Vec<String> = py.import("keyword")?.getattr("kwlist")?.extract()?;
+        // The names the class needs itself, such as `transform`, as the Transformer reads them.
+        let reserved = (py.import("fpeg")?.getattr("Transformer")?).getattr("__fpeg_reserved__")?;
         let is_identifier = |text: &str| -> PyResult<bool> {
             crate::string(py, text)?
                 .call_method0("isidentifier")?
@@ -413,7 +415,7 @@ impl Grammar {
             {
                 continue;
             }
-            let method = if keywords.contains(&method_name) || method_name == "transform" {
+            let method = if keywords.contains(&method_name) || reserved.contains(&method_name)? {
                 format!("{method_name}_")
             } else {
                 method_name

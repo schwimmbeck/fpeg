@@ -769,8 +769,9 @@ def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
     namespace = {}
     exec(compile(recovering, "<template>", "exec"), namespace)
     assert namespace["Transformer"]().transform(recovered("[1, x")) is None
-    keyword = fpeg.Grammar('start: if\nif: "x"').transformer_template()
+    keyword = fpeg.Grammar('start: if transform\nif: "x"\ntransform: "t"').transformer_template()
     assert "    def if_(self, *children: Any) -> Any:" in keyword
+    assert "    def transform_(self, *children: Any) -> Any:" in keyword
     # Builders give the nodes of one name kinds apart, and a method meets them all.
     shared = fpeg.Grammar(
         "start: x | y\nx: a=NAME -> item => list\ny: b=NUM -> item => tuple\n"
