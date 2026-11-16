@@ -1,6 +1,6 @@
 # Semantics
 
-This page defines what a grammar means: for a grammar, an input and a start rule, which tree a parse produces or where it fails. It is normative, draft 0. The [grammar language](grammar.md) page defines the syntax this page refers to.
+This page defines what a grammar means: for a grammar, an input and a start rule, which tree a parse produces or where it fails. It is normative. The [grammar language](grammar.md) page defines the syntax this page refers to.
 
 The definition has two steps. First, every grammar is translated into a small core language. Then a single matching relation gives every core expression its meaning. Engines and optimizations may work in any way, as long as they produce the results defined here.
 
@@ -82,8 +82,8 @@ The meaning of a core expression `e` is a relation between `e`, a position `i`, 
 - The context `κ` has four parts: the set of flags that are on, the reference column, the captures, which map names to texts, and the *floor*, a position or none. Two contexts are equal when all four parts are, however the captures came about.
 - Matching knows besides the mode of the parse, normal or recovering, and whether it runs *sheltered*, inside a lookahead, a token or the skip expression. Neither is part of the context, so a rule that calls itself through a lookahead finds the entry of the table of left recursion made around it, in either mode.
 - A result is one of:
-  - **success** `(j, items, Γ, c)`: the expression matched the input from `i` to `j`, produced the list `items`, leaves the captures `Γ` for what follows, and `c` says whether it passed a cut that no choice point has consumed yet;
-  - **failure** `(c)`: the expression does not match, and `c` says whether a cut was passed before the failure;
+  - **success** `(j, items, Γ, c)`: the expression matched the input from `i` to `j`, produced the list `items`, leaves the captures `Γ` for what follows, and `c` says whether it passed a cut that no choice point has consumed yet.
+  - **failure** `(c)`: the expression does not match, and `c` says whether a cut was passed before the failure.
   - **error** `(l, p, D)`: the labeled error `l` occurred at position `p`, after the error items `D` that the matches it ended had produced before it. An error is never caught by a choice and ends the whole parse.
 
 Unless a rule below says otherwise, an error of a part is the error of the whole, with the error items among what the parts before it produced, at any depth, in front of its `D`, and the captures of a success are those of the context.
@@ -167,7 +167,15 @@ A parse that does not succeed fails at the *farthest failure position*, with an 
 - If the input does not end where the parse ended, that position counts as a failure that expects the end of the input. The recoveries of the failed parse are the error items of the success.
 - A parse that ends in an error `(l, p, D)` fails with that error instead, and its recoveries are the error items in `D`. Where the label failed outside every recovery and a failure outside every recovery was recorded beyond `p`, the parse got further than the label, and it fails at the farthest failure position with its expected set instead, as a parse that does not match, keeping those recoveries.
 
-A parse that fails, other than at a limit, is *explained* where the grammar has an error alternative. Its attempts under the floor of its error, which is that of the label and none for a parse that does not match, are tested in the order of their positions, and at one position in the order their `%error` stands in the text of the grammar, where a module's text comes after the text that uses it, and the instances of one rule come in the order the translation makes them: `e` is matched at `i` in `κ`, sheltered, as a parse of its own. The first alternative whose `e` succeeds gives the error `m` in place of the error, to `j`, the farthest end where `e` succeeds over the contexts it was tried in at `i`, from `p`, the farthest end of `skip` matched at `i` the same way over the contexts where `e` ends at `j` if `s`, or `i` where it succeeds in none of them or without `s`, as for a label, and to `p` where that comes after `j`, with no expected set, and the parse keeps its recoveries. Since an attempt is tested on its own, what the parse remembered and the order it tried things in cannot change which one explains it. Explaining is part of the parse, so a limit that the tests reach ends the parse at that limit.
+A parse that fails, other than at a limit, is *explained* where the grammar has an error alternative:
+
+1. Its attempts under the floor of its error, which is that of the label and none for a parse that does not match, are tested in the order of their positions. At one position they go in the order their `%error` stands in the text of the grammar, where a module's text comes after the text that uses it, and the instances of one rule come in the order the translation makes them.
+2. An attempt is tested by matching `e` at `i` in `κ`, sheltered, as a parse of its own.
+3. The first alternative whose `e` succeeds gives the error `m` in place of the error, with no expected set, and the parse keeps its recoveries.
+4. The error ends at `j`, the farthest end where `e` succeeds over the contexts it was tried in at `i`.
+5. The error starts at `p`. With `s`, `p` is the farthest end of `skip` matched at `i` the same way, over the contexts where `e` ends at `j`, and `i` where `skip` succeeds in none of them. Without `s`, `p` is `i`, as for a label. Where `p` comes after `j`, the error ends at `p`.
+
+Since an attempt is tested on its own, what the parse remembered and the order it tried things in cannot change which one explains it. Explaining is part of the parse, so a limit that the tests reach ends the parse at that limit.
 
 An input that a parse in normal mode accepts fails no label outside a token, the skip expression and a lookahead, so a parse in recovering mode gives it the same tree and no recoveries.
 

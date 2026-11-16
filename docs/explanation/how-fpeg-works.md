@@ -19,7 +19,7 @@ The parsing machine runs the program over the input. It tries the alternatives o
 The time a parse takes is the work the machine does, counted in steps, and a grammar decides most of it:
 
 - **Trying again.** An alternative that fails after matching a long stretch gives that work back, and the next alternative may parse the same text again. The machine remembers the results of the rules that a choice can try twice at one position, and `@memo` marks more. The performance guide shows how to find what repeats.
-- **Starting again.** A parse that takes far more steps than its input's length calls for starts again with every rule remembered. Remembering never changes what a parse gives, so even a grammar that repeats work parses in time that grows with the input.
+- **Starting again.** A parse that takes far more steps than its input's length calls for starts again with every rule remembered. Remembering never changes what a parse gives, so even a grammar that repeats work parses in time that grows with the input, as long as remembering every rule fits the limits on memory and nesting, which [the performance guide](../guide/performance.md#limits) explains.
 - **Limits.** Every parse has a limit on its steps, on how deep rule calls nest and on the memory it holds, and stops with a `LimitError` at any of them. A grammar and an input can come from anywhere, so no parse runs without bounds. The machine keeps its own stack in memory it counts, so a deeply nested input reaches the depth limit, never the end of the process's stack.
 
 ## The tree

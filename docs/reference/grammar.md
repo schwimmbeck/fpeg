@@ -1,6 +1,6 @@
 # Grammar language
 
-This page is the normative reference for the syntax of fpeg grammars, draft 0. What a grammar means is defined on the [semantics](semantics.md) page. Where this page and the code disagree, one of them has a bug.
+This page is the normative reference for the syntax of fpeg grammars. What a grammar means is defined on the [semantics](semantics.md) page. Where this page and the code disagree, one of them has a bug.
 
 Some constructs are part of the language but planned for a later release. Their status is marked where they are described, and the page of [planned features](../planned.md) lists them.
 
@@ -37,7 +37,7 @@ A grammar is UTF-8 text.
 - **Whitespace** (spaces and tabs) separates tokens and is otherwise ignored.
 - **Comments** start with `//` and run to the end of the line.
 - **Names** match `[A-Za-z_][A-Za-z0-9_]*`. After any leading underscores, a name that starts with a lowercase letter names a syntactic rule, one that starts with an uppercase letter names a terminal. The rest of the name may mix letters, digits and underscores, but a rule name written `Mixed` is a terminal, so keep rule names lowercase and terminal names uppercase.
-- **Numbers** are decimal: `[0-9]+`. Value builders also accept a sign and a fraction.
+- **Numbers** are decimal: `[0-9]+`. Value builders also accept a minus sign and a fraction.
 - **Keywords** of the grammar language exist only as directives and forms that start with `%`, and attributes that start with `@`. Every plain name is free for rules.
 
 ### Literals
@@ -172,7 +172,7 @@ From loosest to tightest:
 | `e?` `e*` `e+` | optional, zero or more, one or more |
 | `e{n}` `e{n,}` `e{n,m}` | exactly `n`, at least `n`, between `n` and `m` repetitions |
 | `e ** s`, `e ++ s` | zero or more, and one or more, `e` separated by `s` |
-| primary | a literal, a class, a property, `.`, a rule name, `( e )`, `()`, `~` or a `%` form |
+| primary | a literal, a class, a property, `.`, a rule name, `( e )`, `()`, `~`, `...` or a `%` form |
 
 - Repetition is greedy and never gives back what it matched.
 - In `e ** s` and `e ++ s` the separator `s` is a primary, so a compound separator needs parentheses. A trailing separator is not matched.
@@ -293,7 +293,7 @@ block: NEWLINE %indent((%same stmt)+)
 |---|---|
 | `%indent(e)` | the next token must start right of the reference column. Its column becomes the reference column inside `e` |
 | `%same` | the next token must start exactly at the reference column. Consumes nothing |
-| `%tabs n` | a tab advances to the next multiple of `n` columns when columns are compared. Default 8 |
+| `%tabs n` | a tab advances to the next multiple of `n` columns when columns are compared, `n` from 1 to 1000 ([E308](diagnostics/E308.md)). Default 8 |
 
 The reference column is 0 at the start of a parse. Columns count code points from the start of the line, starting at 0, and a form feed sets the count back to 0. A failed check expects indentation, at the position it checked.
 
@@ -383,8 +383,8 @@ NAME: [a-z]+
 - A rule defined again replaces the inherited one for every reference, also in the inherited rules. Replacing `?value` above lets every array and member hold a name.
 - `...` stands as a whole alternative, at most once and without an alias or a builder of its own, and puts the inherited alternatives there, with their aliases and builders: `?value: ... | NAME` tries them first, `?value: NAME | ...` last. A rule that uses it takes the parameters of the rule it replaces ([E605](diagnostics/E605.md)). In a precedence block, or for one, it is planned ([E501](diagnostics/E501.md)).
 - A rule that replaces another says its own markers and attributes, `?` and `@memo` included.
-- The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's.
-- A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn.
+- The `%ignore` expressions of the grammar come after those of the one it extends, its flags and soft keywords join the other's, and its `%word` and `%tabs`, where it gives them, replace the other's, as its `%recover` for a label replaces the other's for that label.
+- A grammar extends at most one other ([E204](diagnostics/E204.md)), one that exists ([E601](diagnostics/E601.md)), which may extend another in turn. `%extends` names it as a string, and `%import` names a grammar as a plain name or a string.
 - The grammars it extends and imports come from the modules given with it where it is loaded, then from those that come with fpeg. A grammar that takes itself in through them is an error ([E602](diagnostics/E602.md)).
 - An import takes the rules it names under their names, and the rules they need under the grammar's name and a dot, as `common.DIGIT`, which no grammar text can write, so they clash with none. Each keeps its kind, so `common.DIGIT` is a terminal as `DIGIT` is, and its nodes and tokens carry that name, as do the aliases of its alternatives. A name that an imported rule refers to and its grammar lacks is an error there ([E201](diagnostics/E201.md)), and never takes a rule of the grammar that imports it. The levels of a precedence block taken in come under such names too, also those of a block taken by name. Such a name comes from one rule of one module, so a copy that the grammar has already, through what it extends or another import, is shared. `%import common` without names takes every rule of `common` by name, and those it needs from the grammars `common` imports under private names. A module name is plain: a letter, then letters, digits and underscores.
 - A rule the grammar defines too cannot be imported ([E603](diagnostics/E603.md)), nor one the other grammar lacks ([E604](diagnostics/E604.md)).
