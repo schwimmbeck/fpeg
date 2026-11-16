@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Dominik Schwimmbeck
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# Monthly updates, one pull request per ecosystem: the actions pinned by commit, the crates of
-# the workspace and of the benchmark package, and the Python lock file.
+# Monthly updates, one pull request per entry: the actions pinned by commit, the crates of the
+# workspace, those of the benchmark package, and the Python lock file.
 version: 2
 updates:
   - package-ecosystem: github-actions

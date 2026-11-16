@@ -24,7 +24,7 @@ This creates `.venv`, builds the native module with maturin, installs the packag
 
 ## Checks
 
-Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, and all other checks, with the Python tests on the development version, on Linux. Once a month Dependabot proposes updates of the pinned actions, the crates and the Python lock file, one pull request for each.
+Every change passes these checks before it is committed. Continuous integration runs the same commands and treats warnings as errors: the Rust and Python tests on Linux with the oldest supported Python and on Windows and macOS with the newest, and all other checks, with the Python tests on the development version, on Linux. Once a month Dependabot proposes updates of the pinned actions, the crates of the workspace and of the benchmarks, and the Python lock file, one pull request for each.
 
 | Check | Command |
 |---|---|

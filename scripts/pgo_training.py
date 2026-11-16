@@ -29,7 +29,7 @@ ROUNDS = 20
 # Sizes of the generated texts, about those of the benchmarks.
 JSON_RECORDS = 20_000
 CSV_ROWS = 20_000
-# fpeg.python builds the ast of this version of Python and no other.
+# fpeg.python builds the ast of Python 3.15, which an older Python lacks.
 AST_PYTHON = (3, 15)
 
 

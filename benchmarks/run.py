@@ -156,6 +156,7 @@ def scrub_pyperf_file(path: Path) -> None:
 def cargo_env(target: Path) -> dict[str, str]:
     """Return the environment of cargo, building into `target`."""
     # Pin where criterion writes, and run in the package so rustup picks its pinned toolchain.
+    # Flags from the shell would change the build that is measured, and --pgo sets its own.
     env = {k: v for k, v in os.environ.items() if k not in ("CRITERION_HOME", "RUSTFLAGS")}
     env["CARGO_TARGET_DIR"] = str(target)
     return env
