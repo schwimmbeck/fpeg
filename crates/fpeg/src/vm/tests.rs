@@ -53,10 +53,14 @@ fn routine(program: &Program, rule: &str) -> String {
 }
 
 #[test]
-fn parsers_and_trees_cross_threads_and_entries_read_by_position() {
+fn parsers_and_trees_cross_threads() {
     fn shared<T: Send + Sync>() {}
     shared::<Parser>();
     shared::<crate::Tree>();
+}
+
+#[test]
+fn a_tree_reads_its_entries_by_position_in_postorder() {
     let parser = parser(
         "start: A \"+\" A
 A: \"a\"",

@@ -261,11 +261,14 @@ def test_the_default_depth_takes_the_deepest_nesting_cpython_takes() -> None:
         assert ast.dump(python.parse(source + "\n")) == ast.dump(ast.parse(source + "\n"))
 
 
-def test_parse_takes_limits_and_refuses_a_literal_that_python_cannot_read() -> None:
+def test_parse_takes_limits() -> None:
     deep = "(" * 300 + "1" + ")" * 300 + "\n"
     with pytest.raises(fpeg.LimitError):
         python.parse(deep)
     assert isinstance(python.parse(deep, max_depth=100_000), ast.Module)
+
+
+def test_parse_refuses_a_literal_that_python_cannot_read() -> None:
     backslash = chr(92)
     # The grammar takes the form of these, and Python cannot read them.
     for source in [f'f"{backslash}N{{BOGUS}}"', '"a' + chr(0) + 'b"', "1" * 5000]:

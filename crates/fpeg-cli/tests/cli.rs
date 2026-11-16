@@ -215,16 +215,18 @@ fn a_closed_output_is_no_failure_of_the_command() {
 }
 
 #[test]
-fn an_unknown_start_rule_and_a_byte_order_mark_are_problems_of_the_grammar_file() {
-    let paths = files(
-        "start",
-        &[
-            ("marked.fpeg", "\u{feff}start: \"a\"\n"),
-            ("input.txt", "a"),
-        ],
-    );
+fn a_grammar_file_may_start_with_a_byte_order_mark() {
+    let paths = files("marked", &[("marked.fpeg", "\u{feff}start: \"a\"\n")]);
     let out = run(["check".as_ref(), paths[0].as_os_str()]);
     assert!(out.status.success(), "{}", text(&out.stdout));
+}
+
+#[test]
+fn an_unknown_start_rule_is_a_problem_of_the_grammar_file() {
+    let paths = files(
+        "start",
+        &[("grammar.fpeg", "start: \"a\"\n"), ("input.txt", "a")],
+    );
     let out = run([
         "parse".as_ref(),
         "--start".as_ref(),
@@ -367,7 +369,7 @@ fn profile_prints_a_row_for_each_rule_and_the_ignored_text() {
 }
 
 #[test]
-fn profile_suggests_remembering_a_rule_that_is_matched_again_and_again() {
+fn profile_suggests_remembering_exactly_the_rules_worth_a_mark() {
     // `item` is tried again through `dot` and `bang`, which remembering by default does not
     // look through.
     let grammar = "start: dot | bang | item\ndot: item \".\"\nbang: item \"!\"\n\

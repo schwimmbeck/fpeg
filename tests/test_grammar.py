@@ -193,12 +193,6 @@ def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:
     assert isinstance(error.tree, fpeg.Tree)
     kinds = [getattr(c, "data", getattr(c, "type", None)) for c in error.tree.children]
     assert kinds == ["item", "<error>", "item", "<missing>"]
-    # Of many errors, the text lists the first ten and counts the rest.
-    with pytest.raises(fpeg.ParseError) as raised:
-        grammar.parse("[1, " + ", ".join(["x"] * 12) + "]", recover=True)
-    assert len(raised.value.errors) == 12
-    lines = str(raised.value).split("\n")
-    assert lines == [str(e) for e in raised.value.errors[:10]] + ["and 2 more errors"]
     # A parse that fails even so has no tree, its error after those it recovered from.
     with pytest.raises(fpeg.ParseError) as raised:
         grammar.parse("[1, x] 4", recover=True)
@@ -211,6 +205,14 @@ def test_a_recovering_parse_raises_with_its_tree_and_every_error() -> None:
         grammar.parse("[1, x, 3")
     assert raised.value.tree is None
     assert [str(e) for e in raised.value.errors] == ["line 1, column 5: item: expected NUMBER"]
+
+
+def test_the_text_of_a_parse_error_lists_ten_errors_at_most() -> None:
+    with pytest.raises(fpeg.ParseError) as raised:
+        fpeg.Grammar(RECOVERING).parse("[1, " + ", ".join(["x"] * 12) + "]", recover=True)
+    assert len(raised.value.errors) == 12
+    lines = str(raised.value).split("\n")
+    assert lines == [str(e) for e in raised.value.errors[:10]] + ["and 2 more errors"]
 
 
 def test_render_shows_each_error_with_its_line_and_a_caret() -> None:

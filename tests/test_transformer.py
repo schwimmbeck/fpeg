@@ -741,7 +741,7 @@ def test_a_method_may_transform_a_subtree_itself() -> None:
     assert Nested().transform(parse("f(a, b)")) == [("f", 3)]
 
 
-def test_the_template_of_a_grammar_compiles_and_fits_its_plan() -> None:
+def test_the_template_of_a_grammar_is_a_transformer_of_its_trees() -> None:
     source = CALLS.transformer_template("Calls")
     assert "    def call(self, name: Any, args: list[Any], kw: Any | None) -> Any:" in source
     assert "        name holds one item." in source
