@@ -49,8 +49,8 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 - On Windows a module file is found whatever the case of its name, as the file system finds it, so a grammar can load there and not on Linux.
 - `fpeg profile` may suggest `@memo` for a rule imported by name, which the grammar that imports it cannot mark.
 
-## Grammars in the repository
+## The Python grammar
 
-- The Python grammar, which comes with fpeg, accepts a few forms that CPython refuses with an error message of its own, such as an assignment to a call, `del *a` and `lazy from __future__ import x`, and indentation that mixes tabs and spaces where CPython finds it ambiguous. It nests as deep as the depth limit allows, where CPython takes at most 200 nested brackets and 149 nested f-strings. It rejects a valid line whose column after a backslash continuation CPython takes from before the backslash.
+- The Python grammar, which comes with fpeg, accepts a few forms that CPython refuses with an error message of its own, such as an assignment to a call, `del *a` and `lazy from __future__ import x`, and indentation that mixes tabs and spaces where CPython finds it ambiguous. It nests as deep as the depth limit allows, where CPython takes at most 200 nested brackets and 149 nested f-strings.
+- A statement after a line that holds only spaces and a backslash takes its indentation from its own line, where CPython takes it from the backslash's line. So such a statement can stand in another block than CPython puts it in, or fail to parse.
 - A recovering parse with the Python grammar reports an error for most lines after a mistake in the quotes of a triple-quoted string, as `""` for `"""`: the strings that follow read as code and the code as strings. CPython stops at the first error.
-- The Lua grammar accepts any prefix expression as a statement or as a target.
