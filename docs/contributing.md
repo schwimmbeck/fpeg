@@ -4,7 +4,7 @@ orphan: true
 
 # Contributing
 
-How to build fpeg from a checkout, run the checks and work on its parts. The working rules for contributors, people and agents alike, are in `AGENTS.md` in the repository root.
+How to build fpeg from a checkout, run the checks and work on its parts. The working rules for contributors, people and agents alike, are in [`AGENTS.md`](https://github.com/schwimmbeck/fpeg/blob/main/AGENTS.md) in the repository root.
 
 ## Requirements
 
@@ -44,7 +44,7 @@ Every change passes these checks before it is committed. Continuous integration 
 
 Every file states its copyright and licence, in a header or, for files that cannot carry one, in `REUSE.toml`, and `LICENSES/` holds the text of every licence used, as the [REUSE specification](https://reuse.software/spec/) asks.
 
-The dependency group `oracles` holds what a test compares fpeg with beyond the standard library, today `llvmlite`, which runs the LLVM IR that a test compiles a small language to. A test skips without its oracle, so `uv run pytest` alone works as well.
+The dependency group `oracles` holds what a test compares fpeg with beyond the standard library: `llvmlite`, which runs the LLVM IR that a test compiles a small language to, and the parser that the case study's language reads its programs with. A test skips without its oracle, so `uv run pytest` alone works as well.
 
 Tests over a whole corpus carry the marker `corpus` and stay out of the default run: the Python grammar against CPython's `ast` over every file of the running Python's library, the Lua grammar over the test suite of Lua 5.4, and the ORD grammar over the 76 files of its application against the language's own parser, which needs the group `oracles`. `uv run python benchmarks/corpus.py` fetches the corpora that are not part of Python, a test whose corpus is missing skips, and `uv run --group oracles pytest -m corpus` runs them. Continuous integration runs them once a week.
 
@@ -80,12 +80,12 @@ The corpus folders come before `--` and libFuzzer's options after it. The gramma
 
 ## Tests of the core
 
-The tests of the core crate run on the reference interpreter, and the differential tests compare the parsing machine with it.
+The tests of the core crate, in `crates/fpeg/`, run on the reference interpreter, and the differential tests compare the parsing machine with it. The paths below are within that folder, apart from the Python tests in the repository's own `tests/`.
 
 | Test | What it checks |
 |---|---|
-| `tests/semantics/*.txt` | case files: a grammar, inputs, and the expected tree or error for each. Every grammar must also print to text that reads back the same |
-| `tests/acceptance.rs` | every grammar in `crates/fpeg/grammars/` prints back to the same grammar and parses its samples, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree. A grammar without a rule `start` that extends no other, which others only extend or import from, resolves and has no samples |
+| `tests/semantics/*.txt`, run by `tests/semantics.rs` | case files: a grammar, inputs, and the expected tree or error for each, in the format `tests/common/cases.rs` describes. Every grammar must also print to text that reads back the same |
+| `tests/acceptance.rs` | every grammar in `crates/fpeg/grammars/` prints back to the same grammar and parses its samples, also with CR LF line breaks, the samples in `invalid/` fail, and a `.tree` file beside a sample holds its expected tree. The grammar of grammars also reads itself. A grammar without a rule `start` that extends no other, which others only extend or import from, resolves and has no samples |
 | `tests/generated.rs` | generated grammars and inputs, made by `tests/common/generator.rs`: nothing panics, every parse ends within the limits, printing reads back, memoization never changes a result, and every parse keeps to the grammar's item counts: no node holds more items in a field than they allow or lacks a field of exactly one item, and no item is of a kind they say no parse makes |
 | `tests/differential.rs` | the parsing machine against the reference interpreter on every case file, every acceptance grammar with its samples, and generated grammars: the same tree, or the same error with the same expected set, with the machine remembering what the grammar marks, nothing, and every rule. Each test reports how many parses it compared |
 | `tests/mutated.rs` | the grammars of `crates/fpeg/grammars/` with one random edit each: reading, resolving and parsing samples never panic, and an edited grammar that reads prints back to the same grammar |
@@ -93,6 +93,9 @@ The tests of the core crate run on the reference interpreter, and the differenti
 | `tests/diagnostics.rs` | every diagnostic code has its page in `docs/reference/diagnostics/`: the page's grammar reports its code, its text block holds exactly what `fpeg check` prints, and its fix gives neither an error nor a warning |
 | `tests/check.rs` | the warnings: each is given where it holds and left out where it does not, the acceptance grammars give none, and a very long choice and a very long chain of rules are checked in time |
 | `tests/limits.rs` | the limits on parses and on grammars: depth, steps, nesting, template expansion, the number of names, instances and errors, and printing a tree as deep as its input |
+| `tests/modules.rs` | grammars that extend and import others: the rules they replace, where `...` puts what they inherit, the names an import gives, and the problems of modules with their codes |
+| `tests/recovery.rs` | recovery from single edits: the JSON grammar gives a broken text a tree that keeps most of its tokens, and names each mistake |
+| `tests/render.rs` | errors shown with their line, as the command line and the Python package show them |
 | `tests/profile.rs` | the counts of a profile: calls, repeats, failures, growths, the row of the ignored text, and that the rows sum to the steps of the parse |
 | `src/vm/tests.rs` | the code the compiler makes for small grammars, exact character classes, and the verifier against broken programs |
 | `src/grammar/bootstrap.rs` | the bootstrap of the front end, below: `meta.rs` is what the grammar file prints and builds the grammar the file describes, the parser of that grammar reads the file as the bootstrap does, and the reference page shows the file |
@@ -125,7 +128,7 @@ What the figure shows, in one paragraph.
 
 ## Benchmarks
 
-The Rust suite measures fpeg's parsing machine beside other Rust parsers on JSON, on an expression of twelve operator levels by what the machine remembers, and on ten workloads with every pass of the optimizer and with each one left out, so that each pass shows what it brings, Python, Lua and the outline language among them. The `json` suite measures fpeg's Python package beside other Python parsers, and the `binding` suite measures what the binding adds to a parse: transforms with and without methods, tokens made from views, and many small parses. The `calculator` suite computes lines of arithmetic with fpeg, Lark and pe beside Python's `eval`. The `python` suite measures fpeg's Python grammar beside CPython and the parsers fpeg will be compared with on Python source, fpeg also to `ast` with positions stamped natively and with positions set in Python, and the `ord` suite measures the first real application's own pipeline beside fpeg's ORD grammar and its transformer, on a file of plain Python and over the application's 76 ORD files. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
+The Rust suite measures fpeg's parsing machine beside other Rust parsers on JSON, on an expression of twelve operator levels by what the machine remembers, and on ten workloads with every pass of the optimizer and with each one left out, so that each pass shows what it brings, Python, Lua and the outline language among them. The `json` suite measures fpeg's Python package beside other Python parsers, and the `binding` suite measures what the binding adds to a parse: transforms with and without methods, tokens made from views, and many small parses. The `calculator` suite computes lines of arithmetic with fpeg and other Python parsers beside Python's `eval`. The `python` suite measures fpeg's Python grammar beside CPython and other parsers of Python source, fpeg also to `ast` with positions stamped natively and with positions set in Python, and the `ord` suite measures the pipeline of the case study's language beside fpeg's ORD grammar and its transformer, on a file of plain Python and over the application's 76 ORD files. Python suites run under [pyperf](https://pyperf.readthedocs.io), which measures in several worker processes, and the Rust suite under [criterion](https://docs.rs/criterion).
 
 ```sh
 uv run --group bench python benchmarks/run.py
@@ -180,11 +183,15 @@ The maintainer sets up once what the workflow publishes with:
 
 ```text
 crates/fpeg/          core: grammar front end, analysis, compiler, parsing machine, tree
+  grammars/           grammars shipped with the library and the acceptance grammars, samples in samples/
 crates/fpeg-cli/      the fpeg command
 crates/fpeg-py/       the native module of the Python package, built with maturin
 python/fpeg/          the Python package and its type stubs
 tests/                Python tests and tests that span crates
-benchmarks/           benchmark harness, baseline suites, recorded results
+benchmarks/           benchmark harness, corpus fetchers, recorded results
+benchmarks/rust/      the Rust benchmarks, a package outside the workspace
 docs/                 this documentation
-scripts/              development helpers
+fuzz/                 fuzz targets for cargo-fuzz, a package outside the workspace
+scripts/              development helpers: the checks, the licence check, the release's helpers
+.github/workflows/    CI, and the release from a tag
 ```
