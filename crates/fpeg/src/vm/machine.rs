@@ -192,8 +192,8 @@ struct MemoKey {
     rule: u32,
     pos: u32,
     flags: u64,
-    /// The context besides the flags: the reference column and the visible captures, as an id
-    /// of the parse.
+    /// The context besides the flags: the reference column, the visible captures and the
+    /// floor, as an id of the parse.
     context: u32,
     quiet: bool,
     looking: bool,

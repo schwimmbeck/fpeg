@@ -159,7 +159,7 @@ impl LineIndex {
     /// to 0, as Python counts indentation. The reference interpreter's, as the machine counts
     /// its own.
     #[cfg(feature = "reference")]
-    pub fn column(&self, text: &str, offset: usize, tab_width: u32) -> u32 {
+    pub(crate) fn column(&self, text: &str, offset: usize, tab_width: u32) -> u32 {
         let start = self.line_start(offset);
         let mut column = 0u32;
         // Saturating, so that a line too long to count stays at the largest column.

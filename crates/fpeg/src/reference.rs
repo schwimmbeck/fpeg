@@ -11,8 +11,9 @@
 //! evaluation consulted no left-recursion table entry from outside itself depends only on the
 //! rule, the position, the context, whether failures are being recorded and whether a lookahead
 //! encloses it, and on the entries made since, so its result is remembered under the first
-//! five and reused while no entry made since could be reached. Without it, every operator level of a precedence block re-parses the
-//! levels below it in each growing step, which is exponential in the number of levels.
+//! five and reused while no entry made since could be reached. Without it, every operator level
+//! of a precedence block re-parses the levels below it in each growing step, which is exponential
+//! in the number of levels.
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

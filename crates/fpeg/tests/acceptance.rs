@@ -7,8 +7,9 @@
 //!
 //! The samples of `grammars/<name>.fpeg` are the files in `grammars/samples/<name>/`. Each must
 //! parse from the rule `start`, also with CR LF line breaks, and where a file `<sample>.tree`
-//! sits beside it, the tree must equal its content. The files in `grammars/samples/<name>/invalid/` must fail to parse.
-//! `FPEG_BLESS=1` writes the `.tree` files of samples that have one.
+//! sits beside it, the tree must equal its content. The files in
+//! `grammars/samples/<name>/invalid/` must fail to parse. `FPEG_BLESS=1` writes the `.tree` files
+//! of samples that have one.
 //!
 //! The errors of these grammars name their terminals by display names, not by rule names.
 

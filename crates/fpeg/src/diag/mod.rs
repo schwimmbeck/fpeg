@@ -7,9 +7,9 @@
 //! triggers it and the fix, and a test holds the pages and the codes together. A code that
 //! starts with E is an error, which keeps a grammar from being used, and the hundreds tell its
 //! area: 1 reading the text, 2 names, 3 forms, 4 limits, 5 forms that a later release brings, 6
-//! modules, 9 bugs of fpeg itself. A code that starts with W is a warning, which [`crate::check()`] gives
-//! for a grammar that works: 1 choices, 2 repetition and recursion, 3 the shape
-//! of the tree, 4 what nothing uses.
+//! modules, 9 bugs of fpeg itself. A code that starts with W is a warning, which
+//! [`crate::check()`] gives for a grammar that works: 1 choices, 2 repetition and recursion, 3
+//! the shape of the tree, 4 what nothing uses.
 
 use std::fmt;
 
