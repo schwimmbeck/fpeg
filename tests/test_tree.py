@@ -243,11 +243,15 @@ def test_a_tree_that_contains_itself_is_freed_by_the_collector() -> None:
     assert gone() is None
 
 
-def test_a_copy_keeps_the_text_and_has_a_new_list_of_the_same_children() -> None:
+def test_a_copy_has_a_new_list_of_the_same_children() -> None:
     tree = parse("f(a), g(b)")
     shallow = copy.copy(tree)
     assert shallow == tree
     assert shallow.children is not tree.children
     assert shallow.children[0] is tree.children[0]
-    assert shallow.text == tree.text == "f(a), g(b)"
     assert copy.deepcopy(tree) == tree
+
+
+def test_a_copy_keeps_the_text_of_its_node() -> None:
+    tree = parse("f(a), g(b)")
+    assert tree.copy().text == copy.copy(tree).text == tree.text == "f(a), g(b)"

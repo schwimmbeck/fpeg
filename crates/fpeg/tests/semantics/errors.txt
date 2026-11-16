@@ -54,11 +54,13 @@ error at 0: no a here
 %flag f
 start: %on(f, %if(
     f
-) "a") | %error(
+) %def(q, "a") %ref(
+    q
+)) | %error(
     "no a here"
 )
---- "a"
-(start ~"a")
+--- "aa"
+(start ~"a" ~"a")
 --- "b"
 error at 0: no a here
 

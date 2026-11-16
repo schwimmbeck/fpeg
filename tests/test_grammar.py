@@ -81,20 +81,24 @@ def test_check_returns_the_warnings_of_a_grammar_that_compiles() -> None:
     assert isinstance(fpeg.Grammar(text).parse("a"), fpeg.Tree)
 
 
-def test_open_reads_a_file_with_a_byte_order_mark_and_names_it_in_messages(
-    tmp_path: Path,
-) -> None:
+def test_open_reads_a_file_with_a_byte_order_mark(tmp_path: Path) -> None:
     good = tmp_path / "good.fpeg"
     good.write_bytes(b'\xef\xbb\xbfstart: "a"\n')
     tree = fpeg.Grammar.open(good).parse("a")
     assert isinstance(tree, fpeg.Tree)
     assert tree.data == "start"
+
+
+def test_open_names_its_file_in_the_problems_of_the_grammar(tmp_path: Path) -> None:
     bad = tmp_path / "bad.fpeg"
     bad.write_text("start: missing\n", encoding="utf-8")
     with pytest.raises(fpeg.GrammarError) as raised:
         fpeg.Grammar.open(bad)
     assert raised.value.diagnostics[0].path == str(bad)
     assert str(raised.value).startswith(f"{bad}:1:8: error[E201]")
+
+
+def test_open_names_a_file_it_cannot_read(tmp_path: Path) -> None:
     missing = tmp_path / "missing.fpeg"
     with pytest.raises(FileNotFoundError) as gone:
         fpeg.Grammar.open(missing)
