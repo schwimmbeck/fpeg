@@ -132,6 +132,28 @@ fn parse_prints_the_tree_one_item_per_line() {
     assert!(text(&out.stdout).starts_with("start@0..6\n  first=N\"1\"@0..1\n"));
 }
 
+/// Terms of a left-recursive sum whose tree, printed by lines, takes more indentation than the
+/// command allows, about 256 MiB at 20,000 levels.
+const DEEP_SUM_TERMS: usize = 20_000;
+
+#[test]
+fn parse_refuses_to_indent_a_tree_too_deep_for_memory_and_prints_it_as_json() {
+    let grammar = "start: start \"+\" N | N\nN: [0-9]+\n";
+    let input = vec!["1"; DEEP_SUM_TERMS].join("+");
+    let paths = files("deep", &[("deep.fpeg", grammar), ("input.txt", &input)]);
+    let out = run(["parse".as_ref(), paths[0].as_os_str(), paths[1].as_os_str()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("nests too deeply to print by lines"));
+    assert!(out.stdout.is_empty());
+    let out = run([
+        "parse".as_ref(),
+        "--json".as_ref(),
+        paths[0].as_os_str(),
+        paths[1].as_os_str(),
+    ]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+}
+
 #[test]
 fn parse_reads_standard_input_and_prints_json() {
     let paths = files("json", &[("sums.fpeg", SUMS)]);

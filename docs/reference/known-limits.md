@@ -42,7 +42,7 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 
 ## Command line
 
-- The indented output of [`fpeg parse`](cli.md) grows with the depth of a tree times its items, so deep trees want `--json`.
+- The indented output of [`fpeg parse`](cli.md) grows with the depth of a tree times its items, so the command refuses a tree whose indentation would take more than 256 MiB, and deep trees want `--json`.
 
 ## Modules
 

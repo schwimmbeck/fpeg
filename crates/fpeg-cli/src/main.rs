@@ -44,6 +44,10 @@ const EXIT_PROBLEM: u8 = 1;
 /// Exit status for a command line that cannot be understood, as in most Unix tools.
 const EXIT_USAGE: u8 = 2;
 
+/// The most bytes of indentation a tree printed by lines may take. Left recursion makes trees as
+/// deep as their input is long, so the indentation grows with the square of the input.
+const MAX_INDENTATION_BYTES: usize = 1 << 28;
+
 /// Print a line on standard output, or on standard error with `error`. A stream that closed,
 /// as when a pager quits, is no failure of the command, so what cannot be written is dropped.
 fn say(error: bool, line: std::fmt::Arguments<'_>) {
@@ -270,6 +274,17 @@ fn parse(args: &[OsString]) -> Result<(), Failure> {
     };
     match parsed {
         Ok(tree) => {
+            if !options.json && indentation_bytes(&tree) > MAX_INDENTATION_BYTES {
+                let mib = MAX_INDENTATION_BYTES >> 20;
+                say(
+                    true,
+                    format_args!(
+                        "{name}: error: the tree nests too deeply to print by lines in {mib} MiB, \
+                         which --json does"
+                    ),
+                );
+                return Err(Failure::Problem);
+            }
             let text = match options.json {
                 true => json(&tree, &input),
                 false => tree.to_lines(&input, options.spans),
@@ -305,6 +320,18 @@ fn report_failure(grammar: &Path, name: &str, input: &str, error: &ParseError) {
     }
     let source = Source::new(input, Some(name));
     say(true, format_args!("{}\n", error.render(&source)));
+}
+
+/// The bytes of indentation of a tree printed by lines: two for each node an item lies in.
+fn indentation_bytes(tree: &Tree) -> usize {
+    let mut total = 0usize;
+    let mut pending: Vec<(NodeRef<'_>, usize)> =
+        (tree.roots().into_iter()).map(|root| (root, 0)).collect();
+    while let Some((item, depth)) = pending.pop() {
+        total = total.saturating_add(2 * depth);
+        pending.extend(item.children().into_iter().map(|child| (child, depth + 1)));
+    }
+    total
 }
 
 /// The tree as JSON: an array of the top items, a node as an object with its kind, field,
