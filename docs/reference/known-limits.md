@@ -39,6 +39,7 @@ What fpeg does not do, or does at a cost, and why. Where another page says more 
 - A transparent rule whose alternative always leaves two items or more keeps its node, yet the fields that rules without nodes of their own pass on to it count for its parent too, where `field()` gives `None` for them and `transformer_template()` offers them.
 - A text too large for memory raises `MemoryError`. When the process runs out of memory as a whole, there is no such promise: memory that fpeg's native code cannot get ends the process, and a small string the Python package makes, such as an attribute of an error, can raise `PanicException`.
 - [`fpeg.python`](python-api.md) builds the `ast` of Python 3.15 and needs that version.
+- The wheel for Windows on ARM is built without the profile-guided optimization that the other wheels have, since the build tools cannot read the profiles that its trial run writes.
 
 ## Command line
 

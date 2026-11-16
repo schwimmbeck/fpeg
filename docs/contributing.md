@@ -166,7 +166,7 @@ A tag starts the workflow, which builds and tests every package. A pre-release e
 
 A version is never replaced. A publishing job that failed, as on a network error, can be run again on its own and skips what is out already, and a fault in a release is fixed by the next patch version. Before a release, each fuzz target runs a round on Linux.
 
-The wheels are built with profile-guided optimization, as this builds one:
+The wheels are built with profile-guided optimization, all but the one for Windows on ARM, where `llvm-profdata` finds the profiles of the instrumented module malformed. This builds one:
 
 ```sh
 uv run maturin build --release --pgo
