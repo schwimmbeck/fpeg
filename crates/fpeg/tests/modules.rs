@@ -207,6 +207,11 @@ fn an_import_of_a_name_defined_twice_or_not_at_all_is_an_error() {
         let found = found(text);
         assert!(found.iter().any(|d| d.code == code), "{text}: {found:?}");
     }
+    // A module that defines a rule twice, which nothing resolves on its own.
+    let module = "x: \"a\" y\nx: \"b\"\ny: \"c\"";
+    let errors = linked("%import m (x)\nstart: x", &[("m", module)]).expect_err("x twice");
+    let twice = |d: &Diagnostic| d.message.ends_with("the rule x is defined twice");
+    assert!(errors.iter().any(twice), "{errors:?}");
 }
 
 /// A grammar text joined with modules given by name, or what the joining finds.

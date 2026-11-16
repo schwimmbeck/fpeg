@@ -618,6 +618,15 @@ fn import(
             .collect(),
     };
     let mut errors = Vec::new();
+    // Nothing resolves the module on its own, so its rules defined twice are found here, which
+    // the import would otherwise copy one way and follow the other.
+    let mut defined: HashSet<&str> = HashSet::new();
+    for rule in &module.rules {
+        if !defined.insert(&rule.name.text) {
+            let message = format!("the rule {} is defined twice", rule.name.text);
+            errors.extend(problem(DiagnosticCode::Duplicate, message, rule.name.span));
+        }
+    }
     for &(rule, span) in &taken {
         if !rules.contains_key(rule) {
             let message = format!("the grammar {} defines no rule {rule}", name.value);
