@@ -76,15 +76,23 @@ A: \"a\"",
     assert!(tree.node(4).is_none());
 }
 
+/// Brackets in the inputs of the tests of the arena, each pair of which doubles the attempts
+/// that fail.
+const FAILING_NESTING: usize = 12;
+
 #[test]
 fn a_failed_alternative_gives_back_the_nodes_it_made() {
     // The first alternative builds the whole nested tree and then fails, at every level.
     let parser = parser("start: s\ns: \"(\" s \")\" \"x\" | \"(\" s \")\" | \"a\"\n");
-    let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
+    let input = format!(
+        "{}a{}",
+        "(".repeat(FAILING_NESTING),
+        ")".repeat(FAILING_NESTING)
+    );
     let mut machine = Machine::new(&parser.program, &input, Limits::default(), &[]);
     assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
     let (tree, _) = machine.tree().expect("the tree fits");
-    // Keeping them would hold the nodes of every one of the 2^12 failed attempts.
+    // Keeping them would hold the nodes of every one of the failed attempts.
     assert!(
         machine.arena_len() <= tree.len(),
         "{} nodes in the arena for a tree of {}",
@@ -92,6 +100,10 @@ fn a_failed_alternative_gives_back_the_nodes_it_made() {
         tree.len()
     );
 }
+
+/// Nodes in the arena for each entry of the tree at most, where remembered nodes keep some of
+/// the failed attempts.
+const REMEMBERED_ARENA_FACTOR: usize = 4;
 
 #[test]
 fn a_failure_cuts_the_arena_back_as_far_as_the_newest_remembered_node() {
@@ -101,22 +113,29 @@ fn a_failure_cuts_the_arena_back_as_far_as_the_newest_remembered_node() {
     // can place the remembered nodes so that most of them stay, bounded by the steps alone.
     let parser =
         parser("start: s\ns: \"(\" s \")\" t \"x\" | \"(\" s \")\" t | \"a\"\n@memo\nt: ()\n");
-    let input = format!("{}a{}", "(".repeat(12), ")".repeat(12));
+    let input = format!(
+        "{}a{}",
+        "(".repeat(FAILING_NESTING),
+        ")".repeat(FAILING_NESTING)
+    );
     let mut machine = Machine::new(&parser.program, &input, Limits::default(), &[]);
     assert_eq!(machine.run(parser.program.entries["start"]), Ok(()));
     let (tree, _) = machine.tree().expect("the tree fits");
-    // The 2^12 failed attempts make more than twenty thousand nodes.
+    // The failed attempts make more than twenty thousand nodes.
     assert!(
-        machine.arena_len() <= 4 * tree.len(),
+        machine.arena_len() <= REMEMBERED_ARENA_FACTOR * tree.len(),
         "{} nodes in the arena for a tree of {}",
         machine.arena_len(),
         tree.len()
     );
 }
 
+/// The size that an instruction may take.
+const MAX_INST_BYTES: usize = 12;
+
 #[test]
 fn an_instruction_takes_at_most_twelve_bytes() {
-    assert!(size_of::<Inst>() <= 12, "{}", size_of::<Inst>());
+    assert!(size_of::<Inst>() <= MAX_INST_BYTES, "{}", size_of::<Inst>());
 }
 
 #[test]
@@ -496,14 +515,21 @@ fn a_skip_expression_that_repeats_a_class_is_taken_as_one_run() {
     assert!(plain(text).program.skip.is_some());
 }
 
+/// Spaces before the token of the next test.
+const SKIPPED_SPACES: usize = 1_000;
+
+/// Steps that the parses of the next test may take, enough for one run of the skip routine over
+/// [`SKIPPED_SPACES`] and too few for three.
+const SKIPPED_MAX_STEPS: u64 = 8_000;
+
 #[test]
 fn a_skip_from_where_the_last_one_started_with_its_flags_is_answered_at_once() {
     // Each alternative skips the same spaces before its token. The skip routine takes four
     // steps a space, so three runs of it do not fit the limit, one does.
     let text = "start: \"x\" | \"y\" | \"z\"\n%ignore \" \" | \"#\"\n";
-    let input = format!("{}z", " ".repeat(1_000));
+    let input = format!("{}z", " ".repeat(SKIPPED_SPACES));
     let limits = Limits {
-        max_steps: 8_000,
+        max_steps: SKIPPED_MAX_STEPS,
         ..Limits::default()
     };
     let answered = parser(text).parse_with(&input, "start", limits);
@@ -515,14 +541,21 @@ fn a_skip_from_where_the_last_one_started_with_its_flags_is_answered_at_once() {
     );
 }
 
+/// Tokens in the input of the next test, each after a skip that finds nothing to skip.
+const UNSKIPPED_TOKENS: usize = 1_000;
+
+/// Steps that the parses of the next test may take, too few for a run of the skip routine
+/// before each of [`UNSKIPPED_TOKENS`].
+const UNSKIPPED_MAX_STEPS: u64 = 9_000;
+
 #[test]
 fn a_skip_at_a_byte_its_expression_cannot_start_with_ends_at_once() {
     // A skip before each "x" finds nothing to skip. Without the skip pass the routine runs for
     // each and takes five steps more, which do not fit the limit.
     let text = "start: \"x\"*\n%ignore \" \" | \"#\"\n";
-    let input = "x".repeat(1_000);
+    let input = "x".repeat(UNSKIPPED_TOKENS);
     let limits = Limits {
-        max_steps: 9_000,
+        max_steps: UNSKIPPED_MAX_STEPS,
         ..Limits::default()
     };
     let answered = parser(text).parse_with(&input, "start", limits);
@@ -811,16 +844,27 @@ fn the_expression_grammar_remembers_the_levels_tried_twice_and_no_others() {
     assert_eq!(remembered(&unmarked), Vec::<String>::new());
 }
 
+/// Brackets in the input of the next test, each pair of which triples the matches of the
+/// innermost one where nothing is remembered.
+const TRIED_NESTING: usize = 30;
+
+/// Steps that the parses of the next test may take, many more than a parse that remembers.
+const TRIED_MAX_STEPS: u64 = 100_000;
+
 #[test]
 fn a_rule_that_a_choice_tries_twice_is_matched_once_at_a_position() {
     // Each alternative of `start` starts with `item`, which is remembered without a mark, and
-    // without it thirty levels of brackets take 3^30 matches of the innermost one.
+    // without it every level of brackets triples the matches of the innermost one.
     let text = |mark: &str| {
         format!("start: item \".\" | item \"!\" | item\n{mark}item: \"(\" start \")\" | \"x\"\n")
     };
-    let input = format!("{}x{}", "(".repeat(30), ")".repeat(30));
+    let input = format!(
+        "{}x{}",
+        "(".repeat(TRIED_NESTING),
+        ")".repeat(TRIED_NESTING)
+    );
     let limits = Limits {
-        max_steps: 100_000,
+        max_steps: TRIED_MAX_STEPS,
         ..Limits::default()
     };
     let remembered = parser(&text("")).parse_with(&input, "start", limits);
@@ -851,13 +895,31 @@ fn a_reference_finds_its_text_without_passing_every_capture_kept_since() {
     assert!(seconds < CAPTURED_SECONDS, "{seconds:.1} s");
 }
 
+/// Positions hashed at each distance apart.
+const SPREAD_KEYS: u32 = 100_000;
+
+/// The distances tried, by their powers of two from 1 up, as far apart as positions fit.
+const SPREAD_SHIFTS: u32 = 13;
+
+/// Low bits of a hash, which pick the bucket of a table of a million.
+const SPREAD_BITS: u32 = 20;
+
+/// The keys take more values of those bits than this, where random keys take about 95,400.
+const MIN_SPREAD_VALUES: usize = 90_000;
+
 #[test]
 fn the_memo_spreads_positions_at_any_power_of_two_apart_over_its_buckets() {
-    // 100,000 random keys take about 95,400 of the values of 20 low bits.
-    for shift in 0..13 {
-        let hashes = memo_hashes((0..100_000u32).map(|i| (7, i << shift, 0)));
-        let low: HashSet<u64> = hashes.iter().map(|hash| hash & 0xf_ffff).collect();
-        assert!(low.len() > 90_000, "{} apart: {}", 1 << shift, low.len());
+    for shift in 0..SPREAD_SHIFTS {
+        let hashes = memo_hashes((0..SPREAD_KEYS).map(|i| (7, i << shift, 0)));
+        let low: HashSet<u64> = (hashes.iter())
+            .map(|hash| hash & ((1 << SPREAD_BITS) - 1))
+            .collect();
+        assert!(
+            low.len() > MIN_SPREAD_VALUES,
+            "{} apart: {}",
+            1 << shift,
+            low.len()
+        );
     }
 }
 
@@ -922,36 +984,55 @@ fn the_rules_on_left_cycles_and_no_others_take_part_in_left_recursion() {
     }
 }
 
+/// Levels of separated repetitions inside each other in the next test.
+const SEPARATED_LEVELS: usize = 40;
+
+/// The program of those levels takes fewer instructions than this.
+const MAX_SEPARATED_INSTS: usize = 2_000;
+
 #[test]
 fn nested_separated_repetitions_compile_to_code_linear_in_their_depth() {
     let mut expr = lit("a");
-    for _ in 0..40 {
+    for _ in 0..SEPARATED_LEVELS {
         expr = sep_many(expr, lit(","));
     }
     let mut g = GrammarBuilder::new();
     g.rule("start", r("_items"));
     g.rule("_items", expr);
     let parser = Parser::new(&g.build()).expect("the grammar compiles");
-    // Forty levels that each copied their item would make more than a trillion instructions.
-    assert!(parser.program.code.len() < 2_000, "{parser:?}");
+    // Levels that each copied their item would make more than a trillion instructions.
+    assert!(
+        parser.program.code.len() < MAX_SEPARATED_INSTS,
+        "{parser:?}"
+    );
     let input = "a,a";
     assert!(parser.parse(input, "start").is_ok());
 }
 
+/// Calls of the rule of the next test, each compiled into its caller.
+const INLINED_CALLS: usize = 100;
+
 #[test]
 fn a_rule_compiled_into_its_callers_adds_its_classes_to_the_program_once() {
     // Copied at every call, a class of many code points would take memory with each.
-    let calls = vec!["word"; 100].join(" ");
+    let calls = vec!["word"; INLINED_CALLS].join(" ");
     let parser = parser(&format!("start: {calls}\nword: [a-z] [a-z0-9]*\n"));
-    assert!(parser.program.code.len() > 200, "{parser:?}");
+    assert!(parser.program.code.len() > 2 * INLINED_CALLS, "{parser:?}");
     assert_eq!(parser.program.classes.len(), 2);
 }
+
+/// Parts of the long sequence of the next test.
+const LONG_SEQUENCE_PARTS: usize = 100_000;
+
+/// Time the long sequence may take to compile in a debug build. Linear, it takes well under a
+/// second, quadratic about half a minute.
+const LINEAR_COMPILE_SECONDS: f64 = 10.0;
 
 #[test]
 fn a_long_sequence_of_parts_that_may_be_empty_compiles_in_linear_time() {
     // The search for left recursion comes back to the sequence once per part, and finding its
     // left children afresh each time made the search quadratic in the number of parts.
-    let parts: Vec<Expr> = (0..100_000).map(|_| opt(lit("a"))).collect();
+    let parts: Vec<Expr> = (0..LONG_SEQUENCE_PARTS).map(|_| opt(lit("a"))).collect();
     let mut g = GrammarBuilder::new();
     g.rule("start", Expr::new(ExprKind::Sequence(parts)));
     let started = std::time::Instant::now();
@@ -960,15 +1041,14 @@ fn a_long_sequence_of_parts_that_may_be_empty_compiles_in_linear_time() {
     assert!(seconds < LINEAR_COMPILE_SECONDS, "{seconds:.1} s");
 }
 
-/// Time the long sequence may take to compile in a debug build. Linear, it takes well under a
-/// second, quadratic about half a minute.
-const LINEAR_COMPILE_SECONDS: f64 = 10.0;
+/// A stack of the size Windows gives a program's main thread.
+const SMALL_STACK_BYTES: usize = 1024 * 1024;
 
 #[test]
 fn the_deepest_grammars_compile_on_a_small_stack() {
     // The resolver and the compiler recurse once per level of an expression, which the resolver
-    // bounds: 100 levels in a rule, and twice that in a template instance whose argument nests
-    // as deeply as its body.
+    // bounds: `MAX_EXPRESSION_DEPTH` levels in a rule, and twice that in a template instance
+    // whose argument nests as deeply as its body.
     let mut nested = lit("a");
     for _ in 1..MAX_EXPRESSION_DEPTH {
         nested = sep_many(nested, lit(","));
@@ -994,6 +1074,3 @@ fn the_deepest_grammars_compile_on_a_small_stack() {
         assert!(compiled);
     }
 }
-
-/// A stack of the size Windows gives a program's main thread.
-const SMALL_STACK_BYTES: usize = 1024 * 1024;

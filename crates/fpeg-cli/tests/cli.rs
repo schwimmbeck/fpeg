@@ -641,6 +641,9 @@ fn the_reference_pages_show_what_parse_and_profile_print() {
     assert_shown(&tree, &printed);
 }
 
+/// The profiles that the guide to performance shows.
+const GUIDE_TABLES: usize = 3;
+
 #[test]
 fn the_guide_to_performance_shows_what_profile_prints() {
     // Each table follows the grammar it profiles, all on the input the guide names.
@@ -665,6 +668,3 @@ fn the_guide_to_performance_shows_what_profile_prints() {
     }
     assert_eq!(tables, GUIDE_TABLES);
 }
-
-/// The profiles that the guide to performance shows.
-const GUIDE_TABLES: usize = 3;
