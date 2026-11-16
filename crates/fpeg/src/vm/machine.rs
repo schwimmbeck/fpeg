@@ -327,12 +327,19 @@ fn id_after(count: usize) -> Result<u32, Stop> {
 /// failed parse also tells apart skips inside a lookahead, where they record none.
 #[derive(Clone, Copy, Debug)]
 struct SkipCache {
+    state: SkipState,
+    end: u32,
+}
+
+/// What the end of a skip depends on: where it starts, the flags, the context that the skip
+/// expression reads, the floor, and whether it runs where attempts are not recorded.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SkipState {
     start: u32,
     flags: u64,
     context: u32,
     floor: Option<u32>,
     looking: bool,
-    end: u32,
 }
 
 /// The room a vector of the machine takes when it first grows, in elements.
@@ -716,9 +723,8 @@ impl<'p, 'i> Machine<'p, 'i> {
             .copied()
             .collect();
         let rank = |a: &Attempt| self.program.error_ranks.get(a.index as usize).copied();
-        let key = |a: &Attempt| (a.pos, rank(a), a.index, a.flags, a.column, a.map);
-        attempts.sort_by_key(key);
-        attempts.dedup_by_key(|a| key(a));
+        // The attempts are distinct, and the key holds all of each but the floor they share.
+        attempts.sort_by_key(|a| (a.pos, rank(a), a.index, a.flags, a.column, a.map));
         // The tests take what the run left, so that the parse holds no more than its limits.
         let left = Limits {
             max_steps: self.limits.max_steps.saturating_sub(self.steps),
@@ -1160,7 +1166,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         return Err(Stop::Limit(Limit::Depth));
                     }
                     self.depth += 1;
-                    let context = self.context();
+                    let context = self.context;
                     let (quiet, looking) = (self.quiet > 0, self.unattempted());
                     if let Some(profiler) = self.profiler.as_deref_mut() {
                         let rule = self.program.rule_at(target);
@@ -1186,22 +1192,9 @@ impl<'p, 'i> Machine<'p, 'i> {
                     (None, Some(_)) if self.skips_nothing() => self.pc += 1,
                     (None, Some(_))
                         if self.program.passes.skip
-                            && let Some(last) = self.skip_cache
-                            && (
-                                last.start,
-                                last.flags,
-                                last.context,
-                                last.floor,
-                                last.looking,
-                            ) == (
-                                self.pos,
-                                self.flags,
-                                self.skip_context(),
-                                self.floor,
-                                self.unattempted(),
-                            ) =>
+                            && let Some(end) = self.cached_skip_end() =>
                     {
-                        self.pos = last.end;
+                        self.pos = end;
                         self.pc += 1;
                     }
                     (None, Some(skip)) => {
@@ -1226,11 +1219,7 @@ impl<'p, 'i> Machine<'p, 'i> {
                         }
                         if self.pc == self.skip_ret {
                             self.skip_cache = Some(SkipCache {
-                                start: self.skip_start,
-                                flags: self.flags,
-                                context: self.skip_context(),
-                                floor: self.floor,
-                                looking: self.unattempted(),
+                                state: self.skip_state(self.skip_start),
                                 end: self.pos,
                             });
                         }
@@ -1572,11 +1561,6 @@ impl<'p, 'i> Machine<'p, 'i> {
         column
     }
 
-    /// The context the keys of the memo and of left recursion hold besides the flags.
-    fn context(&self) -> u32 {
-        self.context
-    }
-
     /// Whether a skip at the position surely ends there: the skip expression cannot start with
     /// the next byte, or the input ends.
     fn skips_nothing(&self) -> bool {
@@ -1589,9 +1573,27 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// The context the skip cache keys by: the context where the skip expression reads it.
     fn skip_context(&self) -> u32 {
         match self.program.skip_context {
-            true => self.context(),
+            true => self.context,
             false => 0,
         }
+    }
+
+    /// The state of a skip that starts at `start` in the machine as it stands.
+    fn skip_state(&self, start: u32) -> SkipState {
+        SkipState {
+            start,
+            flags: self.flags,
+            context: self.skip_context(),
+            floor: self.floor,
+            looking: self.unattempted(),
+        }
+    }
+
+    /// Where a skip from the position ends, where the last skip started from the same state.
+    fn cached_skip_end(&self) -> Option<u32> {
+        (self.skip_cache)
+            .filter(|last| last.state == self.skip_state(self.pos))
+            .map(|last| last.end)
     }
 
     /// Whether the next byte, at the position or after the skip, may start the code a test
@@ -1603,29 +1605,14 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some(test) = program.tests.get(index as usize) else {
             return true;
         };
-        let here = (
-            self.pos,
-            self.flags,
-            self.skip_context(),
-            self.floor,
-            self.unattempted(),
-        );
-        let at = match (test.after_skip, program.skip_class, self.skip_cache) {
-            (false, _, _) => self.pos,
-            (true, Some(class), _) => self.pos + self.run_of(class).0 as u32,
-            (true, None, _) if self.skips_nothing() => self.pos,
-            (true, None, Some(last))
-                if (
-                    last.start,
-                    last.flags,
-                    last.context,
-                    last.floor,
-                    last.looking,
-                ) == here =>
-            {
-                last.end
-            }
-            (true, None, _) => return true,
+        let at = match (test.after_skip, program.skip_class) {
+            (false, _) => self.pos,
+            (true, Some(class)) => self.pos + self.run_of(class).0 as u32,
+            (true, None) if self.skips_nothing() => self.pos,
+            (true, None) => match self.cached_skip_end() {
+                Some(end) => end,
+                None => return true,
+            },
         };
         let next = self.input.as_bytes().get(at as usize);
         let fits = next.is_some_and(|&byte| test.bytes.contains(byte));
@@ -1690,14 +1677,22 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// Keep the items that the newest loop made since it started as its seed, which ends at
     /// the position, in place of the seed before.
     fn keep_seed(&mut self) -> Result<(), Stop> {
-        let Some(state) = self.loops.last_mut() else {
+        let Some(&Seeded { items, seed }) = self.loops.last() else {
             return Ok(());
         };
-        let made = self.items.get(state.items as usize..).unwrap_or_default();
+        let seed = self.seed_from(items, seed)?;
+        if let Some(state) = self.loops.last_mut() {
+            state.seed = Some(seed);
+        }
+        Ok(())
+    }
+
+    /// Move the items made above the height `items` into the seeds in place of the seed `old`,
+    /// and give the new seed, which ends at the position.
+    fn seed_from(&mut self, items: u32, old: Option<Match>) -> Result<Match, Stop> {
+        let made = self.items.get(items as usize..).unwrap_or_default();
         self.steps += made.len() as u64;
-        let first = state
-            .seed
-            .map_or(self.seeds.len(), |seed| seed.first as usize);
+        let first = old.map_or(self.seeds.len(), |seed| seed.first as usize);
         self.seeds.truncate(first);
         // Indices are 32 bits wide. Every kept item costs a step, so a limit of steps stops
         // first.
@@ -1706,13 +1701,13 @@ impl<'p, 'i> Machine<'p, 'i> {
         };
         self.memory.room(&mut self.seeds, made.len())?;
         self.seeds.extend_from_slice(made);
-        state.seed = Some(Match {
+        let seed = Match {
             end: self.pos,
             first,
             count: made.len() as u32,
-        });
-        self.items.truncate(state.items as usize);
-        Ok(())
+        };
+        self.items.truncate(items as usize);
+        Ok(seed)
     }
 
     /// Take the newest loop off, with its seed.
@@ -1733,7 +1728,7 @@ impl<'p, 'i> Machine<'p, 'i> {
             rule,
             pos: self.pos,
             flags: self.flags,
-            context: self.context(),
+            context: self.context,
             quiet: self.quiet > 0,
             looking: self.unattempted(),
         };
@@ -1812,7 +1807,7 @@ impl<'p, 'i> Machine<'p, 'i> {
     /// the search ends at the first that started earlier.
     fn active(&mut self, rule: u32) -> Option<u32> {
         let mut index = self.newest_recursion;
-        let context = self.context();
+        let context = self.context;
         while let Some(frame) = self.frames.get(index as usize) {
             if frame.key.pos != self.pos {
                 break;
@@ -1893,26 +1888,11 @@ impl<'p, 'i> Machine<'p, 'i> {
         let Some(info) = self.program.rules.get(frame.key.rule as usize) else {
             return Err(Stop::NoMatch);
         };
-        let made = self.items.get(frame.items as usize..).unwrap_or_default();
-        self.steps += made.len() as u64;
-        let first = recursion
-            .seed
-            .map_or(self.seeds.len(), |s| s.first as usize);
-        self.seeds.truncate(first);
-        // Indices are 32 bits wide. Every kept item costs a step, so a limit of steps stops
-        // first.
-        let (Ok(first), Ok(seed_nodes)) = (u32::try_from(first), u32::try_from(self.nodes.len()))
-        else {
+        // Node indices are 32 bits wide too, and every node costs a step.
+        let Ok(seed_nodes) = u32::try_from(self.nodes.len()) else {
             return Err(Stop::Limit(Limit::Steps));
         };
-        self.memory.room(&mut self.seeds, made.len())?;
-        self.seeds.extend_from_slice(made);
-        let seed = Match {
-            end: self.pos,
-            first,
-            count: made.len() as u32,
-        };
-        self.items.truncate(frame.items as usize);
+        let seed = self.seed_from(frame.items, recursion.seed)?;
         // The first seed is no growth yet.
         if recursion.seed.is_some()
             && let Some(profiler) = self.profiler.as_deref_mut()

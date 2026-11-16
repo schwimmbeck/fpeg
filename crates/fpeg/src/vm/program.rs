@@ -330,7 +330,8 @@ pub(crate) struct Program {
     /// repetition can reach, since every counted step consumes input.
     pub bounds: Vec<(u32, u32)>,
     pub rules: Vec<RuleInfo>,
-    /// Where the routine of each shared part starts.
+    /// Where the routine of each shared part starts, for the verifier and the disassembler.
+    #[cfg(feature = "reference")]
     pub shared: Vec<u32>,
     /// Where the skip routine starts, if the grammar ignores text and has no skip class.
     pub skip: Option<u32>,

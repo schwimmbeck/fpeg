@@ -5,6 +5,7 @@
 //! inputs.
 
 pub(crate) mod compile;
+#[cfg(feature = "reference")]
 mod disasm;
 mod machine;
 mod profile;
@@ -486,10 +487,10 @@ fn attempt(
     let profile = first.profile();
     let steps = first.steps();
     let farthest = first.farthest();
-    let position = farthest.unwrap_or(0) as usize;
+    let farthest_at = farthest.unwrap_or(0) as usize;
     let ended = first.take_recoveries();
     let limited = |limit| ParseError {
-        position,
+        position: farthest_at,
         kind: ParseErrorKind::Limit(limit),
         recoveries: Vec::new(),
     };
@@ -536,7 +537,7 @@ fn attempt(
                 farthest.map(|at| (at, None)).into_iter().collect();
             if positions.is_empty() && ended.is_empty() && !program.explains {
                 Err(ParseError {
-                    position,
+                    position: farthest_at,
                     kind: ParseErrorKind::NoMatch {
                         expected: Vec::new(),
                     },
@@ -549,7 +550,7 @@ fn attempt(
                 };
                 let expected = farthest.map_or_else(Vec::new, |at| again.expected(at, None));
                 let error = ParseError {
-                    position,
+                    position: farthest_at,
                     kind: ParseErrorKind::NoMatch { expected },
                     recoveries: explained(&again, &ended),
                 };

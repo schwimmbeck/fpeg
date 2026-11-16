@@ -156,7 +156,9 @@ impl LineIndex {
 
     /// The column of a byte offset, counting from 0: one per code point from the start of the
     /// line, with a tab advancing to the next multiple of `tab_width` and a form feed going back
-    /// to 0, as Python counts indentation.
+    /// to 0, as Python counts indentation. The reference interpreter's, as the machine counts
+    /// its own.
+    #[cfg(feature = "reference")]
     pub fn column(&self, text: &str, offset: usize, tab_width: u32) -> u32 {
         let start = self.line_start(offset);
         let mut column = 0u32;

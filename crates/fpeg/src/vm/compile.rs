@@ -3,9 +3,9 @@
 
 //! The compiler: from the core language of a resolved grammar to a program.
 //!
-//! Each core form becomes a fixed piece of code, close to LPeg's. A shared part becomes a
-//! routine of its own that every use calls, and every repetition compiles its expression once,
-//! so the program grows linearly with the grammar.
+//! Each core form becomes a fixed piece of code. A shared part becomes a routine of its own
+//! that every use calls, and every repetition compiles its expression once, so the program
+//! grows linearly with the grammar.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -256,6 +256,7 @@ pub(crate) fn compile(
         tests: c.tests,
         bounds: c.bounds,
         rules,
+        #[cfg(feature = "reference")]
         shared: c.shared_pcs,
         skip,
         skip_class,

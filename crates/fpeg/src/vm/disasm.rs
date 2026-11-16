@@ -23,6 +23,9 @@ impl Display for Program {
         if let Some(pc) = self.skip {
             headings.insert(pc, "skip:".to_owned());
         }
+        if let Some(pc) = self.skip_test {
+            headings.insert(pc, "skip test:".to_owned());
+        }
         for (label, pc) in self.recoveries.iter().enumerate() {
             if let (Some(pc), Some(label)) = (pc, self.labels.get(label)) {
                 headings.insert(*pc, format!("recover {}:", label.text()));

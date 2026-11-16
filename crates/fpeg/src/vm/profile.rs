@@ -53,16 +53,7 @@ impl Profile {
             return;
         }
         for (sum, row) in self.rows.iter_mut().zip(other.rows) {
-            sum.calls += row.calls;
-            sum.failures += row.failures;
-            sum.steps += row.steps;
-            sum.steps_with_callees += row.steps_with_callees;
-            sum.backtracked_bytes += row.backtracked_bytes;
-            sum.repeats += row.repeats;
-            sum.repeated_steps += row.repeated_steps;
-            sum.memo_hits += row.memo_hits;
-            sum.memo_stores += row.memo_stores;
-            sum.growths += row.growths;
+            sum.add_counts(&row);
         }
     }
 }
@@ -105,6 +96,22 @@ pub struct ProfileRow {
     pub memo_stores: u64,
     /// Passes of a left recursion that made the match longer.
     pub growths: u64,
+}
+
+impl ProfileRow {
+    /// Add the counts of another row of the same rules.
+    fn add_counts(&mut self, other: &ProfileRow) {
+        self.calls += other.calls;
+        self.failures += other.failures;
+        self.steps += other.steps;
+        self.steps_with_callees += other.steps_with_callees;
+        self.backtracked_bytes += other.backtracked_bytes;
+        self.repeats += other.repeats;
+        self.repeated_steps += other.repeated_steps;
+        self.memo_hits += other.memo_hits;
+        self.memo_stores += other.memo_stores;
+        self.growths += other.growths;
+    }
 }
 
 /// A call as the profiler tells calls apart for [`ProfileRow::repeats`]: the rule, the
@@ -377,16 +384,7 @@ impl Profiler {
             match rows.get_mut(index) {
                 Some(known) => {
                     known.remembered |= row.remembered;
-                    known.calls += row.calls;
-                    known.failures += row.failures;
-                    known.steps += row.steps;
-                    known.steps_with_callees += row.steps_with_callees;
-                    known.backtracked_bytes += row.backtracked_bytes;
-                    known.repeats += row.repeats;
-                    known.repeated_steps += row.repeated_steps;
-                    known.memo_hits += row.memo_hits;
-                    known.memo_stores += row.memo_stores;
-                    known.growths += row.growths;
+                    known.add_counts(&row);
                 }
                 None => rows.push(row),
             }

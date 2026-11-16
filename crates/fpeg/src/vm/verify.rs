@@ -57,6 +57,7 @@ pub(crate) fn verify(program: &Program) -> Result<(), String> {
     let mut roots: Vec<u32> = program.rules.iter().map(|r| r.pc).collect();
     roots.extend(&program.shared);
     roots.extend(program.skip);
+    roots.extend(program.skip_test);
     roots.extend(program.recoveries.iter().flatten());
     roots.extend(program.error_tests.iter().flatten());
     let mut entries: Vec<u32> = program.entries.values().copied().collect();
